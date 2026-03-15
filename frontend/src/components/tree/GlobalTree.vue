@@ -1,12 +1,12 @@
 <template>
   <div class="tree-shell">
     <header class="header">
-      <h2>Move Node</h2>
+      <h2>移动节点</h2>
       <p class="hint">
-        Target: <strong>{{ operationNode?.name ?? '-' }}</strong>
+        当前目标：<strong>{{ operationNode?.name ?? '-' }}</strong>
       </p>
       <p class="hint">
-        Selected parent: <strong>{{ selectedParentLabel }}</strong>
+        选中的目标父节点：<strong>{{ selectedParentLabel }}</strong>
       </p>
     </header>
 
@@ -16,7 +16,7 @@
         :class="{ selected: moveTargetParentId === null }"
         @click="store.setMoveTargetParent(null)"
       >
-        Move to root
+        移动到主页
       </button>
     </div>
 
@@ -77,9 +77,9 @@ function toggleExpand(id: string): void {
 
 const selectedParentLabel = computed(() => {
   if (moveTargetParentId.value === null) {
-    return 'Root';
+    return '主页';
   }
-  return findNodeName(treeNodes.value, moveTargetParentId.value) ?? 'Unknown';
+  return findNodeName(treeNodes.value, moveTargetParentId.value) ?? '未知节点';
 });
 
 watch(

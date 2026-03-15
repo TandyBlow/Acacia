@@ -2,7 +2,7 @@
   <div class="nav-shell">
     <div class="node-list">
       <div v-if="childNodes.length === 0" class="empty">
-        No child nodes
+        暂无子节点
       </div>
 
       <div v-for="node in childNodes" :key="node.id" class="row">
@@ -15,20 +15,20 @@
         >
           <div class="row-content">
             <span class="row-name">{{ node.name }}</span>
-            <span class="row-tip">right click</span>
+            <span class="row-tip">右键操作</span>
           </div>
         </GlassWrapper>
 
         <div v-else class="row-actions">
-          <button class="action move" @click="moveNode(node)">Move</button>
-          <button class="action delete" @click="deleteNode(node)">Delete</button>
-          <button class="action cancel" @click="actionNodeId = null">Cancel</button>
+          <button class="action move" @click="moveNode(node)">移动</button>
+          <button class="action delete" @click="deleteNode(node)">删除</button>
+          <button class="action cancel" @click="actionNodeId = null">取消</button>
         </div>
       </div>
     </div>
 
     <button class="add-button" @click="store.startAdd()">
-      + Add Node
+      + 添加节点
     </button>
   </div>
 </template>

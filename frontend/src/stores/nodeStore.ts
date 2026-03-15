@@ -7,7 +7,7 @@ function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return 'Unknown error';
+  return '发生了未知错误';
 }
 
 function findTreeNode(nodes: TreeNode[], id: string): TreeNode | null {
@@ -50,7 +50,7 @@ export const useNodeStore = defineStore(
     const blockedParentIds = ref<string[]>([]);
 
     const isBusy = ref(false);
-    const statusMessage = ref('Ready');
+    const statusMessage = ref('已就绪');
     const errorMessage = ref<string | null>(null);
 
     const isEditState = computed(() =>
@@ -104,8 +104,8 @@ export const useNodeStore = defineStore(
         childNodes.value = context.children;
         viewState.value = 'display';
         statusMessage.value = activeNode.value
-          ? `Viewing ${activeNode.value.name}`
-          : 'Viewing home';
+          ? `当前查看：${activeNode.value.name}`
+          : '当前位于主页';
         clearTransientState();
       } catch (error) {
         errorMessage.value = formatError(error);
@@ -126,7 +126,7 @@ export const useNodeStore = defineStore(
       deleteWithChildren.value = false;
       moveTargetParentId.value = null;
       blockedParentIds.value = [];
-      statusMessage.value = 'Add mode';
+      statusMessage.value = '进入添加节点状态';
     }
 
     async function startDelete(node: NodeRecord): Promise<void> {
@@ -134,7 +134,7 @@ export const useNodeStore = defineStore(
       viewState.value = 'delete';
       operationNode.value = node;
       deleteWithChildren.value = false;
-      statusMessage.value = `Delete mode: ${node.name}`;
+      statusMessage.value = `进入删除节点状态：${node.name}`;
       await refreshTree();
       const hit = findTreeNode(treeNodes.value, node.id);
       operationHasChildren.value = Boolean(hit && hit.children.length > 0);
@@ -146,7 +146,7 @@ export const useNodeStore = defineStore(
       operationNode.value = node;
       moveTargetParentId.value = node.parentId;
       deleteWithChildren.value = false;
-      statusMessage.value = `Move mode: ${node.name}`;
+      statusMessage.value = `进入移动节点状态：${node.name}`;
 
       await refreshTree();
       const hit = findTreeNode(treeNodes.value, node.id);
@@ -161,7 +161,7 @@ export const useNodeStore = defineStore(
 
     function cancelOperation(): void {
       viewState.value = 'display';
-      statusMessage.value = activeNode.value ? `Viewing ${activeNode.value.name}` : 'Viewing home';
+      statusMessage.value = activeNode.value ? `当前查看：${activeNode.value.name}` : '当前位于主页';
       clearTransientState();
     }
 
@@ -174,7 +174,7 @@ export const useNodeStore = defineStore(
       try {
         await dataAdapter.updateNodeContent(activeNode.value.id, content);
         activeNode.value = { ...activeNode.value, content };
-        statusMessage.value = `Saved ${activeNode.value.name}`;
+        statusMessage.value = `已保存：${activeNode.value.name}`;
       } catch (error) {
         errorMessage.value = formatError(error);
       } finally {
@@ -199,24 +199,30 @@ export const useNodeStore = defineStore(
       errorMessage.value = null;
       try {
         if (viewState.value === 'add') {
-          const created = await dataAdapter.createNode(currentNodeId.value, pendingNodeName.value.trim());
+          const created = await dataAdapter.createNode(
+            currentNodeId.value,
+            pendingNodeName.value.trim(),
+          );
           await loadNode(created.id);
-          statusMessage.value = `Created ${created.name}`;
+          statusMessage.value = `已添加节点：${created.name}`;
           return;
         }
 
         if (viewState.value === 'delete' && operationNode.value) {
+          const deletingName = operationNode.value.name;
           await dataAdapter.deleteNode(operationNode.value.id, deleteWithChildren.value);
           const reloadId = currentNodeId.value;
           await loadNode(reloadId);
-          statusMessage.value = `Deleted ${operationNode.value.name}`;
+          statusMessage.value = `已删除节点：${deletingName}`;
           return;
         }
 
         if (viewState.value === 'move' && operationNode.value) {
-          await dataAdapter.moveNode(operationNode.value.id, moveTargetParentId.value);
-          await loadNode(operationNode.value.id);
-          statusMessage.value = `Moved ${operationNode.value.name}`;
+          const movingId = operationNode.value.id;
+          const movingName = operationNode.value.name;
+          await dataAdapter.moveNode(movingId, moveTargetParentId.value);
+          await loadNode(movingId);
+          statusMessage.value = `已移动节点：${movingName}`;
         }
       } catch (error) {
         errorMessage.value = formatError(error);

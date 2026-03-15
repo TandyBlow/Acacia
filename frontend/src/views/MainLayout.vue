@@ -29,12 +29,10 @@
     </section>
 
     <section class="knob-area">
-      <GlassWrapper inset shape="circle" class="knob-shell">
-        <Knob />
-      </GlassWrapper>
+      <Knob />
     </section>
 
-    <div v-if="isBusy" class="busy-mask">Processing...</div>
+    <div v-if="isBusy" class="busy-mask">处理中...</div>
     <p v-if="errorMessage" class="error-msg">{{ errorMessage }}</p>
     <p class="status-msg">{{ statusMessage }}</p>
   </main>
@@ -68,53 +66,55 @@ onMounted(async () => {
   height: 100%;
   padding: 38px;
   display: grid;
-  grid-template-columns: 241px 1fr 80px;
+  grid-template-columns: 241px minmax(0, 1fr) 104px;
   grid-template-rows: 182px 1fr;
-  gap: 0;
-  background: #66ccff;
+  gap: 12px;
 }
 
 .logo-area {
   grid-column: 1;
   grid-row: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .breadcrumbs-area {
   grid-column: 2;
   grid-row: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .navigation-area {
   grid-column: 1;
   grid-row: 2;
+  min-width: 0;
+  min-height: 0;
 }
 
 .content-area {
   grid-column: 2;
   grid-row: 2;
+  min-width: 0;
+  min-height: 0;
 }
 
 .knob-area {
   grid-column: 3;
   grid-row: 1 / span 2;
-  align-self: center;
-  justify-self: center;
-  width: 100%;
-  aspect-ratio: 1 / 1;
+  align-self: stretch;
+  justify-self: stretch;
+  min-width: 0;
+  min-height: 0;
 }
 
 .cell-shell {
   width: 100%;
   height: 100%;
-  padding: 2px;
+  padding: 6px;
 }
 
 .content-host {
-  width: 100%;
-  height: 100%;
-}
-
-.knob-shell {
   width: 100%;
   height: 100%;
 }
@@ -155,7 +155,7 @@ onMounted(async () => {
   .layout {
     padding: 16px;
     grid-template-columns: 1fr;
-    grid-template-rows: 96px 64px 1fr 120px 112px;
+    grid-template-rows: 96px 72px minmax(220px, 1fr) minmax(280px, 1.2fr) 132px;
     gap: 10px;
   }
 
@@ -183,7 +183,7 @@ onMounted(async () => {
     grid-column: 1;
     grid-row: 5;
     justify-self: center;
-    width: 112px;
+    width: min(100%, 260px);
   }
 
   .busy-mask {
