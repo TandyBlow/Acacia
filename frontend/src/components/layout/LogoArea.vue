@@ -3,7 +3,7 @@
     <div class="logo-mark">SW</div>
     <div class="logo-text-block">
       <p class="logo-title">SeeWhat</p>
-      <p class="logo-subtitle">Knowledge Map</p>
+      <p class="logo-subtitle">知识图谱</p>
     </div>
   </div>
 </template>

@@ -4,7 +4,7 @@
       <div class="header-row">
         <h2>{{ activeNode.name }}</h2>
         <button class="save-btn" :disabled="isBusy" @click="saveContent">
-          Save
+          保存
         </button>
       </div>
 
@@ -12,18 +12,18 @@
         v-model="draft"
         class="editor-input"
         spellcheck="false"
-        placeholder="Write markdown..."
+        placeholder="请输入 Markdown 内容"
       />
 
       <section class="preview">
-        <h3>Preview</h3>
+        <h3>预览</h3>
         <div class="preview-body" v-html="previewHtml" />
       </section>
     </div>
 
     <div v-else class="home-state">
-      <h2>Home</h2>
-      <p>Select a node from the left list, or create a new one.</p>
+      <h2>主页</h2>
+      <p>请从左侧节点列表中选择一个节点，或添加新的节点。</p>
     </div>
   </div>
 </template>

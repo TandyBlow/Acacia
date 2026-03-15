@@ -1,36 +1,46 @@
 <template>
   <div class="panel">
     <section v-if="viewState === 'add'" class="block">
-      <h2>Create Node</h2>
-      <p class="hint">New node will be created under the current node.</p>
+      <h2>添加节点</h2>
+      <p class="hint">新节点将被添加到当前节点下方。</p>
       <input
         v-model="pendingNodeName"
         class="name-input"
         type="text"
         maxlength="80"
-        placeholder="Enter node name..."
+        placeholder="请输入新节点名称"
       />
-      <p class="hint">Use knob hold to confirm.</p>
     </section>
 
     <section v-else-if="viewState === 'delete'" class="block">
-      <h2>Delete Node</h2>
+      <h2>是否删除该节点？</h2>
       <p class="hint">
-        Target: <strong>{{ operationNode?.name ?? '-' }}</strong>
+        当前目标：<strong>{{ operationNode?.name ?? '-' }}</strong>
       </p>
 
-      <label v-if="operationHasChildren" class="checkbox-row">
-        <input v-model="deleteWithChildren" type="checkbox" />
-        <span>Delete all child nodes too</span>
-      </label>
-
-      <p class="hint">Use knob hold to confirm delete.</p>
+      <button
+        v-if="operationHasChildren"
+        type="button"
+        class="delete-option"
+        @click="deleteWithChildren = !deleteWithChildren"
+      >
+        <GlassWrapper
+          class="delete-toggle"
+          shape="circle"
+          :pressed="deleteWithChildren"
+          interactive
+        >
+          <span class="delete-toggle-mark">{{ deleteWithChildren ? '✓' : '' }}</span>
+        </GlassWrapper>
+        <span class="delete-option-text">同时删除其子节点内容</span>
+      </button>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
+import GlassWrapper from './GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 
 const store = useNodeStore();
@@ -42,7 +52,7 @@ const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteW
 .panel {
   width: 100%;
   height: 100%;
-  padding: 24px;
+  padding: 32px;
   display: grid;
   place-items: center;
 }
@@ -51,39 +61,70 @@ const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteW
   width: min(620px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   align-items: stretch;
 }
 
 h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1.2;
 }
 
 .hint {
   margin: 0;
-  font-size: 14px;
-  opacity: 0.85;
+  font-size: 15px;
+  opacity: 0.9;
 }
 
 .name-input {
   width: 100%;
   border: 1px solid rgba(234, 251, 255, 0.25);
-  border-radius: 16px;
-  background: rgba(13, 58, 74, 0.22);
+  border-radius: 18px;
+  background: rgba(13, 58, 74, 0.18);
   color: #effdff;
-  padding: 14px 16px;
-  font-size: 16px;
+  padding: 16px 18px;
+  font-size: 17px;
+}
+
+.name-input::placeholder {
+  color: rgba(235, 250, 255, 0.56);
 }
 
 .name-input:focus {
   outline: 2px solid rgba(183, 235, 251, 0.45);
 }
 
-.checkbox-row {
-  display: flex;
+.delete-option {
+  width: fit-content;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.delete-toggle {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+}
+
+.delete-toggle-mark {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f3fdff;
+}
+
+.delete-option-text {
+  font-size: 13px;
+  opacity: 0.84;
 }
 </style>

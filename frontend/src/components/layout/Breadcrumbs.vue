@@ -1,6 +1,5 @@
 <template>
   <div class="breadcrumbs-shell">
-    <button class="crumb home" @click="goHome">Home</button>
     <button
       v-for="node in pathNodes"
       :key="node.id"
@@ -10,7 +9,7 @@
       {{ node.name }}
     </button>
     <div class="current-node">
-      {{ activeNode ? activeNode.name : 'Root' }}
+      {{ activeNode ? activeNode.name : '主页' }}
     </div>
   </div>
 </template>
@@ -21,10 +20,6 @@ import { useNodeStore } from '../../stores/nodeStore';
 
 const store = useNodeStore();
 const { pathNodes, activeNode } = storeToRefs(store);
-
-async function goHome(): Promise<void> {
-  await store.loadNode(null);
-}
 
 async function goTo(nodeId: string): Promise<void> {
   await store.loadNode(nodeId);
@@ -68,10 +63,6 @@ async function goTo(nodeId: string): Promise<void> {
 
 .crumb:hover {
   background: rgba(255, 255, 255, 0.16);
-}
-
-.crumb.home {
-  font-weight: 700;
 }
 
 .current-node {

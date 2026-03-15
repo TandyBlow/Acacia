@@ -108,7 +108,7 @@ function assertSiblingNameUnique(
       (ignoreId ? node.id !== ignoreId : true),
   );
   if (duplicate) {
-    throw new Error('A node with the same name already exists under this parent.');
+    throw new Error('同一父节点下已存在同名节点。');
   }
 }
 
@@ -188,7 +188,7 @@ const localAdapter: DataAdapter = {
   async createNode(parentId: string | null, name: string): Promise<NodeRecord> {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      throw new Error('Node name is required.');
+      throw new Error('节点名称不能为空。');
     }
 
     const nodes = readLocalNodes();
@@ -212,7 +212,7 @@ const localAdapter: DataAdapter = {
     const nodes = readLocalNodes();
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) {
-      throw new Error('Node was not found.');
+      throw new Error('未找到该节点。');
     }
     node.content = content;
     writeLocalNodes(nodes);
@@ -222,7 +222,7 @@ const localAdapter: DataAdapter = {
     const nodes = readLocalNodes();
     const target = nodes.find((node) => node.id === nodeId);
     if (!target) {
-      throw new Error('Node was not found.');
+      throw new Error('未找到该节点。');
     }
 
     if (deleteChildren) {
@@ -251,7 +251,7 @@ const localAdapter: DataAdapter = {
     const nodes = readLocalNodes();
     const target = nodes.find((node) => node.id === nodeId);
     if (!target) {
-      throw new Error('Node was not found.');
+      throw new Error('未找到该节点。');
     }
 
     if (target.parentId === newParentId) {
@@ -261,12 +261,12 @@ const localAdapter: DataAdapter = {
     if (newParentId) {
       const parentExists = nodes.some((node) => node.id === newParentId);
       if (!parentExists) {
-        throw new Error('Target parent does not exist.');
+        throw new Error('目标父节点不存在。');
       }
       const blocked = new Set<string>([nodeId]);
       collectDescendantIds(nodes, nodeId, blocked);
       if (blocked.has(newParentId)) {
-        throw new Error('Cannot move a node into itself or one of its descendants.');
+        throw new Error('不能将节点移动到自身或其子节点下。');
       }
     }
 
@@ -333,7 +333,7 @@ function normalizeEdgeByChild(edges: SupabaseEdgeRow[]): Map<string, SupabaseEdg
 
 async function readSupabaseNodes(): Promise<NodeRecord[]> {
   if (!supabase) {
-    throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+    throw new Error('Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。');
   }
 
   const [{ data: nodeRows, error: nodeError }, { data: edgeRows, error: edgeError }] =
@@ -394,10 +394,10 @@ const supabaseAdapter: DataAdapter = {
   async createNode(parentId: string | null, name: string): Promise<NodeRecord> {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      throw new Error('Node name is required.');
+      throw new Error('节点名称不能为空。');
     }
     if (!supabase) {
-      throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      throw new Error('Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。');
     }
 
     const nodes = await readSupabaseNodes();
@@ -411,7 +411,7 @@ const supabaseAdapter: DataAdapter = {
       .single();
 
     if (nodeError || !nodeData) {
-      throw new Error(nodeError?.message ?? 'Failed to create node.');
+      throw new Error(nodeError?.message ?? '创建节点失败。');
     }
 
     const { error: edgeError } = await supabase.from('edges').insert({
@@ -438,7 +438,7 @@ const supabaseAdapter: DataAdapter = {
 
   async updateNodeContent(nodeId: string, content: string): Promise<void> {
     if (!supabase) {
-      throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      throw new Error('Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。');
     }
 
     const { error } = await supabase
@@ -453,13 +453,13 @@ const supabaseAdapter: DataAdapter = {
 
   async deleteNode(nodeId: string, deleteChildren: boolean): Promise<void> {
     if (!supabase) {
-      throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      throw new Error('Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。');
     }
 
     const nodes = await readSupabaseNodes();
     const target = nodes.find((node) => node.id === nodeId);
     if (!target) {
-      throw new Error('Node was not found.');
+      throw new Error('未找到该节点。');
     }
 
     if (deleteChildren) {
@@ -517,13 +517,13 @@ const supabaseAdapter: DataAdapter = {
 
   async moveNode(nodeId: string, newParentId: string | null): Promise<void> {
     if (!supabase) {
-      throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      throw new Error('Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。');
     }
 
     const nodes = await readSupabaseNodes();
     const target = nodes.find((node) => node.id === nodeId);
     if (!target) {
-      throw new Error('Node was not found.');
+      throw new Error('未找到该节点。');
     }
 
     if (target.parentId === newParentId) {
@@ -533,12 +533,12 @@ const supabaseAdapter: DataAdapter = {
     if (newParentId) {
       const parentExists = nodes.some((node) => node.id === newParentId);
       if (!parentExists) {
-        throw new Error('Target parent does not exist.');
+        throw new Error('目标父节点不存在。');
       }
       const blocked = new Set<string>([nodeId]);
       collectDescendantIds(nodes, nodeId, blocked);
       if (blocked.has(newParentId)) {
-        throw new Error('Cannot move a node into itself or one of its descendants.');
+        throw new Error('不能将节点移动到自身或其子节点下。');
       }
     }
 
