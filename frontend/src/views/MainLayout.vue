@@ -1,30 +1,32 @@
 <template>
   <main class="layout">
     <section class="logo-area">
-      <GlassWrapper inset class="cell-shell">
+      <div class="inset-shell static-shell">
         <LogoArea />
-      </GlassWrapper>
+      </div>
     </section>
 
     <section class="breadcrumbs-area">
-      <GlassWrapper inset class="cell-shell">
+      <div class="inset-shell static-shell">
         <Breadcrumbs />
-      </GlassWrapper>
+      </div>
     </section>
 
     <section class="navigation-area">
-      <GlassWrapper inset class="cell-shell">
+      <div class="inset-shell static-shell">
         <Navigation />
-      </GlassWrapper>
+      </div>
     </section>
 
     <section class="content-area">
-      <GlassWrapper inset class="cell-shell">
-        <div class="content-host">
-          <GlobalTree v-if="viewState === 'move'" />
-          <ConfirmPanel v-else-if="viewState === 'add' || viewState === 'delete'" />
-          <MarkdownEditor v-else />
-        </div>
+      <GlassWrapper inset class="content-well">
+        <GlassWrapper class="content-surface">
+          <div class="content-host">
+            <GlobalTree v-if="viewState === 'move'" />
+            <ConfirmPanel v-else-if="viewState === 'add' || viewState === 'delete'" />
+            <MarkdownEditor v-else />
+          </div>
+        </GlassWrapper>
       </GlassWrapper>
     </section>
 
@@ -34,7 +36,6 @@
 
     <div v-if="isBusy" class="busy-mask">处理中...</div>
     <p v-if="errorMessage" class="error-msg">{{ errorMessage }}</p>
-    <p class="status-msg">{{ statusMessage }}</p>
   </main>
 </template>
 
@@ -52,7 +53,7 @@ import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import { useNodeStore } from '../stores/nodeStore';
 
 const store = useNodeStore();
-const { viewState, isBusy, errorMessage, statusMessage } = storeToRefs(store);
+const { viewState, isBusy, errorMessage } = storeToRefs(store);
 
 onMounted(async () => {
   await store.initialize();
@@ -67,36 +68,37 @@ onMounted(async () => {
   padding: 38px;
   display: grid;
   grid-template-columns: 241px minmax(0, 1fr) 104px;
-  grid-template-rows: 182px 1fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 9fr);
   gap: 12px;
+}
+
+.logo-area,
+.breadcrumbs-area,
+.navigation-area,
+.content-area,
+.knob-area {
+  min-width: 0;
+  min-height: 0;
 }
 
 .logo-area {
   grid-column: 1;
   grid-row: 1;
-  min-width: 0;
-  min-height: 0;
 }
 
 .breadcrumbs-area {
   grid-column: 2;
   grid-row: 1;
-  min-width: 0;
-  min-height: 0;
 }
 
 .navigation-area {
   grid-column: 1;
   grid-row: 2;
-  min-width: 0;
-  min-height: 0;
 }
 
 .content-area {
   grid-column: 2;
   grid-row: 2;
-  min-width: 0;
-  min-height: 0;
 }
 
 .knob-area {
@@ -104,16 +106,33 @@ onMounted(async () => {
   grid-row: 1 / span 2;
   align-self: stretch;
   justify-self: stretch;
+}
+
+.inset-shell {
+  width: 100%;
+  height: 100%;
+  padding: 2px;
+  border-radius: 24px;
+  border: 1px solid rgba(109, 138, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 9px 9px 18px rgba(38, 85, 108, 0.56),
+    inset -9px -9px 18px rgba(148, 241, 255, 0.52);
+  overflow: hidden;
+}
+
+.static-shell {
   min-width: 0;
   min-height: 0;
 }
 
-.cell-shell {
+.content-well {
   width: 100%;
   height: 100%;
-  padding: 6px;
+  padding: 2px;
 }
 
+.content-surface,
 .content-host {
   width: 100%;
   height: 100%;
@@ -125,30 +144,22 @@ onMounted(async () => {
   display: grid;
   place-items: center;
   border-radius: 24px;
-  background: rgba(9, 44, 56, 0.25);
+  background: rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(3px);
   z-index: 20;
   font-size: 18px;
-}
-
-.error-msg,
-.status-msg {
-  position: absolute;
-  left: 48px;
-  right: 120px;
-  margin: 0;
-  font-size: 12px;
-  pointer-events: none;
+  color: var(--color-hint);
 }
 
 .error-msg {
-  bottom: 40px;
-  color: #ffd2d2;
-}
-
-.status-msg {
+  position: absolute;
+  left: 48px;
+  right: 120px;
   bottom: 22px;
-  opacity: 0.85;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-hint);
+  pointer-events: none;
 }
 
 @media (max-width: 1100px) {
@@ -190,8 +201,7 @@ onMounted(async () => {
     inset: 16px;
   }
 
-  .error-msg,
-  .status-msg {
+  .error-msg {
     left: 22px;
     right: 22px;
   }

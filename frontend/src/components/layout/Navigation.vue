@@ -69,10 +69,10 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 .nav-shell {
   width: 100%;
   height: 100%;
-  padding: 8px;
+  padding: 2px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
 .node-list {
@@ -82,7 +82,7 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   padding-right: 2px;
 }
 
@@ -91,7 +91,8 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   flex: 0 0 54px;
 }
 
-.row-glass {
+.row-glass,
+.row-actions {
   width: 100%;
   height: 100%;
 }
@@ -107,38 +108,33 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 .row-name {
   font-size: 14px;
   font-weight: 600;
+  color: var(--color-primary);
 }
 
 .row-tip {
   font-size: 11px;
-  opacity: 0.7;
+  color: var(--color-hint);
 }
 
 .row-actions {
-  height: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 4px;
+  gap: 2px;
 }
 
-.action {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 14px;
-  color: #eefcff;
+.action,
+.add-button {
+  border: 1px solid var(--color-glass-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--color-primary);
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.12);
 }
 
-.action.move {
-  color: #ddf6ff;
-}
-
-.action.delete {
-  color: #ffd4d4;
-}
-
+.action.move,
+.action.delete,
 .action.cancel {
-  color: #eefcff;
+  color: var(--color-primary);
 }
 
 .empty {
@@ -146,17 +142,14 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   display: grid;
   place-items: center;
   font-size: 13px;
-  opacity: 0.8;
+  color: var(--color-hint);
 }
 
 .add-button {
   flex: 0 0 54px;
-  border: 1px solid rgba(102, 209, 120, 0.58);
-  border-radius: 16px;
-  background: rgba(50, 156, 66, 0.2);
-  color: #e9ffe9;
+  background: rgba(102, 255, 229, 0.16);
+  border-color: rgba(102, 255, 229, 0.48);
   font-size: 15px;
   font-weight: 700;
-  cursor: pointer;
 }
 </style>

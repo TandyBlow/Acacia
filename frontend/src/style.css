@@ -1,6 +1,10 @@
 :root {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  color: #f6fbff;
+  --color-primary: #6680ff;
+  --color-hint: #66ffe5;
+  --color-glass-border: rgba(109, 138, 255, 0.28);
+  --color-glass-bg: rgba(255, 255, 255, 0.12);
+  color: var(--color-primary);
   line-height: 1.35;
   font-weight: 400;
   text-rendering: optimizeLegibility;
@@ -32,4 +36,5 @@ button,
 input,
 textarea {
   font: inherit;
+  color: inherit;
 }

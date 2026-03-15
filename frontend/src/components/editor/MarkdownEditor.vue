@@ -76,7 +76,8 @@ async function saveContent(): Promise<void> {
 .editor-shell {
   width: 100%;
   height: 100%;
-  padding: 12px;
+  padding: 8px;
+  color: var(--color-primary);
 }
 
 .editor-grid {
@@ -84,7 +85,7 @@ async function saveContent(): Promise<void> {
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr 1fr;
-  gap: 8px;
+  gap: 6px;
 }
 
 .header-row {
@@ -97,13 +98,14 @@ async function saveContent(): Promise<void> {
 h2,
 h3 {
   margin: 0;
+  color: var(--color-primary);
 }
 
 .save-btn {
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid var(--color-glass-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #f4fbff;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-primary);
   padding: 6px 14px;
   cursor: pointer;
 }
@@ -116,23 +118,27 @@ h3 {
 .editor-input {
   width: 100%;
   min-height: 0;
-  border: 1px solid rgba(236, 251, 255, 0.2);
+  border: 1px solid var(--color-glass-border);
   border-radius: 16px;
-  background: rgba(8, 44, 57, 0.24);
-  color: #f1fcff;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-primary);
   padding: 12px;
   resize: none;
   line-height: 1.4;
 }
 
+.editor-input::placeholder {
+  color: var(--color-hint);
+}
+
 .editor-input:focus {
-  outline: 2px solid rgba(183, 235, 251, 0.42);
+  outline: 2px solid rgba(102, 255, 229, 0.35);
 }
 
 .preview {
-  border: 1px solid rgba(236, 251, 255, 0.2);
+  border: 1px solid var(--color-glass-border);
   border-radius: 16px;
-  background: rgba(8, 44, 57, 0.18);
+  background: rgba(255, 255, 255, 0.1);
   padding: 10px 12px;
   overflow: auto;
 }
@@ -143,6 +149,7 @@ h3 {
   line-height: 1.45;
   white-space: normal;
   word-break: break-word;
+  color: var(--color-primary);
 }
 
 .home-state {
@@ -151,10 +158,11 @@ h3 {
   display: grid;
   place-items: center;
   text-align: center;
+  color: var(--color-primary);
 }
 
 .home-state p {
   margin: 0;
-  opacity: 0.85;
+  color: var(--color-hint);
 }
 </style>

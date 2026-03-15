@@ -31,9 +31,9 @@ async function goTo(nodeId: string): Promise<void> {
   width: 100%;
   height: 100%;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -45,28 +45,29 @@ async function goTo(nodeId: string): Promise<void> {
 
 .crumb,
 .current-node {
-  height: calc(100% - 2px);
+  flex: 0 0 auto;
+  height: 100%;
   border-radius: 20px;
   padding: 0 16px;
-  border: 1px solid rgba(239, 251, 255, 0.22);
+  border: 1px solid var(--color-glass-border);
   white-space: nowrap;
   display: flex;
   align-items: center;
   font-size: 14px;
-  color: #f3fdff;
+  color: var(--color-primary);
 }
 
 .crumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   cursor: pointer;
 }
 
 .crumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .current-node {
   border-style: dashed;
-  background: rgba(15, 63, 78, 0.2);
+  background: rgba(255, 255, 255, 0.08);
 }
 </style>

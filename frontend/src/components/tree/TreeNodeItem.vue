@@ -83,10 +83,10 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
 }
 
 .expand-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--color-glass-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #ebfcff;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-primary);
   cursor: pointer;
 }
 
@@ -95,18 +95,18 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
 }
 
 .node-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--color-glass-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #effdff;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-primary);
   padding: 5px 10px;
   text-align: left;
   cursor: pointer;
 }
 
 .node-btn.selected {
-  border-color: rgba(152, 247, 168, 0.7);
-  background: rgba(77, 175, 92, 0.28);
+  border-color: rgba(102, 255, 229, 0.54);
+  background: rgba(102, 255, 229, 0.12);
 }
 
 .node-btn.blocked {

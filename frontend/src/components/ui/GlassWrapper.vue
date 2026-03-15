@@ -27,7 +27,8 @@ defineProps<{
   width: 100%;
   height: 100%;
   transition: transform 140ms ease, box-shadow 160ms ease, border-color 160ms ease;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid var(--color-glass-border);
+  overflow: hidden;
 }
 
 .glass-rect {
@@ -42,7 +43,7 @@ defineProps<{
   width: 100%;
   height: 100%;
   border-radius: inherit;
-  background: rgba(240, 250, 255, 0.08);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -57,7 +58,7 @@ defineProps<{
   box-shadow:
     inset 9px 9px 18px rgba(38, 85, 108, 0.56),
     inset -9px -9px 18px rgba(148, 241, 255, 0.52);
-  border-color: rgba(80, 156, 184, 0.42);
+  border-color: rgba(109, 138, 255, 0.28);
 }
 
 .glass-pressed {

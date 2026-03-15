@@ -105,18 +105,20 @@ onMounted(async () => {
   height: 100%;
   display: grid;
   grid-template-rows: auto auto 1fr;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
+  color: var(--color-primary);
 }
 
 .header h2 {
   margin: 0;
+  color: var(--color-primary);
 }
 
 .hint {
   margin: 4px 0 0;
   font-size: 13px;
-  opacity: 0.9;
+  color: var(--color-hint);
 }
 
 .root-picker {
@@ -125,17 +127,17 @@ onMounted(async () => {
 }
 
 .root-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--color-glass-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #ebfdff;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-primary);
   padding: 6px 12px;
   cursor: pointer;
 }
 
 .root-btn.selected {
-  border-color: rgba(152, 247, 168, 0.7);
-  background: rgba(77, 175, 92, 0.28);
+  border-color: rgba(102, 255, 229, 0.54);
+  background: rgba(102, 255, 229, 0.12);
 }
 
 .tree-root {

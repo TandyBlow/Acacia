@@ -15,38 +15,37 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
+  padding: 0 16px;
   user-select: none;
+  color: var(--color-primary);
 }
 
 .logo-mark {
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  background: rgba(255, 255, 255, 0.18);
-  color: #eaffff;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  line-height: 1;
 }
 
 .logo-text-block {
-  line-height: 1.08;
+  line-height: 1.04;
+}
+
+.logo-title,
+.logo-subtitle {
+  margin: 0;
 }
 
 .logo-title {
-  margin: 0;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
 }
 
 .logo-subtitle {
-  margin: 4px 0 0;
+  margin-top: 4px;
   font-size: 12px;
+  color: var(--color-hint);
   letter-spacing: 1px;
-  opacity: 0.8;
-  text-transform: uppercase;
 }
 </style>

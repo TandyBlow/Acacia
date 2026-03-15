@@ -112,11 +112,11 @@ function onPressCancel(): void {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  align-items: center;
+  grid-template-rows: auto auto auto;
+  align-content: center;
   justify-items: center;
-  gap: 18px;
-  padding: 18px 0;
+  gap: 8px;
+  padding: 0;
 }
 
 .knob-stage {
@@ -128,7 +128,7 @@ function onPressCancel(): void {
 .knob-well {
   width: 100%;
   aspect-ratio: 1 / 1;
-  padding: 10px;
+  padding: 2px;
 }
 
 .knob-well-inner {
@@ -155,7 +155,7 @@ function onPressCancel(): void {
 }
 
 .knob-hit-area:focus-visible {
-  outline: 2px solid rgba(112, 197, 255, 0.9);
+  outline: 2px solid rgba(102, 255, 229, 0.54);
   outline-offset: 4px;
 }
 
@@ -169,18 +169,16 @@ function onPressCancel(): void {
   height: 100%;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.96) 0%, rgba(214, 248, 255, 0.92) 28%, rgba(125, 214, 238, 0.9) 58%, rgba(70, 144, 175, 0.96) 100%);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.96) 0%, rgba(223, 245, 255, 0.92) 30%, rgba(162, 191, 255, 0.88) 58%, rgba(102, 128, 255, 0.94) 100%);
 }
 
 .hint {
   margin: 0;
-  width: 100%;
   min-height: 16px;
   text-align: center;
   font-size: 12px;
   line-height: 1.4;
-  color: rgba(244, 251, 255, 0.96);
-  text-shadow: 0 1px 2px rgba(40, 82, 102, 0.2);
+  color: var(--color-hint);
 }
 
 .hint.hidden {
@@ -191,8 +189,7 @@ function onPressCancel(): void {
   .knob-panel {
     grid-template-columns: 1fr auto 1fr;
     grid-template-rows: 1fr;
-    gap: 14px;
-    padding: 0;
+    gap: 12px;
   }
 
   .hint.top {

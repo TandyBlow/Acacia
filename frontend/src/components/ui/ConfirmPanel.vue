@@ -30,7 +30,7 @@
           :pressed="deleteWithChildren"
           interactive
         >
-          <span class="delete-toggle-mark">{{ deleteWithChildren ? '✓' : '' }}</span>
+          <span class="delete-toggle-mark">{{ deleteWithChildren ? '√' : '' }}</span>
         </GlassWrapper>
         <span class="delete-option-text">同时删除其子节点内容</span>
       </button>
@@ -52,9 +52,10 @@ const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteW
 .panel {
   width: 100%;
   height: 100%;
-  padding: 32px;
+  padding: 22px 24px;
   display: grid;
   place-items: center;
+  color: var(--color-primary);
 }
 
 .block {
@@ -69,30 +70,31 @@ h2 {
   margin: 0;
   font-size: 28px;
   line-height: 1.2;
+  color: var(--color-primary);
 }
 
 .hint {
   margin: 0;
   font-size: 15px;
-  opacity: 0.9;
+  color: var(--color-hint);
 }
 
 .name-input {
   width: 100%;
-  border: 1px solid rgba(234, 251, 255, 0.25);
+  border: 1px solid var(--color-glass-border);
   border-radius: 18px;
-  background: rgba(13, 58, 74, 0.18);
-  color: #effdff;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-primary);
   padding: 16px 18px;
   font-size: 17px;
 }
 
 .name-input::placeholder {
-  color: rgba(235, 250, 255, 0.56);
+  color: var(--color-hint);
 }
 
 .name-input:focus {
-  outline: 2px solid rgba(183, 235, 251, 0.45);
+  outline: 2px solid rgba(102, 255, 229, 0.35);
 }
 
 .delete-option {
@@ -110,7 +112,7 @@ h2 {
 .delete-toggle {
   width: 24px;
   height: 24px;
-  padding: 3px;
+  padding: 2px;
 }
 
 .delete-toggle-mark {
@@ -120,11 +122,11 @@ h2 {
   place-items: center;
   font-size: 13px;
   font-weight: 700;
-  color: #f3fdff;
+  color: var(--color-primary);
 }
 
 .delete-option-text {
   font-size: 13px;
-  opacity: 0.84;
+  color: var(--color-hint);
 }
 </style>
