@@ -1,9 +1,7 @@
 <template>
   <div class="nav-shell">
-    <div class="node-list">
-      <div v-if="childNodes.length === 0" class="empty">
-        暂无子节点
-      </div>
+    <TransitionGroup name="nav-row" tag="div" class="node-list">
+      <div v-if="childNodes.length === 0" key="empty" class="empty" />
 
       <div v-for="node in childNodes" :key="node.id" class="row">
         <GlassWrapper
@@ -15,21 +13,28 @@
         >
           <div class="row-content">
             <span class="row-name">{{ node.name }}</span>
-            <span class="row-tip">右键操作</span>
           </div>
         </GlassWrapper>
 
         <div v-else class="row-actions">
-          <button class="action move" @click="moveNode(node)">移动</button>
-          <button class="action delete" @click="deleteNode(node)">删除</button>
-          <button class="action cancel" @click="actionNodeId = null">取消</button>
+          <GlassWrapper class="action-shell" interactive @click="moveNode(node)">
+            <button type="button" class="action">移动</button>
+          </GlassWrapper>
+          <GlassWrapper class="action-shell" interactive @click="deleteNode(node)">
+            <button type="button" class="action">删除</button>
+          </GlassWrapper>
+          <GlassWrapper class="action-shell" interactive @click="actionNodeId = null">
+            <button type="button" class="action">取消</button>
+          </GlassWrapper>
         </div>
       </div>
-    </div>
+    </TransitionGroup>
 
-    <button class="add-button" @click="store.startAdd()">
-      + 添加节点
-    </button>
+    <GlassWrapper class="add-shell" interactive @click="store.startAdd()">
+      <button type="button" class="add-button">
+        + 添加节点
+      </button>
+    </GlassWrapper>
   </div>
 </template>
 
@@ -69,10 +74,10 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 .nav-shell {
   width: 100%;
   height: 100%;
-  padding: 2px;
+  padding: 1px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .node-list {
@@ -82,7 +87,7 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   padding-right: 2px;
 }
 
@@ -92,16 +97,25 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 }
 
 .row-glass,
-.row-actions {
+.row-actions,
+.action-shell,
+.add-shell {
   width: 100%;
   height: 100%;
+}
+
+.row-glass :deep(.glass-raised),
+.action-shell :deep(.glass-raised),
+.add-shell :deep(.glass-raised) {
+  box-shadow:
+    4px 4px 8px rgba(49, 78, 151, 0.15),
+    -4px -4px 8px rgba(255, 255, 255, 0.3);
 }
 
 .row-content {
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 14px;
 }
 
@@ -111,45 +125,50 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   color: var(--color-primary);
 }
 
-.row-tip {
-  font-size: 11px;
-  color: var(--color-hint);
-}
-
 .row-actions {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 2px;
+  gap: 1px;
 }
 
 .action,
 .add-button {
-  border: 1px solid var(--color-glass-border);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.16);
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
   color: var(--color-primary);
   cursor: pointer;
+  font-size: 14px;
 }
 
-.action.move,
-.action.delete,
-.action.cancel {
-  color: var(--color-primary);
+.add-shell {
+  flex: 0 0 54px;
 }
 
-.empty {
-  min-height: 60px;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  color: var(--color-hint);
+.add-shell :deep(.glass-content) {
+  background: rgba(102, 255, 229, 0.12);
 }
 
 .add-button {
-  flex: 0 0 54px;
-  background: rgba(102, 255, 229, 0.16);
-  border-color: rgba(102, 255, 229, 0.48);
-  font-size: 15px;
   font-weight: 700;
+}
+
+.empty {
+  min-height: 54px;
+}
+
+.nav-row-enter-active,
+.nav-row-leave-active,
+.nav-row-move {
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.nav-row-enter-from,
+.nav-row-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
 }
 </style>

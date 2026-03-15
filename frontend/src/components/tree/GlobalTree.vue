@@ -2,12 +2,6 @@
   <div class="tree-shell">
     <header class="header">
       <h2>移动节点</h2>
-      <p class="hint">
-        当前目标：<strong>{{ operationNode?.name ?? '-' }}</strong>
-      </p>
-      <p class="hint">
-        选中的目标父节点：<strong>{{ selectedParentLabel }}</strong>
-      </p>
     </header>
 
     <div class="root-picker">
@@ -16,11 +10,11 @@
         :class="{ selected: moveTargetParentId === null }"
         @click="store.setMoveTargetParent(null)"
       >
-        移动到主页
+        主页
       </button>
     </div>
 
-    <ul class="tree-root">
+    <TransitionGroup name="tree-fade" tag="ul" class="tree-root">
       <TreeNodeItem
         v-for="node in treeNodes"
         :key="node.id"
@@ -32,19 +26,19 @@
         @toggle="toggleExpand"
         @select="store.setMoveTargetParent"
       />
-    </ul>
+    </TransitionGroup>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import TreeNodeItem from './TreeNodeItem.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import type { TreeNode } from '../../types/node';
 
 const store = useNodeStore();
-const { treeNodes, operationNode, moveTargetParentId, blockedParentIds } = storeToRefs(store);
+const { treeNodes, moveTargetParentId, blockedParentIds } = storeToRefs(store);
 const expandedIds = ref<string[]>([]);
 
 function collectAllIds(nodes: TreeNode[], result: string[]): void {
@@ -54,19 +48,6 @@ function collectAllIds(nodes: TreeNode[], result: string[]): void {
   }
 }
 
-function findNodeName(nodes: TreeNode[], id: string): string | null {
-  for (const node of nodes) {
-    if (node.id === id) {
-      return node.name;
-    }
-    const childHit = findNodeName(node.children, id);
-    if (childHit) {
-      return childHit;
-    }
-  }
-  return null;
-}
-
 function toggleExpand(id: string): void {
   if (expandedIds.value.includes(id)) {
     expandedIds.value = expandedIds.value.filter((item) => item !== id);
@@ -74,13 +55,6 @@ function toggleExpand(id: string): void {
   }
   expandedIds.value = [...expandedIds.value, id];
 }
-
-const selectedParentLabel = computed(() => {
-  if (moveTargetParentId.value === null) {
-    return '主页';
-  }
-  return findNodeName(treeNodes.value, moveTargetParentId.value) ?? '未知节点';
-});
 
 watch(
   treeNodes,
@@ -106,19 +80,12 @@ onMounted(async () => {
   display: grid;
   grid-template-rows: auto auto 1fr;
   gap: 8px;
-  padding: 10px;
+  padding: 8px;
   color: var(--color-primary);
 }
 
 .header h2 {
   margin: 0;
-  color: var(--color-primary);
-}
-
-.hint {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--color-hint);
 }
 
 .root-picker {
@@ -145,5 +112,19 @@ onMounted(async () => {
   padding: 0;
   min-height: 0;
   overflow: auto;
+}
+
+.tree-fade-enter-active,
+.tree-fade-leave-active,
+.tree-fade-move {
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.tree-fade-enter-from,
+.tree-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 </style>

@@ -88,6 +88,9 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
   background: rgba(255, 255, 255, 0.14);
   color: var(--color-primary);
   cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 160ms ease;
 }
 
 .expand-placeholder {
@@ -102,6 +105,15 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
   padding: 5px 10px;
   text-align: left;
   cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.expand-btn:active,
+.node-btn:active {
+  transform: translateY(1px) scale(0.985);
 }
 
 .node-btn.selected {

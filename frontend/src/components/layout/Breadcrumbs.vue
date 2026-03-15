@@ -1,21 +1,30 @@
 <template>
   <div class="breadcrumbs-shell">
-    <button
-      v-for="node in pathNodes"
-      :key="node.id"
-      class="crumb"
-      @click="goTo(node.id)"
-    >
-      {{ node.name }}
-    </button>
-    <div class="current-node">
-      {{ activeNode ? activeNode.name : '主页' }}
-    </div>
+    <TransitionGroup name="crumb" tag="div" class="crumb-track">
+      <GlassWrapper
+        v-for="node in pathNodes"
+        :key="node.id"
+        class="crumb-wrap"
+        interactive
+        @click="goTo(node.id)"
+      >
+        <button type="button" class="crumb">
+          {{ node.name }}
+        </button>
+      </GlassWrapper>
+
+      <GlassWrapper key="current-node" class="crumb-wrap current-wrap">
+        <div class="current-node">
+          {{ activeNode ? activeNode.name : '主页' }}
+        </div>
+      </GlassWrapper>
+    </TransitionGroup>
   </div>
 </template>
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
+import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 
 const store = useNodeStore();
@@ -30,44 +39,77 @@ async function goTo(nodeId: string): Promise<void> {
 .breadcrumbs-shell {
   width: 100%;
   height: 100%;
+  padding: 1px;
+  overflow: hidden;
+}
+
+.crumb-track {
+  width: 100%;
+  height: 100%;
   display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 2px;
+  gap: 1px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
 }
 
-.breadcrumbs-shell::-webkit-scrollbar {
+.crumb-track::-webkit-scrollbar {
   display: none;
+}
+
+.crumb-wrap {
+  flex: 0 0 auto;
+  height: 100%;
+}
+
+.current-wrap {
+  border-color: rgba(109, 138, 255, 0.34);
+}
+
+.current-wrap :deep(.glass) {
+  border-style: solid;
 }
 
 .crumb,
 .current-node {
-  flex: 0 0 auto;
   height: 100%;
-  border-radius: 20px;
+  min-width: 88px;
   padding: 0 16px;
-  border: 1px solid var(--color-glass-border);
-  white-space: nowrap;
+  border: 0;
+  background: transparent;
   display: flex;
   align-items: center;
-  font-size: 14px;
+  justify-content: center;
+  white-space: nowrap;
   color: var(--color-primary);
+  font-size: 14px;
 }
 
 .crumb {
-  background: rgba(255, 255, 255, 0.12);
   cursor: pointer;
 }
 
-.crumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+.crumb-wrap :deep(.glass) {
+  height: 100%;
 }
 
-.current-node {
-  border-style: dashed;
-  background: rgba(255, 255, 255, 0.08);
+.crumb-wrap :deep(.glass-raised) {
+  box-shadow:
+    4px 4px 8px rgba(49, 78, 151, 0.16),
+    -4px -4px 8px rgba(255, 255, 255, 0.3);
+}
+
+.crumb-enter-active,
+.crumb-leave-active,
+.crumb-move {
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.crumb-enter-from,
+.crumb-leave-to {
+  opacity: 0;
+  transform: translateX(18px) scale(0.96);
 }
 </style>

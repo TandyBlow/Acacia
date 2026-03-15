@@ -12,18 +12,15 @@
         v-model="draft"
         class="editor-input"
         spellcheck="false"
-        placeholder="请输入 Markdown 内容"
       />
 
       <section class="preview">
-        <h3>预览</h3>
         <div class="preview-body" v-html="previewHtml" />
       </section>
     </div>
 
     <div v-else class="home-state">
       <h2>主页</h2>
-      <p>请从左侧节点列表中选择一个节点，或添加新的节点。</p>
     </div>
   </div>
 </template>
@@ -95,8 +92,7 @@ async function saveContent(): Promise<void> {
   gap: 8px;
 }
 
-h2,
-h3 {
+h2 {
   margin: 0;
   color: var(--color-primary);
 }
@@ -127,10 +123,6 @@ h3 {
   line-height: 1.4;
 }
 
-.editor-input::placeholder {
-  color: var(--color-hint);
-}
-
 .editor-input:focus {
   outline: 2px solid rgba(102, 255, 229, 0.35);
 }
@@ -144,7 +136,6 @@ h3 {
 }
 
 .preview-body {
-  margin-top: 8px;
   font-size: 14px;
   line-height: 1.45;
   white-space: normal;
@@ -157,12 +148,6 @@ h3 {
   height: 100%;
   display: grid;
   place-items: center;
-  text-align: center;
   color: var(--color-primary);
-}
-
-.home-state p {
-  margin: 0;
-  color: var(--color-hint);
 }
 </style>

@@ -21,11 +21,9 @@
     <section class="content-area">
       <GlassWrapper inset class="content-well">
         <GlassWrapper class="content-surface">
-          <div class="content-host">
-            <GlobalTree v-if="viewState === 'move'" />
-            <ConfirmPanel v-else-if="viewState === 'add' || viewState === 'delete'" />
-            <MarkdownEditor v-else />
-          </div>
+          <Transition name="content-fade" mode="out-in">
+            <component :is="currentContent" :key="contentKey" class="content-host" />
+          </Transition>
         </GlassWrapper>
       </GlassWrapper>
     </section>
@@ -34,13 +32,12 @@
       <Knob />
     </section>
 
-    <div v-if="isBusy" class="busy-mask">处理中...</div>
-    <p v-if="errorMessage" class="error-msg">{{ errorMessage }}</p>
+    <div v-if="isBusy" class="busy-mask" />
   </main>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import LogoArea from '../components/layout/LogoArea.vue';
@@ -53,7 +50,19 @@ import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import { useNodeStore } from '../stores/nodeStore';
 
 const store = useNodeStore();
-const { viewState, isBusy, errorMessage } = storeToRefs(store);
+const { viewState, isBusy, activeNode } = storeToRefs(store);
+
+const currentContent = computed(() => {
+  if (viewState.value === 'move') {
+    return GlobalTree;
+  }
+  if (viewState.value === 'add' || viewState.value === 'delete') {
+    return ConfirmPanel;
+  }
+  return MarkdownEditor;
+});
+
+const contentKey = computed(() => `${viewState.value}:${activeNode.value?.id ?? 'home'}`);
 
 onMounted(async () => {
   await store.initialize();
@@ -111,9 +120,9 @@ onMounted(async () => {
 .inset-shell {
   width: 100%;
   height: 100%;
-  padding: 2px;
+  padding: 1px;
   border-radius: 24px;
-  border: 1px solid rgba(109, 138, 255, 0.22);
+  border: 1px solid rgba(109, 138, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
   box-shadow:
     inset 9px 9px 18px rgba(38, 85, 108, 0.56),
@@ -141,25 +150,35 @@ onMounted(async () => {
 .busy-mask {
   position: absolute;
   inset: 38px;
-  display: grid;
-  place-items: center;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(3px);
   z-index: 20;
-  font-size: 18px;
-  color: var(--color-hint);
+  animation: busy-pulse 1.2s ease-in-out infinite;
 }
 
-.error-msg {
-  position: absolute;
-  left: 48px;
-  right: 120px;
-  bottom: 22px;
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-hint);
-  pointer-events: none;
+.content-fade-enter-active,
+.content-fade-leave-active {
+  transition:
+    opacity 240ms ease,
+    transform 240ms ease;
+}
+
+.content-fade-enter-from,
+.content-fade-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+}
+
+@keyframes busy-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.85;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -199,11 +218,6 @@ onMounted(async () => {
 
   .busy-mask {
     inset: 16px;
-  }
-
-  .error-msg {
-    left: 22px;
-    right: 22px;
   }
 }
 </style>

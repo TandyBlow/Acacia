@@ -1,15 +1,14 @@
 <template>
   <div class="knob-panel">
-    <p class="hint top">{{ topHint }}</p>
-
     <div class="knob-stage">
       <GlassWrapper inset shape="circle" class="knob-well">
         <div class="knob-well-inner">
           <button
             type="button"
             class="knob-hit-area"
+            :class="{ confirmable: inConfirmMode && canConfirm }"
             :disabled="isBusy"
-            :aria-label="inConfirmMode ? '点击旋钮返回，长按旋钮确认' : '点击旋钮返回主页'"
+            aria-label="旋钮"
             @mousedown="onPressStart"
             @mouseup="onPressEnd"
             @mouseleave="onPressCancel"
@@ -18,14 +17,14 @@
             @touchcancel.prevent="onPressCancel"
           >
             <GlassWrapper class="knob-body" shape="circle" :pressed="pressed || isBusy" interactive>
-              <div class="knob-core" />
+              <div class="knob-core">
+                <span v-if="inConfirmMode && canConfirm && pressed" class="hold-ring" />
+              </div>
             </GlassWrapper>
           </button>
         </div>
       </GlassWrapper>
     </div>
-
-    <p class="hint bottom" :class="{ hidden: !bottomHint }">{{ bottomHint }}</p>
   </div>
 </template>
 
@@ -46,14 +45,6 @@ let holdTimer: number | null = null;
 
 const inConfirmMode = computed(
   () => viewState.value === 'add' || viewState.value === 'move' || viewState.value === 'delete',
-);
-
-const topHint = computed(() =>
-  inConfirmMode.value ? '点击旋钮返回' : '点击旋钮返回主页',
-);
-
-const bottomHint = computed(() =>
-  inConfirmMode.value ? '长按旋钮确认' : '',
 );
 
 function clearTimer(): void {
@@ -112,11 +103,8 @@ function onPressCancel(): void {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto auto;
-  align-content: center;
-  justify-items: center;
-  gap: 8px;
-  padding: 0;
+  place-items: center;
+  padding: 1px;
 }
 
 .knob-stage {
@@ -128,7 +116,7 @@ function onPressCancel(): void {
 .knob-well {
   width: 100%;
   aspect-ratio: 1 / 1;
-  padding: 2px;
+  padding: 1px;
 }
 
 .knob-well-inner {
@@ -164,42 +152,63 @@ function onPressCancel(): void {
   height: 100%;
 }
 
+.knob-body :deep(.glass-raised) {
+  box-shadow:
+    4px 4px 8px rgba(49, 78, 151, 0.16),
+    -4px -4px 8px rgba(255, 255, 255, 0.3);
+}
+
 .knob-core {
+  position: relative;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   background:
     radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.96) 0%, rgba(223, 245, 255, 0.92) 30%, rgba(162, 191, 255, 0.88) 58%, rgba(102, 128, 255, 0.94) 100%);
+  animation: knob-idle 2.8s ease-in-out infinite;
 }
 
-.hint {
-  margin: 0;
-  min-height: 16px;
-  text-align: center;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--color-hint);
+.confirmable .knob-core::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(102, 255, 229, 0.28);
 }
 
-.hint.hidden {
-  visibility: hidden;
+.hold-ring {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 2px solid rgba(102, 255, 229, 0.78);
+  border-right-color: transparent;
+  animation: knob-hold 700ms linear forwards;
+}
+
+@keyframes knob-idle {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(0.985);
+  }
+}
+
+@keyframes knob-hold {
+  0% {
+    transform: rotate(0deg);
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: rotate(360deg);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 1100px) {
-  .knob-panel {
-    grid-template-columns: 1fr auto 1fr;
-    grid-template-rows: 1fr;
-    gap: 12px;
-  }
-
-  .hint.top {
-    text-align: right;
-  }
-
-  .hint.bottom {
-    text-align: left;
-  }
-
   .knob-stage {
     width: 112px;
   }

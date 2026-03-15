@@ -29,6 +29,7 @@ defineProps<{
   transition: transform 140ms ease, box-shadow 160ms ease, border-color 160ms ease;
   border: 1px solid var(--color-glass-border);
   overflow: hidden;
+  will-change: transform, box-shadow;
 }
 
 .glass-rect {
@@ -50,8 +51,8 @@ defineProps<{
 
 .glass-raised {
   box-shadow:
-    7px 7px 14px rgba(26, 64, 83, 0.35),
-    -7px -7px 14px rgba(143, 237, 255, 0.35);
+    5px 5px 10px rgba(49, 78, 151, 0.14),
+    -5px -5px 10px rgba(255, 255, 255, 0.28);
 }
 
 .glass-inset {

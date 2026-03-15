@@ -2,21 +2,17 @@
   <div class="panel">
     <section v-if="viewState === 'add'" class="block">
       <h2>添加节点</h2>
-      <p class="hint">新节点将被添加到当前节点下方。</p>
       <input
         v-model="pendingNodeName"
         class="name-input"
         type="text"
         maxlength="80"
-        placeholder="请输入新节点名称"
       />
     </section>
 
     <section v-else-if="viewState === 'delete'" class="block">
-      <h2>是否删除该节点？</h2>
-      <p class="hint">
-        当前目标：<strong>{{ operationNode?.name ?? '-' }}</strong>
-      </p>
+      <h2>删除节点</h2>
+      <div class="target-name">{{ operationNode?.name ?? '' }}</div>
 
       <button
         v-if="operationHasChildren"
@@ -32,7 +28,6 @@
         >
           <span class="delete-toggle-mark">{{ deleteWithChildren ? '√' : '' }}</span>
         </GlassWrapper>
-        <span class="delete-option-text">同时删除其子节点内容</span>
       </button>
     </section>
   </div>
@@ -52,7 +47,7 @@ const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteW
 .panel {
   width: 100%;
   height: 100%;
-  padding: 22px 24px;
+  padding: 18px;
   display: grid;
   place-items: center;
   color: var(--color-primary);
@@ -62,7 +57,7 @@ const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteW
   width: min(620px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   align-items: stretch;
 }
 
@@ -70,13 +65,6 @@ h2 {
   margin: 0;
   font-size: 28px;
   line-height: 1.2;
-  color: var(--color-primary);
-}
-
-.hint {
-  margin: 0;
-  font-size: 15px;
-  color: var(--color-hint);
 }
 
 .name-input {
@@ -89,19 +77,26 @@ h2 {
   font-size: 17px;
 }
 
-.name-input::placeholder {
-  color: var(--color-hint);
-}
-
 .name-input:focus {
   outline: 2px solid rgba(102, 255, 229, 0.35);
+}
+
+.target-name {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  border-radius: 18px;
+  border: 1px solid var(--color-glass-border);
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .delete-option {
   width: fit-content;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -110,9 +105,15 @@ h2 {
 }
 
 .delete-toggle {
-  width: 24px;
-  height: 24px;
-  padding: 2px;
+  width: 28px;
+  height: 28px;
+  padding: 1px;
+}
+
+.delete-toggle :deep(.glass-raised) {
+  box-shadow:
+    3px 3px 6px rgba(49, 78, 151, 0.16),
+    -3px -3px 6px rgba(255, 255, 255, 0.3);
 }
 
 .delete-toggle-mark {
@@ -120,13 +121,8 @@ h2 {
   height: 100%;
   display: grid;
   place-items: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--color-primary);
-}
-
-.delete-option-text {
-  font-size: 13px;
-  color: var(--color-hint);
 }
 </style>
