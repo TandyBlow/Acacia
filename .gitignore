@@ -1,0 +1,41 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Logs
+*.log
+
+# Local generated helper files
+frontend/src/combined_project_code.txt
+
+# Private notes and local scratch files
+1.*.txt
+SeeWhat.txt
+SeeWhat2.txt
+SeeWhat_项目文档.txt
+combine.py
+frontend/src/combine.py
+frontend/src/combined_project_code.txt
+try260215.html

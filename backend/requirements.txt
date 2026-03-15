@@ -1,0 +1,6 @@
+﻿fastapi
+uvicorn
+supabase
+python-dotenv
+sentence-transformers
+torch
