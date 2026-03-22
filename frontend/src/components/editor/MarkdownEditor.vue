@@ -1,24 +1,11 @@
 <template>
   <div class="editor-shell">
-    <div v-if="activeNode" class="editor-grid">
-      <div class="header-row">
-        <h2>{{ activeNode.name }}</h2>
-        <button class="save-btn" :disabled="isBusy" @click="saveContent">
-          保存
-        </button>
-      </div>
-
-      <textarea
-        v-model="draft"
-        class="editor-input"
-        spellcheck="false"
-      />
-
-      <section class="preview">
-        <div class="preview-body" v-html="previewHtml" />
-      </section>
-    </div>
-
+    <textarea
+      v-if="activeNode"
+      v-model="draft"
+      class="editor-input"
+      spellcheck="false"
+    />
     <div v-else class="home-state">
       <h2>主页</h2>
     </div>
@@ -26,121 +13,117 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../../stores/nodeStore';
 
+const AUTO_SAVE_DELAY_MS = 1000;
+
 const store = useNodeStore();
-const { activeNode, isBusy } = storeToRefs(store);
+const { activeNode } = storeToRefs(store);
 
 const draft = ref('');
+const lastSavedContent = ref('');
+
+let autoSaveTimer: number | null = null;
+let saveInFlight = false;
+let queuedContent: string | null = null;
+
+function clearAutoSaveTimer(): void {
+  if (autoSaveTimer !== null) {
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+}
+
+async function enqueueSave(nodeId: string, content: string): Promise<void> {
+  if (!activeNode.value || activeNode.value.id !== nodeId) {
+    return;
+  }
+  if (content === lastSavedContent.value) {
+    return;
+  }
+
+  if (saveInFlight) {
+    queuedContent = content;
+    return;
+  }
+
+  saveInFlight = true;
+  try {
+    const saved = await store.saveActiveNodeContent(nodeId, content);
+    if (saved && activeNode.value?.id === nodeId) {
+      lastSavedContent.value = content;
+    }
+  } finally {
+    saveInFlight = false;
+    if (queuedContent !== null) {
+      const nextContent = queuedContent;
+      queuedContent = null;
+      if (activeNode.value?.id === nodeId && nextContent !== lastSavedContent.value) {
+        await enqueueSave(nodeId, nextContent);
+      }
+    }
+  }
+}
 
 watch(
   () => activeNode.value?.id,
   () => {
-    draft.value = activeNode.value?.content ?? '';
+    clearAutoSaveTimer();
+    saveInFlight = false;
+    queuedContent = null;
+    const content = activeNode.value?.content ?? '';
+    lastSavedContent.value = content;
+    draft.value = content;
   },
   { immediate: true },
 );
 
-function escapeHtml(raw: string): string {
-  return raw
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+watch(draft, (value) => {
+  const nodeId = activeNode.value?.id;
+  if (!nodeId) {
+    clearAutoSaveTimer();
+    return;
+  }
 
-const previewHtml = computed(() => {
-  const escaped = escapeHtml(draft.value);
-  return escaped
-    .replace(/^### (.*)$/gim, '<h3>$1</h3>')
-    .replace(/^## (.*)$/gim, '<h2>$1</h2>')
-    .replace(/^# (.*)$/gim, '<h1>$1</h1>')
-    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-    .replace(/^- (.*)$/gim, '<li>$1</li>')
-    .replace(/\n/g, '<br>');
+  if (value === lastSavedContent.value) {
+    clearAutoSaveTimer();
+    return;
+  }
+
+  clearAutoSaveTimer();
+  autoSaveTimer = window.setTimeout(() => {
+    void enqueueSave(nodeId, value);
+  }, AUTO_SAVE_DELAY_MS);
 });
 
-async function saveContent(): Promise<void> {
-  await store.saveActiveNodeContent(draft.value);
-}
+onBeforeUnmount(() => {
+  clearAutoSaveTimer();
+});
 </script>
 
 <style scoped>
 .editor-shell {
   width: 100%;
   height: 100%;
-  padding: 8px;
   color: var(--color-primary);
-}
-
-.editor-grid {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto 1fr 1fr;
-  gap: 6px;
-}
-
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-h2 {
-  margin: 0;
-  color: var(--color-primary);
-}
-
-.save-btn {
-  border: 1px solid var(--color-glass-border);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.14);
-  color: var(--color-primary);
-  padding: 6px 14px;
-  cursor: pointer;
-}
-
-.save-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .editor-input {
   width: 100%;
-  min-height: 0;
-  border: 1px solid var(--color-glass-border);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.14);
+  height: 100%;
+  border: 0;
+  background: transparent;
   color: var(--color-primary);
-  padding: 12px;
+  padding: 14px 16px;
   resize: none;
-  line-height: 1.4;
+  line-height: 1.5;
+  font: inherit;
 }
 
 .editor-input:focus {
-  outline: 2px solid rgba(102, 255, 229, 0.35);
-}
-
-.preview {
-  border: 1px solid var(--color-glass-border);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 10px 12px;
-  overflow: auto;
-}
-
-.preview-body {
-  font-size: 14px;
-  line-height: 1.45;
-  white-space: normal;
-  word-break: break-word;
-  color: var(--color-primary);
+  outline: none;
 }
 
 .home-state {
