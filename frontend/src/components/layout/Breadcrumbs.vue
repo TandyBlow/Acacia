@@ -59,6 +59,8 @@ async function goTo(nodeId: string): Promise<void> {
 
 .crumb-wrap {
   flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
   height: 100%;
 }
 
@@ -73,7 +75,8 @@ async function goTo(nodeId: string): Promise<void> {
 .crumb,
 .current-node {
   height: 100%;
-  min-width: 88px;
+  width: auto;
+  min-width: 0;
   padding: 0 16px;
   border: 0;
   background: transparent;
@@ -90,7 +93,14 @@ async function goTo(nodeId: string): Promise<void> {
 }
 
 .crumb-wrap :deep(.glass) {
+  width: auto;
   height: 100%;
+  display: inline-flex;
+}
+
+.crumb-wrap :deep(.glass-content) {
+  width: auto;
+  display: inline-flex;
 }
 
 .crumb-wrap :deep(.glass-raised) {
