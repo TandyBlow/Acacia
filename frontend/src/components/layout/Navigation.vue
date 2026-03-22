@@ -1,40 +1,48 @@
 <template>
   <div class="nav-shell">
-    <TransitionGroup name="nav-row" tag="div" class="node-list">
-      <div v-if="childNodes.length === 0" key="empty" class="empty" />
+    <template v-if="isAuthenticated">
+      <TransitionGroup name="nav-row" tag="div" class="node-list">
+        <div v-if="childNodes.length === 0" key="empty" class="empty" />
 
-      <div v-for="node in childNodes" :key="node.id" class="row">
-        <GlassWrapper
-          v-if="actionNodeId !== node.id"
-          class="row-glass"
-          interactive
-          @click="openNode(node.id)"
-          @contextmenu.prevent="toggleActions(node.id)"
-        >
-          <div class="row-content">
-            <span class="row-name">{{ node.name }}</span>
+        <div v-for="node in childNodes" :key="node.id" class="row">
+          <GlassWrapper
+            v-if="actionNodeId !== node.id"
+            class="row-glass"
+            interactive
+            @click="openNode(node.id)"
+            @contextmenu.prevent="toggleActions(node.id)"
+          >
+            <div class="row-content">
+              <span class="row-name">{{ node.name }}</span>
+            </div>
+          </GlassWrapper>
+
+          <div v-else class="row-actions">
+            <GlassWrapper class="action-shell" interactive @click="moveNode(node)">
+              <button type="button" class="action">移动</button>
+            </GlassWrapper>
+            <GlassWrapper class="action-shell" interactive @click="deleteNode(node)">
+              <button type="button" class="action">删除</button>
+            </GlassWrapper>
+            <GlassWrapper class="action-shell" interactive @click="actionNodeId = null">
+              <button type="button" class="action">取消</button>
+            </GlassWrapper>
           </div>
-        </GlassWrapper>
-
-        <div v-else class="row-actions">
-          <GlassWrapper class="action-shell" interactive @click="moveNode(node)">
-            <button type="button" class="action">移动</button>
-          </GlassWrapper>
-          <GlassWrapper class="action-shell" interactive @click="deleteNode(node)">
-            <button type="button" class="action">删除</button>
-          </GlassWrapper>
-          <GlassWrapper class="action-shell" interactive @click="actionNodeId = null">
-            <button type="button" class="action">取消</button>
-          </GlassWrapper>
         </div>
-      </div>
-    </TransitionGroup>
+      </TransitionGroup>
 
-    <GlassWrapper class="add-shell" interactive @click="store.startAdd()">
-      <button type="button" class="add-button">
-        + 添加节点
-      </button>
-    </GlassWrapper>
+      <GlassWrapper class="add-shell" interactive @click="store.startAdd()">
+        <button type="button" class="add-button">
+          + 添加节点
+        </button>
+      </GlassWrapper>
+    </template>
+
+    <div v-else class="auth-tip-shell">
+      <GlassWrapper class="auth-tip-card">
+        <div class="auth-tip">注册或登录以继续</div>
+      </GlassWrapper>
+    </div>
   </div>
 </template>
 
@@ -43,10 +51,13 @@ import { ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
+import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
 
 const store = useNodeStore();
+const authStore = useAuthStore();
 const { childNodes } = storeToRefs(store);
+const { isAuthenticated } = storeToRefs(authStore);
 
 const actionNodeId = ref<string | null>(null);
 
@@ -156,6 +167,28 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 
 .empty {
   min-height: 54px;
+}
+
+.auth-tip-shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.auth-tip-card {
+  width: 100%;
+  height: 100%;
+}
+
+.auth-tip {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-primary);
 }
 
 .nav-row-enter-active,

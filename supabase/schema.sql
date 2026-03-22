@@ -6,6 +6,7 @@ create extension if not exists "vector";
 
 create table if not exists public.nodes (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   name text not null check (length(trim(name)) > 0),
   content jsonb not null default jsonb_build_object('markdown', ''),
   ai_summary text,
@@ -28,9 +29,11 @@ create table if not exists public.edges (
 
 create index if not exists idx_edges_parent_sort on public.edges(parent_id, sort_order);
 create index if not exists idx_edges_child on public.edges(child_id);
+create index if not exists idx_nodes_owner on public.nodes(owner_id);
 create index if not exists idx_nodes_parent_cache on public.nodes(parent_id_cache);
+create index if not exists idx_nodes_owner_parent_cache on public.nodes(owner_id, parent_id_cache);
 create unique index if not exists uniq_nodes_parent_name_active
-  on public.nodes(parent_id_cache, name)
+  on public.nodes(owner_id, parent_id_cache, name)
   where is_deleted = false;
 create index if not exists idx_nodes_embedding_hnsw
   on public.nodes using hnsw (embedding vector_cosine_ops);
@@ -447,3 +450,118 @@ as $$
   order by coalesce(n.depth, 0), e.parent_id, coalesce(e.sort_order, 0), n.created_at;
 $$;
 
+
+alter table public.nodes enable row level security;
+alter table public.edges enable row level security;
+
+drop policy if exists nodes_select_own on public.nodes;
+drop policy if exists nodes_insert_own on public.nodes;
+drop policy if exists nodes_update_own on public.nodes;
+drop policy if exists nodes_delete_own on public.nodes;
+
+create policy nodes_select_own
+on public.nodes
+for select
+using (owner_id = auth.uid());
+
+create policy nodes_insert_own
+on public.nodes
+for insert
+with check (owner_id = auth.uid());
+
+create policy nodes_update_own
+on public.nodes
+for update
+using (owner_id = auth.uid())
+with check (owner_id = auth.uid());
+
+create policy nodes_delete_own
+on public.nodes
+for delete
+using (owner_id = auth.uid());
+
+drop policy if exists edges_select_own on public.edges;
+drop policy if exists edges_insert_own on public.edges;
+drop policy if exists edges_update_own on public.edges;
+drop policy if exists edges_delete_own on public.edges;
+
+create policy edges_select_own
+on public.edges
+for select
+using (
+  exists (
+    select 1
+    from public.nodes child
+    where child.id = edges.child_id
+      and child.owner_id = auth.uid()
+      and child.is_deleted = false
+  )
+);
+
+create policy edges_insert_own
+on public.edges
+for insert
+with check (
+  exists (
+    select 1
+    from public.nodes child
+    where child.id = edges.child_id
+      and child.owner_id = auth.uid()
+      and child.is_deleted = false
+  )
+  and (
+    edges.parent_id is null
+    or exists (
+      select 1
+      from public.nodes parent
+      where parent.id = edges.parent_id
+        and parent.owner_id = auth.uid()
+        and parent.is_deleted = false
+    )
+  )
+);
+
+create policy edges_update_own
+on public.edges
+for update
+using (
+  exists (
+    select 1
+    from public.nodes child
+    where child.id = edges.child_id
+      and child.owner_id = auth.uid()
+      and child.is_deleted = false
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.nodes child
+    where child.id = edges.child_id
+      and child.owner_id = auth.uid()
+      and child.is_deleted = false
+  )
+  and (
+    edges.parent_id is null
+    or exists (
+      select 1
+      from public.nodes parent
+      where parent.id = edges.parent_id
+        and parent.owner_id = auth.uid()
+        and parent.is_deleted = false
+    )
+  )
+);
+
+create policy edges_delete_own
+on public.edges
+for delete
+using (
+  exists (
+    select 1
+    from public.nodes child
+    where child.id = edges.child_id
+      and child.owner_id = auth.uid()
+      and child.is_deleted = false
+  )
+);

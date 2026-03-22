@@ -8,7 +8,7 @@
             class="knob-hit-area"
             :class="{ confirmable: inConfirmMode && canConfirm }"
             :disabled="isBusy"
-            aria-label="旋钮"
+            aria-label="??"
             @mousedown="onPressStart"
             @mouseup="onPressEnd"
             @mouseleave="onPressCancel"
@@ -33,19 +33,41 @@ import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
+import { useAuthStore } from '../../stores/authStore';
 
 const HOLD_MS = 700;
 
-const store = useNodeStore();
-const { viewState, canConfirm, isBusy } = storeToRefs(store);
+const nodeStore = useNodeStore();
+const authStore = useAuthStore();
+const {
+  viewState,
+  canConfirm: canNodeConfirm,
+  isBusy: nodeBusy,
+} = storeToRefs(nodeStore);
+const {
+  isAuthenticated,
+  canSubmit: canAuthSubmit,
+  isBusy: authBusy,
+} = storeToRefs(authStore);
 
 const pressed = ref(false);
 const triggeredByHold = ref(false);
 let holdTimer: number | null = null;
 
-const inConfirmMode = computed(
-  () => viewState.value === 'add' || viewState.value === 'move' || viewState.value === 'delete',
-);
+const isBusy = computed(() => nodeBusy.value || authBusy.value);
+const inAuthMode = computed(() => !isAuthenticated.value);
+const inConfirmMode = computed(() => {
+  if (inAuthMode.value) {
+    return true;
+  }
+  return viewState.value === 'add' || viewState.value === 'move' || viewState.value === 'delete';
+});
+const canConfirm = computed(() => {
+  if (inAuthMode.value) {
+    return canAuthSubmit.value;
+  }
+  return canNodeConfirm.value;
+});
 
 function clearTimer(): void {
   if (holdTimer !== null) {
@@ -63,11 +85,15 @@ function onPressStart(): void {
   triggeredByHold.value = false;
   clearTimer();
 
-  if (inConfirmMode.value && canConfirm.value) {
+  if (canConfirm.value) {
     holdTimer = window.setTimeout(async () => {
       triggeredByHold.value = true;
       pressed.value = false;
-      await store.confirmOperation();
+      if (inAuthMode.value) {
+        await authStore.submitByKnob();
+        return;
+      }
+      await nodeStore.confirmOperation();
     }, HOLD_MS);
   }
 }
@@ -83,7 +109,11 @@ async function onPressEnd(): Promise<void> {
   triggeredByHold.value = false;
 
   if (shouldClick) {
-    await store.onKnobClick();
+    if (inAuthMode.value) {
+      authStore.toggleMode();
+      return;
+    }
+    await nodeStore.onKnobClick();
   }
 }
 

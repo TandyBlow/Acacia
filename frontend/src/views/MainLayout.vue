@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import LogoArea from '../components/layout/LogoArea.vue';
@@ -47,12 +47,26 @@ import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
+import AuthPanel from '../components/auth/AuthPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
+import { useAuthStore } from '../stores/authStore';
 
-const store = useNodeStore();
-const { viewState, isBusy, activeNode } = storeToRefs(store);
+const nodeStore = useNodeStore();
+const authStore = useAuthStore();
+const { viewState, isBusy: nodeBusy, activeNode } = storeToRefs(nodeStore);
+const {
+  initialized: authInitialized,
+  mode: authMode,
+  isAuthenticated,
+  isBusy: authBusy,
+} = storeToRefs(authStore);
+
+const isBusy = computed(() => nodeBusy.value || authBusy.value);
 
 const currentContent = computed(() => {
+  if (!isAuthenticated.value) {
+    return AuthPanel;
+  }
   if (viewState.value === 'move') {
     return GlobalTree;
   }
@@ -62,11 +76,31 @@ const currentContent = computed(() => {
   return MarkdownEditor;
 });
 
-const contentKey = computed(() => `${viewState.value}:${activeNode.value?.id ?? 'home'}`);
+const contentKey = computed(() => {
+  if (!isAuthenticated.value) {
+    return `auth:${authMode.value}`;
+  }
+  return `${viewState.value}:${activeNode.value?.id ?? 'home'}`;
+});
 
 onMounted(async () => {
-  await store.initialize();
+  await authStore.initialize();
+  if (isAuthenticated.value) {
+    await nodeStore.initialize();
+  }
 });
+
+watch(
+  [authInitialized, isAuthenticated],
+  async ([ready, authenticated], [_prevReady, prevAuthenticated]) => {
+    if (!ready) {
+      return;
+    }
+    if (authenticated && !prevAuthenticated) {
+      await nodeStore.initialize();
+    }
+  },
+);
 </script>
 
 <style scoped>

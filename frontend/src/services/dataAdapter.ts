@@ -583,7 +583,12 @@ const supabaseAdapter: DataAdapter = {
   },
 };
 
-const mode = String(import.meta.env.VITE_DATA_MODE ?? 'local').toLowerCase();
+export const localDataAdapter: DataAdapter = localAdapter;
 
-export const dataAdapter: DataAdapter =
-  mode === 'supabase' ? supabaseAdapter : localAdapter;
+const mode = String(import.meta.env.VITE_DATA_MODE ?? 'supabase').toLowerCase();
+
+if (mode !== 'supabase') {
+  throw new Error('This project requires VITE_DATA_MODE=supabase.');
+}
+
+export const dataAdapter: DataAdapter = supabaseAdapter;

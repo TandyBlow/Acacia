@@ -1,6 +1,6 @@
 <template>
   <div class="breadcrumbs-shell">
-    <TransitionGroup name="crumb" tag="div" class="crumb-track">
+    <TransitionGroup v-if="isAuthenticated" name="crumb" tag="div" class="crumb-track">
       <GlassWrapper
         v-for="node in pathNodes"
         :key="node.id"
@@ -19,6 +19,14 @@
         </div>
       </GlassWrapper>
     </TransitionGroup>
+
+    <div v-else class="crumb-track">
+      <GlassWrapper class="crumb-wrap current-wrap">
+        <div class="current-node">
+          欢迎！
+        </div>
+      </GlassWrapper>
+    </div>
   </div>
 </template>
 
@@ -26,9 +34,12 @@
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
+import { useAuthStore } from '../../stores/authStore';
 
 const store = useNodeStore();
+const authStore = useAuthStore();
 const { pathNodes, activeNode } = storeToRefs(store);
+const { isAuthenticated } = storeToRefs(authStore);
 
 async function goTo(nodeId: string): Promise<void> {
   await store.loadNode(nodeId);
