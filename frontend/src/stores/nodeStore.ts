@@ -155,19 +155,21 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
   }
 
-  async function saveActiveNodeContent(content: string): Promise<void> {
-    if (!activeNode.value) {
-      return;
+  async function saveActiveNodeContent(nodeId: string, content: string): Promise<boolean> {
+    if (!activeNode.value || activeNode.value.id !== nodeId) {
+      return false;
     }
-    isBusy.value = true;
+
     errorMessage.value = null;
     try {
-      await dataAdapter.updateNodeContent(activeNode.value.id, content);
-      activeNode.value = { ...activeNode.value, content };
+      await dataAdapter.updateNodeContent(nodeId, content);
+      if (activeNode.value?.id === nodeId) {
+        activeNode.value = { ...activeNode.value, content };
+      }
+      return true;
     } catch (error) {
       errorMessage.value = formatError(error);
-    } finally {
-      isBusy.value = false;
+      return false;
     }
   }
 
