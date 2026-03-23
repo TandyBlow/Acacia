@@ -3,6 +3,10 @@ import type { DataAdapter, NodeContext, NodeRecord, TreeNode } from '../types/no
 
 const STORAGE_KEY = 'seewhat_local_nodes_v1';
 
+export function clearLocalNodeCache(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
 const seedNodes: NodeRecord[] = [
   {
     id: 'n-root-1',

@@ -70,7 +70,7 @@ const currentContent = computed(() => {
   if (viewState.value === 'move') {
     return GlobalTree;
   }
-  if (viewState.value === 'add' || viewState.value === 'delete') {
+  if (viewState.value === 'add' || viewState.value === 'delete' || viewState.value === 'logout') {
     return ConfirmPanel;
   }
   return MarkdownEditor;

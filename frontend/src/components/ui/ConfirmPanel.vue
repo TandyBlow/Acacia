@@ -30,17 +30,28 @@
         </GlassWrapper>
       </button>
     </section>
+
+    <section v-else-if="viewState === 'logout'" class="block">
+      <h2>退出登录</h2>
+      <div class="target-name">{{ logoutPrompt }}</div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from './GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
+import { useAuthStore } from '../../stores/authStore';
 
-const store = useNodeStore();
+const nodeStore = useNodeStore();
+const authStore = useAuthStore();
 const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteWithChildren } =
-  storeToRefs(store);
+  storeToRefs(nodeStore);
+const { currentUsername } = storeToRefs(authStore);
+
+const logoutPrompt = computed(() => `当前账号为${currentUsername.value}，请确认退出操作。`);
 </script>
 
 <style scoped>
