@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { dataAdapter } from '../services/dataAdapter';
+import { clearLocalNodeCache, dataAdapter } from '../services/dataAdapter';
 import type { NodeRecord, TreeNode, ViewState } from '../types/node';
 
 function formatError(error: unknown): string {
@@ -51,7 +51,11 @@ export const useNodeStore = defineStore('node', () => {
   const errorMessage = ref<string | null>(null);
 
   const isEditState = computed(
-    () => viewState.value === 'add' || viewState.value === 'move' || viewState.value === 'delete',
+    () =>
+      viewState.value === 'add' ||
+      viewState.value === 'move' ||
+      viewState.value === 'delete' ||
+      viewState.value === 'logout',
   );
 
   const canConfirm = computed(() => {
@@ -72,6 +76,9 @@ export const useNodeStore = defineStore('node', () => {
         return true;
       }
       return !blockedParentIds.value.includes(moveTargetParentId.value);
+    }
+    if (viewState.value === 'logout') {
+      return true;
     }
     return false;
   });
@@ -122,6 +129,12 @@ export const useNodeStore = defineStore('node', () => {
     blockedParentIds.value = [];
   }
 
+  function startLogout(): void {
+    errorMessage.value = null;
+    viewState.value = 'logout';
+    clearTransientState();
+  }
+
   async function startDelete(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
     viewState.value = 'delete';
@@ -153,6 +166,17 @@ export const useNodeStore = defineStore('node', () => {
   function cancelOperation(): void {
     viewState.value = 'display';
     clearTransientState();
+  }
+
+  function clearForLogout(): void {
+    viewState.value = 'display';
+    activeNode.value = null;
+    pathNodes.value = [];
+    childNodes.value = [];
+    treeNodes.value = [];
+    errorMessage.value = null;
+    clearTransientState();
+    clearLocalNodeCache();
   }
 
   async function saveActiveNodeContent(nodeId: string, content: string): Promise<boolean> {
@@ -209,6 +233,11 @@ export const useNodeStore = defineStore('node', () => {
         const movingId = operationNode.value.id;
         await dataAdapter.moveNode(movingId, moveTargetParentId.value);
         await loadNode(movingId);
+        return;
+      }
+
+      if (viewState.value === 'logout') {
+        return;
       }
     } catch (error) {
       errorMessage.value = formatError(error);
@@ -237,12 +266,14 @@ export const useNodeStore = defineStore('node', () => {
     initialize,
     loadNode,
     startAdd,
+    startLogout,
     startDelete,
     startMove,
     setMoveTargetParent,
     cancelOperation,
     saveActiveNodeContent,
     refreshTree,
+    clearForLogout,
     onKnobClick,
     confirmOperation,
   };

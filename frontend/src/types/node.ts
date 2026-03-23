@@ -1,4 +1,4 @@
-export type ViewState = 'display' | 'add' | 'move' | 'delete';
+export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'logout';
 
 export interface NodeRecord {
   id: string;

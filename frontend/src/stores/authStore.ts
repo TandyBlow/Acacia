@@ -33,6 +33,19 @@ export const useAuthStore = defineStore('auth', () => {
   const errorMessage = ref<string | null>(null);
 
   const isAuthenticated = computed(() => Boolean(user.value));
+  const currentUsername = computed(() => {
+    const metadataUsername = user.value?.user_metadata?.username;
+    if (typeof metadataUsername === 'string' && metadataUsername.trim().length > 0) {
+      return metadataUsername.trim();
+    }
+
+    const inputUsername = username.value.trim();
+    if (inputUsername.length > 0) {
+      return inputUsername;
+    }
+
+    return '未知用户';
+  });
   const isRegisterMode = computed(() => mode.value === 'register');
   const canSubmit = computed(() => {
     if (isBusy.value) {
@@ -61,6 +74,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clearSecretsAfterSuccess(): void {
+    password.value = '';
+    confirmPassword.value = '';
+  }
+
+  function clearAuthFormState(): void {
+    mode.value = 'login';
+    username.value = '';
     password.value = '';
     confirmPassword.value = '';
   }
@@ -172,6 +192,29 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function logout(): Promise<boolean> {
+    if (!supabase || isBusy.value) {
+      return false;
+    }
+
+    isBusy.value = true;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        return false;
+      }
+
+      assignSession(null);
+      clearAuthFormState();
+      errorMessage.value = null;
+      return true;
+    } catch {
+      return false;
+    } finally {
+      isBusy.value = false;
+    }
+  }
+
   return {
     initialized,
     mode,
@@ -183,10 +226,12 @@ export const useAuthStore = defineStore('auth', () => {
     isBusy,
     errorMessage,
     isAuthenticated,
+    currentUsername,
     isRegisterMode,
     canSubmit,
     initialize,
     toggleMode,
     submitByKnob,
+    logout,
   };
 });

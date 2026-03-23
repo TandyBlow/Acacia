@@ -60,7 +60,12 @@ const inConfirmMode = computed(() => {
   if (inAuthMode.value) {
     return true;
   }
-  return viewState.value === 'add' || viewState.value === 'move' || viewState.value === 'delete';
+  return (
+    viewState.value === 'add' ||
+    viewState.value === 'move' ||
+    viewState.value === 'delete' ||
+    viewState.value === 'logout'
+  );
 });
 const canConfirm = computed(() => {
   if (inAuthMode.value) {
@@ -91,6 +96,15 @@ function onPressStart(): void {
       pressed.value = false;
       if (inAuthMode.value) {
         await authStore.submitByKnob();
+        return;
+      }
+      if (viewState.value === 'logout') {
+        const loggedOut = await authStore.logout();
+        if (loggedOut) {
+          nodeStore.clearForLogout();
+          return;
+        }
+        nodeStore.cancelOperation();
         return;
       }
       await nodeStore.confirmOperation();
