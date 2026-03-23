@@ -24,14 +24,13 @@ import { EditorContent, useEditor } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { Mathematics, mathMigrationRegex, migrateMathStrings } from '@tiptap/extension-mathematics';
 import { Markdown } from '@tiptap/markdown';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
-import { CodeBlockUi } from './extensions/codeBlockUi';
+import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
@@ -141,7 +140,7 @@ const editor = useEditor({
         loading: 'lazy',
       },
     }),
-    CodeBlockLowlight.configure({
+    CodeBlockWithUi.configure({
       lowlight,
     }),
     Mathematics.configure({
@@ -150,7 +149,6 @@ const editor = useEditor({
         trust: false,
       },
     }),
-    CodeBlockUi,
   ],
   editorProps: {
     attributes: {
@@ -342,9 +340,14 @@ onBeforeUnmount(() => {
   background: rgba(102, 128, 255, 0.12);
 }
 
-.editor-input :deep(pre.md-code-block) {
+.editor-input :deep(.md-code-shell) {
   position: relative;
   margin: 0 0 0.9em;
+}
+
+.editor-input :deep(.md-code-shell > pre.md-code-block) {
+  position: relative;
+  margin: 0;
   padding: 12px 12px 12px 52px;
   border-radius: 12px;
   border: 1px solid rgba(102, 128, 255, 0.24);
@@ -354,7 +357,7 @@ onBeforeUnmount(() => {
   tab-size: 2;
 }
 
-.editor-input :deep(pre.md-code-block::before) {
+.editor-input :deep(.md-code-shell > pre.md-code-block::before) {
   content: attr(data-line-numbers);
   position: absolute;
   left: 0;
@@ -373,12 +376,12 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.editor-input :deep(pre.md-code-block > code) {
+.editor-input :deep(.md-code-shell > pre.md-code-block > code) {
   display: block;
   min-width: max-content;
 }
 
-.editor-input :deep(.code-copy-btn) {
+.editor-input :deep(.md-code-shell > .code-copy-btn) {
   position: absolute;
   right: 8px;
   top: 8px;
@@ -392,11 +395,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.editor-input :deep(.code-copy-btn:hover) {
+.editor-input :deep(.md-code-shell > .code-copy-btn:hover) {
   background: rgba(255, 255, 255, 0.95);
 }
 
-.editor-input :deep(.code-copy-btn:active) {
+.editor-input :deep(.md-code-shell > .code-copy-btn:active) {
   transform: translateY(1px);
 }
 
