@@ -31,6 +31,7 @@ import DOMPurify from 'dompurify';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
+import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
@@ -118,6 +119,9 @@ const editor = useEditor({
   extensions: [
     StarterKit.configure({
       codeBlock: false,
+      bold: false,
+      italic: false,
+      strike: false,
     }),
     Markdown.configure({
       markedOptions: {
@@ -143,6 +147,9 @@ const editor = useEditor({
     CodeBlockWithUi.configure({
       lowlight,
     }),
+    MarkdownBold,
+    MarkdownItalic,
+    MarkdownStrike,
     Mathematics.configure({
       katexOptions: {
         throwOnError: true,
@@ -159,6 +166,10 @@ const editor = useEditor({
       DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
       }),
+    transformPastedText: (text) =>
+      text
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u00A0/g, ' '),
     handleDOMEvents: {
       click: (_view, event) => {
         if (!(event instanceof MouseEvent)) {
