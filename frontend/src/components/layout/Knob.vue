@@ -16,11 +16,8 @@
             @touchend.prevent="onPressEnd"
             @touchcancel.prevent="onPressCancel"
           >
-            <GlassWrapper class="knob-body" shape="circle" :pressed="pressed || isBusy" interactive>
-              <div class="knob-core">
-                <span v-if="inConfirmMode && canConfirm && pressed" class="hold-ring" />
-              </div>
-            </GlassWrapper>
+            <GlassWrapper class="knob-body" shape="circle" :pressed="pressed || isBusy" interactive />
+            <span v-if="inConfirmMode && canConfirm && pressed" class="hold-ring" />
           </button>
         </div>
       </GlassWrapper>
@@ -158,8 +155,8 @@ function onPressCancel(): void {
 }
 
 .knob-well {
-  width: 100%;
-  aspect-ratio: 1 / 1;
+  width: 76px;
+  height: 76px;
   padding: 1px;
 }
 
@@ -171,6 +168,7 @@ function onPressCancel(): void {
 }
 
 .knob-hit-area {
+  position: relative;
   width: 100%;
   height: 100%;
   max-width: 74px;
@@ -202,17 +200,12 @@ function onPressCancel(): void {
     -4px -4px 8px rgba(255, 255, 255, 0.3);
 }
 
-.knob-core {
+.knob-body :deep(.glass-content) {
   position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.96) 0%, rgba(223, 245, 255, 0.92) 30%, rgba(162, 191, 255, 0.88) 58%, rgba(102, 128, 255, 0.94) 100%);
   animation: knob-idle 2.8s ease-in-out infinite;
 }
 
-.confirmable .knob-core::after {
+.confirmable .knob-body :deep(.glass-content)::after {
   content: '';
   position: absolute;
   inset: 8px;
@@ -223,6 +216,8 @@ function onPressCancel(): void {
 .hold-ring {
   position: absolute;
   inset: 4px;
+  z-index: 1;
+  pointer-events: none;
   border-radius: 50%;
   border: 2px solid rgba(102, 255, 229, 0.78);
   border-right-color: transparent;
