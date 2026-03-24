@@ -12,20 +12,24 @@
       </div>
     </section>
 
-    <section class="navigation-area">
-      <div class="inset-shell static-shell">
-        <Navigation />
-      </div>
-    </section>
+    <section class="merged-area">
+      <div class="merged-shell inset-shell static-shell">
+        <section class="navigation-area">
+          <div class="inset-shell static-shell">
+            <Navigation />
+          </div>
+        </section>
 
-    <section class="content-area">
-      <GlassWrapper inset class="content-well">
-        <GlassWrapper class="content-surface">
-          <Transition name="content-fade" mode="out-in">
-            <component :is="currentContent" :key="contentKey" class="content-host" />
-          </Transition>
-        </GlassWrapper>
-      </GlassWrapper>
+        <section class="content-area">
+          <GlassWrapper inset class="content-well">
+            <GlassWrapper class="content-surface">
+              <Transition name="content-fade" mode="out-in">
+                <component :is="currentContent" :key="contentKey" class="content-host" />
+              </Transition>
+            </GlassWrapper>
+          </GlassWrapper>
+        </section>
+      </div>
     </section>
 
     <section class="knob-area">
@@ -118,11 +122,17 @@ watch(
 
 .logo-area,
 .breadcrumbs-area,
+.merged-area,
 .navigation-area,
 .content-area,
 .knob-area {
   min-width: 0;
   min-height: 0;
+}
+
+.merged-area,
+.merged-shell {
+  display: contents;
 }
 
 .logo-area {
@@ -224,9 +234,9 @@ watch(
   .layout {
     padding: 16px;
     grid-template-columns: 241px minmax(0, 1fr);
-    grid-template-rows: 96px minmax(0, 1fr) 132px;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 9fr) 132px;
     row-gap: 10px;
-    column-gap: 0;
+    column-gap: 10px;
   }
 
   .logo-area {
@@ -239,14 +249,32 @@ watch(
     grid-row: 1;
   }
 
+  .merged-area {
+    display: block;
+    grid-column: 1 / span 2;
+    grid-row: 2;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .merged-shell {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 241px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: 0;
+    row-gap: 0;
+  }
+
   .navigation-area {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
   }
 
   .content-area {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
   }
 
   .knob-area {
