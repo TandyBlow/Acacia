@@ -15,13 +15,13 @@
     <section class="merged-area">
       <div class="merged-shell inset-shell static-shell">
         <section class="navigation-area">
-          <div class="inset-shell static-shell">
+          <div class="inset-shell static-shell navigation-shell">
             <Navigation />
           </div>
         </section>
 
         <section class="content-area">
-          <GlassWrapper inset class="content-well">
+          <GlassWrapper inset class="content-well content-shell">
             <GlassWrapper class="content-surface">
               <Transition name="content-fade" mode="out-in">
                 <component :is="currentContent" :key="contentKey" class="content-host" />
@@ -265,6 +265,11 @@ watch(
     grid-template-rows: minmax(0, 1fr);
     column-gap: 0;
     row-gap: 0;
+  }
+
+  .navigation-shell,
+  .content-shell {
+    display: contents;
   }
 
   .navigation-area {
