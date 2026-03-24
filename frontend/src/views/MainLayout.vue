@@ -108,6 +108,7 @@ watch(
   position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   padding: 38px;
   display: grid;
   grid-template-columns: 241px minmax(0, 1fr) 104px;
@@ -181,6 +182,10 @@ watch(
   height: 100%;
 }
 
+.content-host {
+  overflow: auto;
+}
+
 .busy-mask {
   position: absolute;
   inset: 38px;
@@ -218,9 +223,10 @@ watch(
 @media (max-width: 1100px) {
   .layout {
     padding: 16px;
-    grid-template-columns: 1fr;
-    grid-template-rows: 96px 72px minmax(220px, 1fr) minmax(280px, 1.2fr) 132px;
-    gap: 10px;
+    grid-template-columns: 241px minmax(0, 1fr);
+    grid-template-rows: 96px minmax(0, 1fr) 132px;
+    row-gap: 10px;
+    column-gap: 0;
   }
 
   .logo-area {
@@ -229,23 +235,23 @@ watch(
   }
 
   .breadcrumbs-area {
-    grid-column: 1;
-    grid-row: 2;
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .navigation-area {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: 2;
   }
 
   .content-area {
-    grid-column: 1;
-    grid-row: 4;
+    grid-column: 2;
+    grid-row: 2;
   }
 
   .knob-area {
-    grid-column: 1;
-    grid-row: 5;
+    grid-column: 1 / span 2;
+    grid-row: 3;
     justify-self: center;
     width: min(100%, 260px);
   }
