@@ -38,6 +38,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
+import type { Editor, JSONContent } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -57,6 +58,7 @@ import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
 const AUTO_SAVE_DELAY_MS = 1000;
+const PROSEMIRROR_SLICE_MIME = 'application/x-prosemirror-slice';
 
 const store = useNodeStore();
 const { activeNode, treeNodes } = storeToRefs(store);
@@ -94,6 +96,67 @@ function sanitizeMarkdownSource(content: string): string {
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '')
     .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[^'"]*\2/gi, ' $1="#"');
+}
+
+function normalizePastedText(content: string): string {
+  return content
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ');
+}
+
+function buildPlainTextDoc(content: string): JSONContent {
+  const normalized = normalizePastedText(content);
+  if (!normalized) {
+    return {
+      type: 'doc',
+      content: [{ type: 'paragraph' }],
+    };
+  }
+
+  const lines = normalized.split('\n');
+  const paragraphContent: JSONContent[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (line.length > 0) {
+      paragraphContent.push({
+        type: 'text',
+        text: line,
+      });
+    }
+    if (index < lines.length - 1) {
+      paragraphContent.push({ type: 'hardBreak' });
+    }
+  }
+
+  return {
+    type: 'doc',
+    content: [
+      paragraphContent.length > 0
+        ? {
+            type: 'paragraph',
+            content: paragraphContent,
+          }
+        : {
+            type: 'paragraph',
+          },
+    ],
+  };
+}
+
+function parseMarkdownDoc(instance: Editor, content: string): JSONContent | null {
+  try {
+    if (!instance.markdown) {
+      return null;
+    }
+    const parsed = instance.markdown.parse(content);
+    const parsedNode = instance.schema.nodeFromJSON(parsed);
+    parsedNode.check();
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 function startLogout(): void {
@@ -256,9 +319,11 @@ function syncEditorContent(content: string): void {
     return;
   }
 
+  const source = sanitizeMarkdownSource(content);
+  const parsedDoc = parseMarkdownDoc(editor.value, source);
+
   isApplyingExternalContent.value = true;
-  editor.value.commands.setContent(sanitizeMarkdownSource(content), {
-    contentType: 'markdown',
+  editor.value.commands.setContent(parsedDoc ?? buildPlainTextDoc(source), {
     emitUpdate: false,
   });
   migrateMathStrings(editor.value);
@@ -319,10 +384,33 @@ const editor = useEditor({
       DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
       }),
-    transformPastedText: (text) =>
-      text
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        .replace(/\u00A0/g, ' '),
+    transformPastedText: (text) => normalizePastedText(text),
+    handlePaste: (_view, event) => {
+      if (!editor.value || !event.clipboardData) {
+        return false;
+      }
+
+      const clipboardTypes = Array.from(event.clipboardData.types);
+      if (clipboardTypes.includes(PROSEMIRROR_SLICE_MIME)) {
+        return false;
+      }
+
+      const markdownText = event.clipboardData.getData('text/markdown');
+      const plainText = event.clipboardData.getData('text/plain');
+      const source = sanitizeMarkdownSource(normalizePastedText(markdownText || plainText));
+      if (!source) {
+        return false;
+      }
+
+      const parsedDoc = parseMarkdownDoc(editor.value, source) ?? buildPlainTextDoc(source);
+      const insertContent = Array.isArray(parsedDoc.content) ? parsedDoc.content : [];
+
+      event.preventDefault();
+      if (insertContent.length === 0) {
+        return editor.value.commands.insertContent({ type: 'paragraph' });
+      }
+      return editor.value.commands.insertContent(insertContent);
+    },
     handleDOMEvents: {
       click: (view, event) => {
         if (!(event instanceof MouseEvent)) {
