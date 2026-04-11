@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
 
@@ -41,8 +41,7 @@ def get_node(node_id: str) -> Node:
 
 
 @app.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: str) -> Response:
+def delete_node(node_id: str) -> None:
     if node_id not in _nodes:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     del _nodes[node_id]
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

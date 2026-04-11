@@ -8,10 +8,12 @@ from main import _nodes as nodes_store
 @pytest.fixture(autouse=True)
 def clear_nodes_store():
     nodes_store.clear()
+    yield
+    nodes_store.clear()
 
 
 @pytest.mark.asyncio
-async def test_post_nodes_creates_node_and_get_returns_it():
+async def test_post_node_creates_node_and_get_returns_it():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         create_response = await client.post(
@@ -33,7 +35,7 @@ async def test_post_nodes_creates_node_and_get_returns_it():
 
 
 @pytest.mark.asyncio
-async def test_get_nodes_by_id_returns_404_for_missing_node():
+async def test_get_node_by_id_returns_404_for_missing_node():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/nodes/missing-id")
@@ -43,7 +45,7 @@ async def test_get_nodes_by_id_returns_404_for_missing_node():
 
 
 @pytest.mark.asyncio
-async def test_delete_nodes_by_id_removes_node_and_returns_404_afterward():
+async def test_delete_node_by_id_removes_node_and_returns_404_afterward():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         create_response = await client.post("/nodes", json={"name": "To Delete"})
