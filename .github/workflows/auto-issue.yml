@@ -23,4 +23,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          DESIGN_DOC: ${{ secrets.DESIGN_DOC }}
         run: python .github/scripts/generate_issues.py

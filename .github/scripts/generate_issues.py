@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 REPO = os.environ["GH_REPO"]
+DESIGN_DOC = os.environ.get("DESIGN_DOC", "")
 
 def gh(args, input_text=None):
     result = subprocess.run(
@@ -32,6 +33,8 @@ def create_issue(title, body, labels):
     label_args = []
     for lb in labels:
         label_args += ["--label", lb]
+    if DESIGN_DOC:
+        body += f"\n\n---\n## Project Design Document (for context)\n\n{DESIGN_DOC}"
     result = subprocess.run(
         ["gh", "issue", "create", "--repo", REPO, "--title", title, "--body", body] + label_args,
         capture_output=True, text=True, env={**os.environ},
