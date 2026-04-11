@@ -32,8 +32,24 @@ def create_issue(title, body, labels):
     label_args = []
     for lb in labels:
         label_args += ["--label", lb]
-    gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--assignee", "Copilot"] + label_args)
-    print(f"  [created] {title}")
+    result = subprocess.run(
+        ["gh", "issue", "create", "--repo", REPO, "--title", title, "--body", body] + label_args,
+        capture_output=True, text=True, env={**os.environ},
+    )
+    output = result.stdout.strip()
+    print(f"  [created] {title} -> {output}")
+
+    # Assign Copilot separately via issue edit
+    if output:
+        issue_number = output.rstrip("/").split("/")[-1]
+        assign_result = subprocess.run(
+            ["gh", "issue", "edit", issue_number, "--repo", REPO, "--add-assignee", "Copilot"],
+            capture_output=True, text=True, env={**os.environ},
+        )
+        if assign_result.returncode == 0:
+            print(f"  [assigned] Copilot -> #{issue_number}")
+        else:
+            print(f"  [assign failed] {assign_result.stderr.strip()}")
 
 def ensure_labels():
     needed = {
