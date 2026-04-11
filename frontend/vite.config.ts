@@ -12,9 +12,6 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'public',
       filename: 'sw.js',
-      injectManifest: {
-        injectionPoint: undefined,
-      },
     }),
   ],
 })
