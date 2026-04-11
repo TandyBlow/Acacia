@@ -1,7 +1,5 @@
 """
 Auto Issue Generator for SeeWhat project.
-Scans frontend and backend for unimplemented areas and creates
-GitHub Issues assigned to Copilot.
 """
 
 import os
@@ -11,9 +9,7 @@ from pathlib import Path
 
 REPO = os.environ["GH_REPO"]
 
-# ── helpers ──────────────────────────────────────────────────────────────────
-
-def gh(args: list[str], input_text: str | None = None) -> str:
+def gh(args, input_text=None):
     result = subprocess.run(
         ["gh"] + args,
         capture_output=True, text=True,
@@ -22,115 +18,86 @@ def gh(args: list[str], input_text: str | None = None) -> str:
     )
     return result.stdout.strip()
 
-
-def existing_issue_titles() -> set[str]:
-    out = gh(["issue", "list", "--repo", REPO,
-              "--state", "open", "--limit", "100",
-              "--json", "title"])
+def existing_issue_titles():
+    out = gh(["issue", "list", "--repo", REPO, "--state", "open", "--limit", "100", "--json", "title"])
     if not out:
         return set()
     return {i["title"] for i in json.loads(out)}
 
-
-def create_issue(title: str, body: str, labels: list[str]) -> None:
+def create_issue(title, body, labels):
     existing = existing_issue_titles()
     if title in existing:
         print(f"  [skip] already exists: {title}")
         return
-
     label_args = []
     for lb in labels:
         label_args += ["--label", lb]
-
-    gh(["issue", "create",
-        "--repo", REPO,
-        "--title", title,
-        "--body", body,
-        "--assignee", "copilot",
-        ] + label_args)
+    gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--assignee", "copilot"] + label_args)
     print(f"  [created] {title}")
 
-
-def ensure_labels() -> None:
-    """Create labels if they don't exist yet."""
+def ensure_labels():
     needed = {
-        "copilot": ("0075ca", "Task for Copilot Coding Agent"),
+        "copilot":  ("0075ca", "Task for Copilot Coding Agent"),
         "frontend": ("e4e669", "Frontend (Vue3)"),
         "backend":  ("f29513", "Backend (FastAPI)"),
         "test":     ("d93f0b", "Testing"),
         "bug":      ("ee0701", "Something isn't working"),
     }
-    existing_raw = gh(["label", "list", "--repo", REPO,
-                        "--limit", "100", "--json", "name"])
+    existing_raw = gh(["label", "list", "--repo", REPO, "--limit", "100", "--json", "name"])
     existing = {lb["name"] for lb in json.loads(existing_raw or "[]")}
     for name, (color, desc) in needed.items():
         if name not in existing:
-            gh(["label", "create", name,
-                "--repo", REPO,
-                "--color", color,
-                "--description", desc])
+            gh(["label", "create", name, "--repo", REPO, "--color", color, "--description", desc])
 
-
-# ── scanners ─────────────────────────────────────────────────────────────────
-
-def scan_empty_vue_components() -> list[dict]:
-    """Find Vue components whose <template> block is empty or missing."""
+def scan_empty_vue_components():
     issues = []
-    # Scan all Vue source directories, explicitly excluding node_modules
-    scan_roots = [
-        Path("frontend/src/components"),
-        Path("frontend/src/views"),
-    ]
-
+    scan_roots = [Path("frontend/src/components"), Path("frontend/src/views")]
     vue_files = []
     for root in scan_roots:
         if root.exists():
             vue_files += sorted(root.rglob("*.vue"))
-
     for vue_file in vue_files:
         text = vue_file.read_text(encoding="utf-8")
-        # Empty template: <template></template> or no template at all
-        if "<template>" not in text or "<template></template>" in text or \
-                text.count("<template>") == 1 and len(text.split("<template>")[1].split("</template>")[0].strip()) < 20:
+        has_template = "<template>" in text
+        template_empty = "<template></template>" in text
+        template_thin = has_template and len(text.split("<template>")[1].split("</template>")[0].strip()) < 20
+        if not has_template or template_empty or template_thin:
             rel = vue_file.relative_to("frontend/src")
             issues.append({
                 "title": f"[Frontend] Implement component: {vue_file.name}",
-                "body": f"""## Task
-Implement the `{vue_file.name}` component located at `frontend/src/{rel}`.
-
-## Context
-The component currently has an empty or near-empty template.  
-Refer to the project design document and `GUIDELINES.md` for the expected behaviour and visual style.
-
-## Acceptance Criteria
-- [ ] Template renders the correct UI described in the design doc
-- [ ] Component emits / receives props as expected by its parent
-- [ ] Follows 2-space indentation and `<script setup>` convention
-- [ ] `npm run build` passes without errors
-
-## Notes
-Use Tailwind CSS utility classes for layout. Glass-morphism styles live in `src/assets/styles/glass.css`.
-""",
+                "body": f"## Task\nImplement `frontend/src/{rel}`.\n\nThe component has an empty or near-empty template. Refer to the design doc for expected behaviour.\n\n## Acceptance Criteria\n- [ ] Template renders correct UI\n- [ ] Props/emits match parent expectations\n- [ ] `npm run build` passes\n",
                 "labels": ["copilot", "frontend"],
             })
     return issues
 
+def scan_empty_services():
+    issues = []
+    root = Path("frontend/src/services")
+    if not root.exists():
+        return issues
+    all_files = sorted(root.rglob("*.js")) + sorted(root.rglob("*.ts"))
+    for svc_file in all_files:
+        text = svc_file.read_text(encoding="utf-8")
+        if len(text.strip()) < 50 or "TODO" in text or text.strip() in ("", "export {}"):
+            rel = svc_file.relative_to("frontend/src")
+            issues.append({
+                "title": f"[Frontend] Implement service: {svc_file.name}",
+                "body": f"## Task\nImplement `frontend/src/{rel}`.\n\nThis service file is empty or stub-only. It should wrap Supabase RPC calls.\n\n## Acceptance Criteria\n- [ ] Exported functions match imports in components/stores\n- [ ] Uses TanStack Query patterns\n- [ ] `npm run build` passes\n",
+                "labels": ["copilot", "frontend"],
+            })
+    return issues
 
-def scan_empty_backend_endpoints() -> list[dict]:
-    """Find FastAPI route functions whose body is only `pass` or a TODO."""
+def scan_empty_backend_endpoints():
     issues = []
     root = Path("backend/app/api")
     if not root.exists():
         return issues
-
     for py_file in sorted(root.rglob("*.py")):
         text = py_file.read_text(encoding="utf-8")
         lines = text.splitlines()
         for i, line in enumerate(lines):
             stripped = line.strip()
-            # Detect route decorators
             if stripped.startswith("@router.") or stripped.startswith("@app."):
-                # Look at the next non-blank lines for function body
                 body_lines = []
                 for j in range(i + 1, min(i + 10, len(lines))):
                     bl = lines[j].strip()
@@ -141,177 +108,53 @@ def scan_empty_backend_endpoints() -> list[dict]:
                 body_text = " ".join(body_lines)
                 if any(kw in body_text for kw in ("pass", "TODO", "raise NotImplementedError", "...")):
                     rel = py_file.relative_to("backend")
-                    # Try to grab the endpoint path from the decorator
-                    endpoint_path = stripped.split("(")[1].split(")")[0].split(",")[0].strip('"\'') \
-                        if "(" in stripped else "unknown"
+                    endpoint_path = stripped.split("(")[1].split(")")[0].split(",")[0].strip("\"'") if "(" in stripped else "unknown"
                     issues.append({
                         "title": f"[Backend] Implement endpoint: {endpoint_path} in {py_file.name}",
-                        "body": f"""## Task
-Implement the unfinished FastAPI endpoint in `backend/{rel}`.
-
-**Decorator line:** `{stripped}`
-
-## Context
-The endpoint body currently contains only a placeholder (`pass` / `TODO` / `...`).  
-Refer to `backend/app/schemas/pydantic_models.py` for request/response schemas and  
-`backend/app/services/` for the service layer.
-
-## Acceptance Criteria
-- [ ] Endpoint returns the correct response schema
-- [ ] Calls the appropriate service function (do not put business logic in the route)
-- [ ] Handles errors with proper HTTP status codes
-- [ ] Backend starts without errors: `uvicorn main:app --reload`
-
-## Notes
-Supabase client is initialised in `backend/app/core/config.py`.  
-Auth dependency is in `backend/app/api/deps.py`.
-""",
+                        "body": f"## Task\nImplement the unfinished FastAPI endpoint in `backend/{rel}`.\n\n**Decorator:** `{stripped}`\n\nBody is currently a placeholder. Use schemas in `pydantic_models.py` and service layer in `services/`.\n\n## Acceptance Criteria\n- [ ] Returns correct response schema\n- [ ] Proper HTTP error handling\n- [ ] `uvicorn main:app --reload` starts without errors\n",
                         "labels": ["copilot", "backend"],
                     })
     return issues
 
-
-def scan_empty_services() -> list[dict]:
-    """Find service files in frontend/src/services that are empty or stub-only."""
+def scan_missing_tests():
     issues = []
-    root = Path("frontend/src/services")
-    if not root.exists():
-        return issues
-
-    for js_file in sorted(root.rglob("*.js")) + sorted(root.rglob("*.ts")):
-        text = js_file.read_text(encoding="utf-8")
-        if len(text.strip()) < 50 or "TODO" in text or text.strip() in ("", "export {}"):
-            rel = js_file.relative_to("frontend/src")
-            issues.append({
-                "title": f"[Frontend] Implement service: {js_file.name}",
-                "body": f"""## Task
-Implement the service file `frontend/src/{rel}`.
-
-## Context
-The file is currently empty or contains only a stub.  
-Services should encapsulate API calls to Supabase RPC functions.  
-Refer to `frontend/src/api/supabase.js` for the Supabase client and `frontend/src/api/rpc.js` for existing RPC wrappers.
-
-## Acceptance Criteria
-- [ ] All functions exported match what's imported in components/stores
-- [ ] Uses TanStack Query patterns consistent with `frontend/src/api/queryClient.js`
-- [ ] `npm run build` passes without errors
-""",
-                "labels": ["copilot", "frontend"],
-            })
-    return issues
-    """Suggest adding tests for components/endpoints that have none."""
-    issues = []
-
-    # Frontend: check if any spec files exist at all
     fe_specs = list(Path("frontend/src").rglob("*.spec.ts"))
     if not fe_specs:
         issues.append({
             "title": "[Test] Add frontend unit tests for core composables",
-            "body": """## Task
-The project currently has no frontend automated tests.  
-Add Vitest unit tests for the core composables and store logic.
-
-## Suggested starting points
-- `src/composables/useNodeActions.js` — node CRUD operations
-- `src/composables/useKnobGesture.js` — long-press detection logic
-- `src/stores/nodeStore.js` — state mutations
-
-## Acceptance Criteria
-- [ ] At least 3 test files created under `frontend/src/**/*.spec.ts`
-- [ ] Tests run with `npm run test` (add the script to `package.json` if missing)
-- [ ] All tests pass
-
-## Setup hint
-```bash
-npm install -D vitest @vue/test-utils happy-dom
-```
-Add to `vite.config.ts`:
-```ts
-test: { environment: 'happy-dom' }
-```
-""",
+            "body": "## Task\nAdd Vitest unit tests for core composables and stores.\n\n## Suggested starting points\n- `src/composables/useNodeActions.js`\n- `src/composables/useKnobGesture.js`\n- `src/stores/nodeStore.js`\n\n## Acceptance Criteria\n- [ ] At least 3 test files under `frontend/src/**/*.spec.ts`\n- [ ] `npm run test` passes\n\n## Setup\n```bash\nnpm install -D vitest @vue/test-utils happy-dom\n```\n",
             "labels": ["copilot", "frontend", "test"],
         })
-
-    # Backend: check if any test files exist
     be_tests = list(Path("backend/tests").rglob("test_*.py")) if Path("backend/tests").exists() else []
     if not be_tests:
         issues.append({
             "title": "[Test] Add backend API tests for node endpoints",
-            "body": """## Task
-The project currently has no backend automated tests.  
-Add pytest tests for the FastAPI node endpoints.
-
-## Suggested starting points
-- `POST /nodes` — create node
-- `GET /nodes/{id}` — fetch node with path
-- `DELETE /nodes/{id}` — delete with cascade option
-
-## Acceptance Criteria
-- [ ] Test files created under `backend/tests/test_*.py`
-- [ ] Tests runnable with `pytest` from the `backend/` directory
-- [ ] Uses `httpx.AsyncClient` with FastAPI's test client
-- [ ] All tests pass
-
-## Setup hint
-```bash
-pip install pytest pytest-asyncio httpx
-```
-""",
+            "body": "## Task\nAdd pytest tests for FastAPI node endpoints.\n\n## Suggested starting points\n- `POST /nodes`\n- `GET /nodes/{id}`\n- `DELETE /nodes/{id}`\n\n## Acceptance Criteria\n- [ ] Test files under `backend/tests/test_*.py`\n- [ ] `pytest` passes from `backend/`\n\n## Setup\n```bash\npip install pytest pytest-asyncio httpx\n```\n",
             "labels": ["copilot", "backend", "test"],
         })
-
     return issues
 
-
-def scan_pwa_setup() -> list[dict]:
-    """Check if PWA manifest and service worker are configured."""
+def scan_pwa_setup():
     issues = []
-    manifest = Path("frontend/public/manifest.json")
-    sw = Path("frontend/public/sw.js")
-
-    if not manifest.exists():
+    if not Path("frontend/public/manifest.json").exists():
         issues.append({
             "title": "[Frontend] Add PWA manifest.json",
-            "body": """## Task
-Create `frontend/public/manifest.json` for PWA support.
-
-## Acceptance Criteria
-- [ ] `manifest.json` includes `name`, `short_name`, `start_url`, `display`, `background_color`, `theme_color`, and at least one icon entry
-- [ ] `vite.config.ts` references the manifest via `vite-plugin-pwa`
-- [ ] `npm run build` passes
-
-## Reference
-The project uses `vite-plugin-pwa`. See its docs: https://vite-pwa-org.netlify.app/
-""",
+            "body": "## Task\nCreate `frontend/public/manifest.json` for PWA support.\n\n## Acceptance Criteria\n- [ ] Includes `name`, `short_name`, `start_url`, `display`, `background_color`, `theme_color`, icons\n- [ ] Referenced by `vite-plugin-pwa` in `vite.config.ts`\n- [ ] `npm run build` passes\n",
             "labels": ["copilot", "frontend"],
         })
-
-    if not sw.exists():
+    if not Path("frontend/public/sw.js").exists():
         issues.append({
             "title": "[Frontend] Add service worker (sw.js) for offline support",
-            "body": """## Task
-Add a minimal service worker at `frontend/public/sw.js` so the app works offline.
-
-## Acceptance Criteria
-- [ ] Service worker caches the app shell on install
-- [ ] Serves cached assets when offline
-- [ ] Registered via `vite-plugin-pwa` in `vite.config.ts`
-""",
+            "body": "## Task\nAdd a minimal service worker at `frontend/public/sw.js`.\n\n## Acceptance Criteria\n- [ ] Caches app shell on install\n- [ ] Serves cached assets offline\n- [ ] Registered via `vite-plugin-pwa`\n",
             "labels": ["copilot", "frontend"],
         })
-
     return issues
 
-
-# ── main ─────────────────────────────────────────────────────────────────────
-
-def main() -> None:
+def main():
     print("Ensuring labels exist...")
     ensure_labels()
 
-    all_issues: list[dict] = []
+    all_issues = []
     all_issues += scan_empty_vue_components()
     all_issues += scan_empty_services()
     all_issues += scan_empty_backend_endpoints()
@@ -325,9 +168,7 @@ def main() -> None:
     print(f"\nCreating {len(all_issues)} issue(s)...")
     for issue in all_issues:
         create_issue(issue["title"], issue["body"], issue["labels"])
-
     print("\nDone.")
-
 
 if __name__ == "__main__":
     main()
