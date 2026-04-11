@@ -32,7 +32,7 @@ def create_issue(title, body, labels):
     label_args = []
     for lb in labels:
         label_args += ["--label", lb]
-    gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--assignee", "copilot"] + label_args)
+    gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--assignee", "Copilot"] + label_args)
     print(f"  [created] {title}")
 
 def ensure_labels():
