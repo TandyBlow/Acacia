@@ -40,7 +40,7 @@ describe('useAuthStore', () => {
     expect(store.canSubmit).toBe(false);
   });
 
-  it('submits login by knob and updates authenticated state on success', async () => {
+  it('submits login and updates authenticated state on success', async () => {
     const store = useAuthStore();
 
     store.username = 'alice';
