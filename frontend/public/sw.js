@@ -1,6 +1,8 @@
+const APP_SHELL_CACHE = 'app-shell-v1'
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open('app-shell-v1').then((cache) => {
+    caches.open(APP_SHELL_CACHE).then((cache) => {
       return cache.addAll(['/', '/index.html'])
     }),
   )
@@ -12,7 +14,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== 'app-shell-v1')
+          .filter((key) => key !== APP_SHELL_CACHE)
           .map((key) => caches.delete(key)),
       ),
     ),
@@ -39,7 +41,7 @@ self.addEventListener('fetch', (event) => {
             event.request.url.startsWith(self.location.origin)
           ) {
             const responseClone = networkResponse.clone()
-            caches.open('app-shell-v1').then((cache) => {
+            caches.open(APP_SHELL_CACHE).then((cache) => {
               cache.put(event.request, responseClone)
             })
           }
@@ -49,7 +51,7 @@ self.addEventListener('fetch', (event) => {
           if (event.request.mode === 'navigate') {
             return caches.match('/index.html')
           }
-          return undefined
+          return Response.error()
         })
     }),
   )
