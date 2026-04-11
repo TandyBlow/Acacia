@@ -1,0 +1,26 @@
+name: Auto Generate Copilot Issues
+
+on:
+  schedule:
+    - cron: '0 22 * * *'  # 每天北京时间早上6点
+  workflow_dispatch:       # 支持手动触发
+
+jobs:
+  generate-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run issue generator
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python .github/scripts/generate_issues.py
