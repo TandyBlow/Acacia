@@ -1,27 +1,7 @@
 <template>
   <div class="editor-shell">
     <template v-if="activeNode">
-      <div class="editor-toolbar">
-        <button
-          type="button"
-          class="node-link-btn"
-          :disabled="!hasTextSelection || nodeLinkPickerBusy"
-          title="Ctrl/Cmd + K"
-          @mousedown.prevent
-          @click="openNodeLinkPicker"
-        >
-          {{ nodeLinkPickerBusy ? 'Loading Nodes...' : 'Link Node' }}
-        </button>
-      </div>
-
       <EditorContent :editor="editor" class="editor-input" spellcheck="false" />
-
-      <NodeLinkPicker
-        v-if="showNodeLinkPicker"
-        :options="nodeLinkOptions"
-        @cancel="closeNodeLinkPicker"
-        @confirm="applyInternalNodeLink"
-      />
     </template>
     <div v-else class="home-state">
       <button type="button" class="logout-button" @click="startLogout">
@@ -35,11 +15,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import type { Editor, JSONContent } from '@tiptap/core';
-import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
@@ -49,11 +28,8 @@ import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
-import type { TreeNode } from '../../types/node';
-import NodeLinkPicker from './NodeLinkPicker.vue';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
-import { buildInternalNodeHref, parseInternalNodeHref } from './internalLink';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
@@ -61,31 +37,13 @@ const AUTO_SAVE_DELAY_MS = 1000;
 const PROSEMIRROR_SLICE_MIME = 'application/x-prosemirror-slice';
 
 const store = useNodeStore();
-const { activeNode, treeNodes } = storeToRefs(store);
+const { activeNode } = storeToRefs(store);
 const lowlight = createLowlight(all);
-
-interface InternalLinkSelection {
-  href: string;
-  from: number;
-  to: number;
-}
-
-interface NodeLinkOption {
-  id: string;
-  name: string;
-  path: string;
-  depth: number;
-}
 
 const draft = ref('');
 const lastSavedContent = ref('');
 const isApplyingExternalContent = ref(false);
 const isMigratingMath = ref(false);
-const hasTextSelection = ref(false);
-const nodeLinkPickerBusy = ref(false);
-const showNodeLinkPicker = ref(false);
-const armedInternalLink = ref<InternalLinkSelection | null>(null);
-const pendingNodeLinkRange = ref<{ from: number; to: number } | null>(null);
 
 let autoSaveTimer: number | null = null;
 let saveInFlight = false;
@@ -163,119 +121,6 @@ function startLogout(): void {
   store.startLogout();
 }
 
-function syncSelectionState(): void {
-  if (!editor.value) {
-    hasTextSelection.value = false;
-    return;
-  }
-  const { from, to } = editor.value.state.selection;
-  hasTextSelection.value = from !== to;
-}
-
-function flattenTreeNodes(
-  nodes: TreeNode[],
-  ancestors: string[],
-  depth: number,
-  result: NodeLinkOption[],
-): void {
-  for (const node of nodes) {
-    const pathParts = [...ancestors, node.name];
-    result.push({
-      id: node.id,
-      name: node.name,
-      path: pathParts.join(' / '),
-      depth,
-    });
-    flattenTreeNodes(node.children, pathParts, depth + 1, result);
-  }
-}
-
-const nodeLinkOptions = computed(() => {
-  const options: NodeLinkOption[] = [];
-  flattenTreeNodes(treeNodes.value, [], 0, options);
-  return options;
-});
-
-function closeNodeLinkPicker(): void {
-  showNodeLinkPicker.value = false;
-  pendingNodeLinkRange.value = null;
-}
-
-async function openNodeLinkPicker(): Promise<void> {
-  if (!activeNode.value || !editor.value || !hasTextSelection.value) {
-    return;
-  }
-
-  const { from, to } = editor.value.state.selection;
-  if (from === to) {
-    return;
-  }
-
-  pendingNodeLinkRange.value = { from, to };
-  nodeLinkPickerBusy.value = true;
-  try {
-    await store.refreshTree();
-    showNodeLinkPicker.value = true;
-  } catch {
-    pendingNodeLinkRange.value = null;
-  } finally {
-    nodeLinkPickerBusy.value = false;
-  }
-}
-
-function applyInternalNodeLink(nodeId: string): void {
-  if (!editor.value) {
-    showNodeLinkPicker.value = false;
-    pendingNodeLinkRange.value = null;
-    return;
-  }
-
-  const range = pendingNodeLinkRange.value;
-  if (!range || range.from === range.to) {
-    showNodeLinkPicker.value = false;
-    pendingNodeLinkRange.value = null;
-    return;
-  }
-
-  const href = buildInternalNodeHref(nodeId);
-  editor.value
-    .chain()
-    .focus()
-    .setTextSelection({ from: range.from, to: range.to })
-    .setLink({ href })
-    .run();
-  armedInternalLink.value = null;
-  showNodeLinkPicker.value = false;
-  pendingNodeLinkRange.value = null;
-  syncSelectionState();
-}
-
-function selectLinkRange(view: EditorView, link: HTMLAnchorElement, href: string): InternalLinkSelection | null {
-  if (!editor.value) {
-    return null;
-  }
-
-  let position = 0;
-  try {
-    position = view.posAtDOM(link, 0);
-  } catch {
-    return null;
-  }
-
-  editor.value.chain().focus().setTextSelection(position).extendMarkRange('link').run();
-  const { from, to } = editor.value.state.selection;
-  if (from === to) {
-    return null;
-  }
-
-  const attrs = editor.value.getAttributes('link');
-  if (typeof attrs.href !== 'string' || attrs.href !== href) {
-    return null;
-  }
-
-  return { href, from, to };
-}
-
 function clearAutoSaveTimer(): void {
   if (autoSaveTimer !== null) {
     window.clearTimeout(autoSaveTimer);
@@ -328,7 +173,6 @@ function syncEditorContent(content: string): void {
   });
   migrateMathStrings(editor.value);
   isApplyingExternalContent.value = false;
-  syncSelectionState();
 }
 
 const editor = useEditor({
@@ -412,7 +256,7 @@ const editor = useEditor({
       return editor.value.commands.insertContent(insertContent);
     },
     handleDOMEvents: {
-      click: (view, event) => {
+      click: (_view, event) => {
         if (!(event instanceof MouseEvent)) {
           return false;
         }
@@ -432,31 +276,6 @@ const editor = useEditor({
           return true;
         }
 
-        const internalNodeId = parseInternalNodeHref(href);
-        if (internalNodeId) {
-          event.preventDefault();
-          const currentSelection = selectLinkRange(view, link, href);
-          if (!currentSelection) {
-            return true;
-          }
-
-          const armed = armedInternalLink.value;
-          if (
-            armed &&
-            armed.href === currentSelection.href &&
-            armed.from === currentSelection.from &&
-            armed.to === currentSelection.to
-          ) {
-            armedInternalLink.value = null;
-            closeNodeLinkPicker();
-            void store.loadNode(internalNodeId);
-            return true;
-          }
-
-          armedInternalLink.value = currentSelection;
-          return true;
-        }
-
         if (!(event.ctrlKey || event.metaKey)) {
           return false;
         }
@@ -465,36 +284,7 @@ const editor = useEditor({
         window.open(href, '_blank', 'noopener,noreferrer');
         return true;
       },
-      keydown: (_view, event) => {
-        if (!(event instanceof KeyboardEvent)) {
-          return false;
-        }
-
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-          event.preventDefault();
-          void openNodeLinkPicker();
-          return true;
-        }
-        return false;
-      },
     },
-  },
-  onCreate: ({ editor: instance }) => {
-    const { from, to } = instance.state.selection;
-    hasTextSelection.value = from !== to;
-  },
-  onSelectionUpdate: ({ editor: instance }) => {
-    const { from, to } = instance.state.selection;
-    hasTextSelection.value = from !== to;
-
-    const armed = armedInternalLink.value;
-    if (!armed) {
-      return;
-    }
-
-    if (armed.from !== from || armed.to !== to) {
-      armedInternalLink.value = null;
-    }
   },
   onUpdate: ({ editor: instance }) => {
     if (isApplyingExternalContent.value) {
@@ -511,8 +301,6 @@ const editor = useEditor({
       }
     }
 
-    armedInternalLink.value = null;
-    pendingNodeLinkRange.value = null;
     draft.value = instance.getMarkdown();
   },
 });
@@ -523,9 +311,6 @@ watch(
     clearAutoSaveTimer();
     saveInFlight = false;
     queuedContent = null;
-    showNodeLinkPicker.value = false;
-    armedInternalLink.value = null;
-    pendingNodeLinkRange.value = null;
 
     const content = activeNode.value?.content ?? '';
     lastSavedContent.value = content;
@@ -533,9 +318,7 @@ watch(
 
     if (activeNode.value && editor.value) {
       syncEditorContent(content);
-      return;
     }
-    syncSelectionState();
   },
   { immediate: true },
 );
@@ -560,9 +343,6 @@ watch(draft, (value) => {
 
 onBeforeUnmount(() => {
   clearAutoSaveTimer();
-  showNodeLinkPicker.value = false;
-  armedInternalLink.value = null;
-  pendingNodeLinkRange.value = null;
   editor.value?.destroy();
 });
 </script>
@@ -573,33 +353,6 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   color: var(--color-primary);
-}
-
-.editor-toolbar {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  z-index: 12;
-}
-
-.node-link-btn {
-  border: 1px solid rgba(109, 138, 255, 0.3);
-  border-radius: 10px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #2e4297;
-  font-size: 12px;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
-.node-link-btn:hover {
-  background: rgba(255, 255, 255, 1);
-}
-
-.node-link-btn:disabled {
-  opacity: 0.52;
-  cursor: not-allowed;
 }
 
 .editor-input {
