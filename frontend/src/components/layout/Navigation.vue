@@ -1,37 +1,41 @@
 <template>
   <div class="nav-shell">
     <template v-if="isAuthenticated">
-      <TransitionGroup name="nav-row" tag="div" class="node-list">
+      <TransitionGroup
+        ref="nodeListRef"
+        name="nav-row"
+        tag="div"
+        class="node-list"
+        @wheel.prevent="onWheel"
+        @touchstart.passive="onTouchStart"
+        @touchend="onTouchEnd"
+      >
         <div v-if="childNodes.length === 0" key="empty" class="empty" />
 
-        <div v-for="node in childNodes" :key="node.id" class="row">
+        <div v-for="node in displayNodes" :key="node.id" class="row">
           <GlassWrapper
-            v-if="actionNodeId !== node.id"
             class="row-glass"
             interactive
-            @click="openNode(node.id)"
-            @contextmenu.prevent="toggleActions(node.id)"
+            :pressed="pressedNodeId === node.id || scrollingTopId === node.id || scrollingBottomId === node.id"
+            @click="onRowClick(node.id)"
+            @contextmenu.prevent="onContextMenu(node.id)"
           >
             <div class="row-content">
-              <span class="row-name">{{ node.name }}</span>
+              <template v-if="actionNodeId !== node.id">
+                <span class="row-name">{{ node.name }}</span>
+              </template>
+              <template v-else>
+                <div class="inline-actions">
+                  <button type="button" class="action-half" @click.stop="moveNode(node)">移动</button>
+                  <button type="button" class="action-half" @click.stop="deleteNode(node)">删除</button>
+                </div>
+              </template>
             </div>
           </GlassWrapper>
-
-          <div v-else class="row-actions">
-            <GlassWrapper class="action-shell" interactive @click="moveNode(node)">
-              <button type="button" class="action">移动</button>
-            </GlassWrapper>
-            <GlassWrapper class="action-shell" interactive @click="deleteNode(node)">
-              <button type="button" class="action">删除</button>
-            </GlassWrapper>
-            <GlassWrapper class="action-shell" interactive @click="actionNodeId = null">
-              <button type="button" class="action">取消</button>
-            </GlassWrapper>
-          </div>
         </div>
       </TransitionGroup>
 
-      <GlassWrapper class="add-shell" interactive @click="store.startAdd()">
+      <GlassWrapper class="add-shell" interactive :pressed="addPressed" @click="onAddClick">
         <button type="button" class="add-button">
           + 添加节点
         </button>
@@ -47,23 +51,86 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch, onUnmounted, type ComponentPublicInstance } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
 
+const ROW_H = 54;
+const ROW_GAP = 1;
+const ROW_STEP = ROW_H + ROW_GAP;
+const ANIM_MS = 240;
+
 const store = useNodeStore();
 const authStore = useAuthStore();
-const { childNodes } = storeToRefs(store);
+const { childNodes, viewState } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
 
-const actionNodeId = ref<string | null>(null);
+// --- scroll state ---
+const nodeListRef = ref<ComponentPublicInstance | HTMLElement | null>(null);
+const containerH = ref(0);
+const scrollOffset = ref(0);
+const isScrolling = ref(false);
+const displayNodes = ref<NodeRecord[]>([]);
+const scrollingTopId = ref<string | null>(null);
+const scrollingBottomId = ref<string | null>(null);
 
-async function openNode(nodeId: string): Promise<void> {
+// [Bug3 fix] cancel token to invalidate stale scroll callbacks
+let scrollCancelToken = 0;
+
+const maxVisible = computed(() => {
+  if (containerH.value <= 0) return 20;
+  return Math.floor(containerH.value / ROW_STEP);
+});
+
+// [Bug2 fix] reset when child nodes change — cancel any in-flight scroll
+watch(childNodes, (list) => {
+  scrollCancelToken++;
+  isScrolling.value = false;
+  scrollOffset.value = 0;
+  scrollingTopId.value = null;
+  scrollingBottomId.value = null;
+  displayNodes.value = list.slice(0, maxVisible.value);
+}, { immediate: true });
+
+// [Bug4 fix] update visible window when container resizes
+watch(maxVisible, (mv) => {
+  if (!isScrolling.value) {
+    displayNodes.value = childNodes.value.slice(scrollOffset.value, scrollOffset.value + mv);
+  }
+});
+
+// --- interaction state ---
+const actionNodeId = ref<string | null>(null);
+const addPressed = computed(() => viewState.value === 'add');
+const pressedNodeId = ref<string | null>(null);
+
+function onRowClick(nodeId: string): void {
+  if (isScrolling.value) return;
+  if (actionNodeId.value === nodeId) return;
+  openNode(nodeId);
+}
+
+function onContextMenu(nodeId: string): void {
+  if (isScrolling.value) return;
+  toggleActions(nodeId);
+}
+
+function openNode(nodeId: string): void {
+  if (pressedNodeId.value) return;
   actionNodeId.value = null;
-  await store.loadNode(nodeId);
+  pressedNodeId.value = nodeId;
+  setTimeout(async () => {
+    await store.loadNode(nodeId);
+    pressedNodeId.value = null;
+  }, 200);
+}
+
+function onAddClick(): void {
+  if (addPressed.value) return;
+  store.startAdd();
 }
 
 function toggleActions(nodeId: string): void {
@@ -79,6 +146,116 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   actionNodeId.value = null;
   await store.startDelete(node);
 }
+
+// --- custom scroll ---
+function onWheel(e: WheelEvent): void {
+  if (isScrolling.value) return;
+  if (e.deltaY > 0) scrollDown();
+  else if (e.deltaY < 0) scrollUp();
+}
+
+let touchY = 0;
+function onTouchStart(e: TouchEvent): void {
+  if (e.touches[0]) touchY = e.touches[0].clientY;
+}
+function onTouchEnd(e: TouchEvent): void {
+  if (!e.changedTouches[0]) return;
+  const dy = touchY - e.changedTouches[0].clientY;
+  if (Math.abs(dy) < 30 || isScrolling.value) return;
+  if (dy > 0) scrollDown();
+  else scrollUp();
+}
+
+function scrollDown(): void {
+  const mv = maxVisible.value;
+  const off = scrollOffset.value;
+  if (off + mv >= childNodes.value.length) return;
+
+  isScrolling.value = true;
+  const token = ++scrollCancelToken;
+  const topId = displayNodes.value[0]!.id;
+  const newNode = childNodes.value[off + mv];
+  if (!newNode) { isScrolling.value = false; return; }
+
+  // 阶段1: 顶部凹陷
+  scrollingTopId.value = topId;
+
+  setTimeout(() => {
+    if (token !== scrollCancelToken) return;
+    // 阶段2: 顶行消失 + 其他行上移 + 底部新行凹陷进入
+    scrollingTopId.value = null;
+    scrollingBottomId.value = newNode.id;
+    displayNodes.value = [...displayNodes.value.slice(1), newNode];
+    scrollOffset.value = off + 1;
+
+    setTimeout(() => {
+      if (token !== scrollCancelToken) return;
+      // 阶段3: 底部浮起
+      scrollingBottomId.value = null;
+      isScrolling.value = false;
+      displayNodes.value = childNodes.value.slice(
+        scrollOffset.value,
+        scrollOffset.value + maxVisible.value,
+      );
+    }, ANIM_MS + 60);
+  }, 180);
+}
+
+function scrollUp(): void {
+  const off = scrollOffset.value;
+  if (off <= 0) return;
+
+  isScrolling.value = true;
+  const token = ++scrollCancelToken;
+  const topId = displayNodes.value[0]!.id;
+  const newNode = childNodes.value[off - 1];
+  if (!newNode) { isScrolling.value = false; return; }
+
+  // 阶段1: 顶部凹陷
+  scrollingTopId.value = topId;
+
+  setTimeout(() => {
+    if (token !== scrollCancelToken) return;
+    // 阶段2: 顶行消失 + 其他行上移 + 底部新行凹陷进入
+    scrollingTopId.value = null;
+    scrollingBottomId.value = newNode.id;
+    displayNodes.value = [newNode, ...displayNodes.value.slice(0, -1)];
+    scrollOffset.value = off - 1;
+
+    setTimeout(() => {
+      if (token !== scrollCancelToken) return;
+      // 阶段3: 底部浮起
+      scrollingBottomId.value = null;
+      isScrolling.value = false;
+      displayNodes.value = childNodes.value.slice(
+        scrollOffset.value,
+        scrollOffset.value + maxVisible.value,
+      );
+    }, ANIM_MS + 60);
+  }, 180);
+}
+
+// --- resize observer ---
+// [Bug1 fix] use watch instead of onMounted to handle conditional rendering
+let ro: ResizeObserver | null = null;
+
+function attachObserver(el: Element): void {
+  ro?.disconnect();
+  ro = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      containerH.value = entry.contentRect.height;
+    }
+  });
+  ro.observe(el);
+}
+
+watch(nodeListRef, (inst) => {
+  if (!inst) return;
+  const el = inst && '$el' in inst ? (inst as ComponentPublicInstance).$el : inst;
+  if (el instanceof HTMLElement) attachObserver(el);
+});
+
+onUnmounted(() => ro?.disconnect());
 </script>
 
 <style scoped>
@@ -94,12 +271,10 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 .node-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding-right: 2px;
 }
 
 .row {
@@ -108,15 +283,12 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 }
 
 .row-glass,
-.row-actions,
-.action-shell,
 .add-shell {
   width: 100%;
   height: 100%;
 }
 
 .row-glass :deep(.glass-raised),
-.action-shell :deep(.glass-raised),
 .add-shell :deep(.glass-raised) {
   box-shadow:
     4px 4px 8px rgba(49, 78, 151, 0.15),
@@ -128,22 +300,25 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   display: flex;
   align-items: center;
   padding: 0 14px;
+  transition: padding 220ms ease;
 }
 
 .row-name {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-primary);
+  transition: opacity 160ms ease;
 }
 
-.row-actions {
+.inline-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 1px;
+  width: 100%;
+  height: 100%;
 }
 
-.action,
-.add-button {
+.action-half {
   width: 100%;
   height: 100%;
   border: 0;
@@ -151,6 +326,8 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   color: var(--color-primary);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 600;
+  transition: opacity 160ms ease;
 }
 
 .add-shell {
@@ -162,6 +339,13 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 }
 
 .add-button {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -192,16 +376,25 @@ async function deleteNode(node: NodeRecord): Promise<void> {
 }
 
 .nav-row-enter-active,
-.nav-row-leave-active,
 .nav-row-move {
   transition:
-    opacity 220ms ease,
-    transform 220ms ease;
+    opacity 240ms ease,
+    transform 240ms ease;
 }
 
-.nav-row-enter-from,
-.nav-row-leave-to {
+.nav-row-leave-active {
+  position: absolute;
+  width: calc(100% - 2px);
+  transition:
+    opacity 120ms ease;
+}
+
+.nav-row-enter-from {
   opacity: 0;
   transform: translateY(12px) scale(0.97);
+}
+
+.nav-row-leave-to {
+  opacity: 0;
 }
 </style>

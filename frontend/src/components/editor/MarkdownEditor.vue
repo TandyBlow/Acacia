@@ -20,7 +20,6 @@ import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import type { Editor, JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { Mathematics, mathMigrationRegex, migrateMathStrings } from '@tiptap/extension-mathematics';
 import { Markdown } from '@tiptap/markdown';
@@ -184,20 +183,20 @@ const editor = useEditor({
       bold: false,
       italic: false,
       strike: false,
+      link: {
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: 'https',
+        HTMLAttributes: {
+          target: '_blank',
+          rel: 'noopener noreferrer nofollow',
+        },
+      },
     }),
     Markdown.configure({
       markedOptions: {
         gfm: false,
         breaks: true,
-      },
-    }),
-    Link.configure({
-      openOnClick: false,
-      autolink: true,
-      defaultProtocol: 'https',
-      HTMLAttributes: {
-        target: '_blank',
-        rel: 'noopener noreferrer nofollow',
       },
     }),
     Image.configure({

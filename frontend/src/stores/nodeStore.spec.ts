@@ -14,9 +14,16 @@ const mocks = vi.hoisted(() => ({
   clearLocalNodeCache: vi.fn(),
 }));
 
-vi.mock('../services/dataAdapter', () => ({
+vi.mock('../adapters', () => ({
   dataAdapter: mocks.dataAdapter,
   clearLocalNodeCache: mocks.clearLocalNodeCache,
+}));
+
+vi.mock('../services/nodeCache', () => ({
+  getCached: () => null,
+  setCache: () => {},
+  invalidate: () => {},
+  invalidateAll: () => {},
 }));
 
 import { useNodeStore } from './nodeStore';

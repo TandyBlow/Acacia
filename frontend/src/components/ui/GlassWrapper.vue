@@ -26,7 +26,8 @@ defineProps<{
 .glass {
   width: 100%;
   height: 100%;
-  transition: transform 140ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease,
+              background 160ms ease, backdrop-filter 160ms ease, -webkit-backdrop-filter 160ms ease;
   border: 1px solid var(--color-glass-border);
   overflow: hidden;
   will-change: transform, box-shadow;
@@ -63,10 +64,15 @@ defineProps<{
 }
 
 .glass-pressed {
-  transform: translateY(2px) scale(0.994);
-  box-shadow:
-    inset 6px 6px 10px rgba(30, 69, 89, 0.65),
-    inset -5px -5px 10px rgba(127, 224, 247, 0.35);
+  transform: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.glass-pressed .glass-content {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .glass-interactive {

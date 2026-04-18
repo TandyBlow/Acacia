@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { clearLocalNodeCache, dataAdapter } from '../services/dataAdapter';
+import { clearLocalNodeCache, dataAdapter } from '../adapters';
+import { findTreeNode, collectTreeDescendantIds } from '../utils/treeUtils';
+import * as nodeCache from '../services/nodeCache';
 import type { NodeRecord, TreeNode, ViewState } from '../types/node';
 
 function formatError(error: unknown): string {
@@ -10,27 +12,19 @@ function formatError(error: unknown): string {
   return '发生了未知错误';
 }
 
-function findTreeNode(nodes: TreeNode[], id: string): TreeNode | null {
-  for (const node of nodes) {
-    if (node.id === id) {
-      return node;
-    }
-    const childHit = findTreeNode(node.children, id);
-    if (childHit) {
-      return childHit;
-    }
-  }
-  return null;
+let navigator: ((path: string, replace: boolean) => void) | null = null;
+let getInitialNodeId: (() => string | null) | null = null;
+
+export function setNavigator(
+  nav: (path: string, replace: boolean) => void,
+  getRouteId: () => string | null,
+): void {
+  navigator = nav;
+  getInitialNodeId = getRouteId;
 }
 
-function collectDescendantIds(node: TreeNode | null, result: Set<string>): void {
-  if (!node) {
-    return;
-  }
-  for (const child of node.children) {
-    result.add(child.id);
-    collectDescendantIds(child, result);
-  }
+function navigate(path: string, replace = false): void {
+  navigator?.(path, replace);
 }
 
 export const useNodeStore = defineStore('node', () => {
@@ -98,7 +92,23 @@ export const useNodeStore = defineStore('node', () => {
     treeNodes.value = await dataAdapter.getTree();
   }
 
-  async function loadNode(nodeId: string | null): Promise<void> {
+  let syncRouteFromLoad = false;
+
+  async function loadNode(nodeId: string | null, options?: { replace?: boolean }): Promise<void> {
+    const cached = nodeCache.getCached(nodeId);
+    if (cached) {
+      activeNode.value = cached.nodeInfo;
+      pathNodes.value = cached.pathNodes;
+      childNodes.value = cached.children;
+      viewState.value = 'display';
+      clearTransientState();
+
+      syncRouteFromLoad = true;
+      const targetPath = nodeId ? `/node/${nodeId}` : '/';
+      navigate(targetPath, options?.replace ?? false);
+      return;
+    }
+
     isBusy.value = true;
     errorMessage.value = null;
     try {
@@ -108,6 +118,12 @@ export const useNodeStore = defineStore('node', () => {
       childNodes.value = context.children;
       viewState.value = 'display';
       clearTransientState();
+
+      nodeCache.setCache(nodeId, context);
+
+      syncRouteFromLoad = true;
+      const targetPath = nodeId ? `/node/${nodeId}` : '/';
+      navigate(targetPath, options?.replace ?? false);
     } catch (error) {
       errorMessage.value = formatError(error);
     } finally {
@@ -115,8 +131,24 @@ export const useNodeStore = defineStore('node', () => {
     }
   }
 
+  async function syncFromRoute(nodeId: string | null): Promise<void> {
+    if (syncRouteFromLoad) {
+      syncRouteFromLoad = false;
+      return;
+    }
+    const currentId = activeNode.value?.id ?? null;
+    if (nodeId === currentId) {
+      return;
+    }
+    await loadNode(nodeId);
+    syncRouteFromLoad = false;
+  }
+
   async function initialize(): Promise<void> {
-    await loadNode(null);
+    const routeNodeId = getInitialNodeId?.() ?? null;
+    syncRouteFromLoad = true;
+    await loadNode(routeNodeId);
+    syncRouteFromLoad = false;
   }
 
   function startAdd(): void {
@@ -155,7 +187,7 @@ export const useNodeStore = defineStore('node', () => {
     await refreshTree();
     const hit = findTreeNode(treeNodes.value, node.id);
     const blocked = new Set<string>([node.id]);
-    collectDescendantIds(hit, blocked);
+    collectTreeDescendantIds(hit, blocked);
     blockedParentIds.value = Array.from(blocked);
   }
 
@@ -177,6 +209,8 @@ export const useNodeStore = defineStore('node', () => {
     errorMessage.value = null;
     clearTransientState();
     clearLocalNodeCache();
+    nodeCache.invalidateAll();
+    navigate('/', true);
   }
 
   async function saveActiveNodeContent(nodeId: string, content: string): Promise<boolean> {
@@ -218,25 +252,33 @@ export const useNodeStore = defineStore('node', () => {
           currentNodeId.value,
           pendingNodeName.value.trim(),
         );
+        nodeCache.invalidate(currentNodeId.value);
         await loadNode(created.id);
         return;
       }
 
       if (viewState.value === 'delete' && operationNode.value) {
         await dataAdapter.deleteNode(operationNode.value.id, deleteWithChildren.value);
+        nodeCache.invalidate(currentNodeId.value);
+        nodeCache.invalidate(operationNode.value.parentId);
         const reloadId = currentNodeId.value;
-        await loadNode(reloadId);
+        await loadNode(reloadId, { replace: true });
         return;
       }
 
       if (viewState.value === 'move' && operationNode.value) {
         const movingId = operationNode.value.id;
         await dataAdapter.moveNode(movingId, moveTargetParentId.value);
+        nodeCache.invalidate(moveTargetParentId.value);
+        nodeCache.invalidate(operationNode.value.parentId);
         await loadNode(movingId);
         return;
       }
 
       if (viewState.value === 'logout') {
+        // Logout is handled by Knob.vue (authStore.logout + clearForLogout).
+        // This branch exists because confirmOperation is a shared dispatch path,
+        // but logout confirmation flow is managed externally.
         return;
       }
     } catch (error) {
@@ -274,6 +316,7 @@ export const useNodeStore = defineStore('node', () => {
     saveActiveNodeContent,
     refreshTree,
     clearForLogout,
+    syncFromRoute,
     onKnobClick,
     confirmOperation,
   };

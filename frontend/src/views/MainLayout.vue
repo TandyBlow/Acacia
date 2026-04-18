@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import LogoArea from '../components/layout/LogoArea.vue';
@@ -54,18 +54,17 @@ import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
+import { useAppInit } from '../composables/useAppInit';
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
-const { viewState, isBusy: nodeBusy, activeNode } = storeToRefs(nodeStore);
+const { viewState, activeNode } = storeToRefs(nodeStore);
 const {
-  initialized: authInitialized,
   mode: authMode,
   isAuthenticated,
-  isBusy: authBusy,
 } = storeToRefs(authStore);
 
-const isBusy = computed(() => nodeBusy.value || authBusy.value);
+const { isBusy } = useAppInit();
 
 const currentContent = computed(() => {
   if (!isAuthenticated.value) {
@@ -87,24 +86,6 @@ const contentKey = computed(() => {
   return `${viewState.value}:${activeNode.value?.id ?? 'home'}`;
 });
 
-onMounted(async () => {
-  await authStore.initialize();
-  if (isAuthenticated.value) {
-    await nodeStore.initialize();
-  }
-});
-
-watch(
-  [authInitialized, isAuthenticated],
-  async ([ready, authenticated], [_prevReady, prevAuthenticated]) => {
-    if (!ready) {
-      return;
-    }
-    if (authenticated && !prevAuthenticated) {
-      await nodeStore.initialize();
-    }
-  },
-);
 </script>
 
 <style scoped>
