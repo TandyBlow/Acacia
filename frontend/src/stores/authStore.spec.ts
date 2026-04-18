@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
-const authFns = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  onAuthStateChange: vi.fn(),
+const mockAdapter = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  onAuthStateChange: vi.fn(() => () => {}),
   signUp: vi.fn(),
-  signInWithPassword: vi.fn(),
+  signIn: vi.fn(),
   signOut: vi.fn(),
 }));
 
 vi.mock('../api/supabase', () => ({
   supabase: {
-    auth: authFns,
+    auth: {
+      getSession: vi.fn(),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      signUp: vi.fn(),
+      signInWithPassword: vi.fn(),
+      signOut: vi.fn(),
+    },
   },
 }));
 
@@ -19,13 +25,14 @@ vi.mock('../services/usernameAuth', () => ({
   usernameToSyntheticEmail: vi.fn(async (username: string) => `${username}@seewhat.local`),
 }));
 
-import { useAuthStore } from './authStore';
+import { useAuthStore, setAuthAdapter } from './authStore';
 
 describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
-    authFns.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
+    mockAdapter.onAuthStateChange.mockReturnValue(() => {});
+    setAuthAdapter(mockAdapter);
   });
 
   it('requires matching passwords in register mode', () => {
@@ -46,24 +53,13 @@ describe('useAuthStore', () => {
     store.username = 'alice';
     store.password = 'secret';
 
-    authFns.signInWithPassword.mockResolvedValueOnce({
-      data: {
-        session: {
-          user: {
-            id: 'u1',
-            user_metadata: { username: 'alice' },
-          },
-        },
-      },
-      error: null,
+    mockAdapter.signIn.mockResolvedValueOnce({
+      user: { id: 'u1', username: 'alice' },
     });
 
     await expect(store.submitByKnob()).resolves.toBe(true);
 
-    expect(authFns.signInWithPassword).toHaveBeenCalledWith({
-      email: 'alice@seewhat.local',
-      password: 'secret',
-    });
+    expect(mockAdapter.signIn).toHaveBeenCalledWith('alice', 'secret');
     expect(store.isAuthenticated).toBe(true);
     expect(store.password).toBe('');
   });

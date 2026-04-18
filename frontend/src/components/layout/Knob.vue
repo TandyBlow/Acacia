@@ -1,5 +1,6 @@
 <template>
   <div class="knob-panel">
+    <p v-if="showLabels" class="knob-label knob-label-top">{{ topLabel }}</p>
     <div class="knob-stage">
       <GlassWrapper inset shape="circle" class="knob-well">
         <div class="knob-well-inner">
@@ -22,6 +23,7 @@
         </div>
       </GlassWrapper>
     </div>
+    <p v-if="showBottomLabel" class="knob-label knob-label-bottom">长按旋钮确认</p>
   </div>
 </template>
 
@@ -70,6 +72,14 @@ const canConfirm = computed(() => {
   }
   return canNodeConfirm.value;
 });
+
+const showLabels = computed(() => isAuthenticated.value);
+const showBottomLabel = computed(() =>
+  isAuthenticated.value && inConfirmMode.value,
+);
+const topLabel = computed(() =>
+  viewState.value === 'display' ? '点击旋钮返回主页面' : '点击旋钮返回',
+);
 
 function clearTimer(): void {
   if (holdTimer !== null) {
@@ -141,11 +151,35 @@ function onPressCancel(): void {
 
 <style scoped>
 .knob-panel {
+  position: relative;
   width: 100%;
   height: 100%;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 1px;
+}
+
+.knob-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-primary);
+  opacity: 0.6;
+  text-align: center;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.knob-label-top {
+  top: 8px;
+}
+
+.knob-label-bottom {
+  bottom: 8px;
 }
 
 .knob-stage {

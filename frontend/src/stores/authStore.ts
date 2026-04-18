@@ -1,21 +1,21 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../api/supabase';
-import { usernameToSyntheticEmail } from '../services/usernameAuth';
+import type { AuthUser } from '../types/auth';
+import type { AuthAdapter } from '../types/auth';
 
 export type AuthMode = 'login' | 'register';
-
-const CONFIG_ERROR =
-  'Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。';
-const EMAIL_CONFIRM_HINT =
-  '当前项目仍开启了邮箱确认。请在 Supabase Authentication 设置中关闭 Confirm email。';
 
 function formatAuthError(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
   return '认证失败，请稍后重试。';
+}
+
+let authAdapter: AuthAdapter | null = null;
+
+export function setAuthAdapter(adapter: AuthAdapter): void {
+  authAdapter = adapter;
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -26,17 +26,15 @@ export const useAuthStore = defineStore('auth', () => {
   const password = ref('');
   const confirmPassword = ref('');
 
-  const session = ref<Session | null>(null);
-  const user = ref<User | null>(null);
+  const user = ref<AuthUser | null>(null);
 
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
 
   const isAuthenticated = computed(() => Boolean(user.value));
   const currentUsername = computed(() => {
-    const metadataUsername = user.value?.user_metadata?.username;
-    if (typeof metadataUsername === 'string' && metadataUsername.trim().length > 0) {
-      return metadataUsername.trim();
+    if (user.value?.username) {
+      return user.value.username;
     }
 
     const inputUsername = username.value.trim();
@@ -63,9 +61,8 @@ export const useAuthStore = defineStore('auth', () => {
     );
   });
 
-  function assignSession(next: Session | null): void {
-    session.value = next;
-    user.value = next?.user ?? null;
+  function assignUser(next: AuthUser | null): void {
+    user.value = next;
   }
 
   function toggleMode(): void {
@@ -86,26 +83,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function initialize(): Promise<void> {
-    if (initialized.value) {
-      return;
-    }
-
-    if (!supabase) {
-      errorMessage.value = CONFIG_ERROR;
+    if (initialized.value || !authAdapter) {
       initialized.value = true;
       return;
     }
 
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
+    try {
+      const currentUser = await authAdapter.initialize();
+      assignUser(currentUser);
+    } catch (error) {
       errorMessage.value = formatAuthError(error);
-    } else {
-      assignSession(data.session);
     }
 
-    supabase.auth.onAuthStateChange((_event, nextSession) => {
-      assignSession(nextSession);
-      if (nextSession) {
+    authAdapter.onAuthStateChange((nextUser) => {
+      assignUser(nextUser);
+      if (nextUser) {
         errorMessage.value = null;
       }
     });
@@ -114,8 +106,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function submitByKnob(): Promise<boolean> {
-    if (!supabase) {
-      errorMessage.value = CONFIG_ERROR;
+    if (!authAdapter) {
+      errorMessage.value = '认证服务未初始化。';
       return false;
     }
 
@@ -130,58 +122,15 @@ export const useAuthStore = defineStore('auth', () => {
     errorMessage.value = null;
 
     try {
-      const email = await usernameToSyntheticEmail(username.value);
+      let result;
 
       if (isRegisterMode.value) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password: password.value,
-          options: {
-            data: {
-              username: username.value,
-            },
-          },
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        if (data.session) {
-          assignSession(data.session);
-          clearSecretsAfterSuccess();
-          return true;
-        }
-
-        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-          email,
-          password: password.value,
-        });
-
-        if (loginError) {
-          const lower = loginError.message.toLowerCase();
-          if (lower.includes('confirm') && lower.includes('email')) {
-            errorMessage.value = EMAIL_CONFIRM_HINT;
-            return false;
-          }
-          throw loginError;
-        }
-
-        assignSession(loginData.session);
-        clearSecretsAfterSuccess();
-        return true;
+        result = await authAdapter.signUp(username.value, password.value);
+      } else {
+        result = await authAdapter.signIn(username.value, password.value);
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: password.value,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      assignSession(data.session);
+      assignUser(result.user);
       clearSecretsAfterSuccess();
       return true;
     } catch (error) {
@@ -193,18 +142,14 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(): Promise<boolean> {
-    if (!supabase || isBusy.value) {
+    if (!authAdapter || isBusy.value) {
       return false;
     }
 
     isBusy.value = true;
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        return false;
-      }
-
-      assignSession(null);
+      await authAdapter.signOut();
+      assignUser(null);
       clearAuthFormState();
       errorMessage.value = null;
       return true;
@@ -221,7 +166,6 @@ export const useAuthStore = defineStore('auth', () => {
     username,
     password,
     confirmPassword,
-    session,
     user,
     isBusy,
     errorMessage,
