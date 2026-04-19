@@ -21,6 +21,7 @@ export function useTreeSkeleton() {
     if (!userId) return;
     busy.value = true;
     try {
+      await dataAdapter.tagNodes(userId);
       await styleStore.fetchStyle(userId);
     } finally {
       busy.value = false;
