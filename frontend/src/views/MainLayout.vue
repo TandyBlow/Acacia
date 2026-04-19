@@ -50,6 +50,7 @@ import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
+import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
@@ -75,6 +76,9 @@ const currentContent = computed(() => {
   }
   if (viewState.value === 'add' || viewState.value === 'delete' || viewState.value === 'logout') {
     return ConfirmPanel;
+  }
+  if (!activeNode.value) {
+    return TreeCanvas;
   }
   return MarkdownEditor;
 });
@@ -148,11 +152,11 @@ const contentKey = computed(() => {
   height: 100%;
   padding: 1px;
   border-radius: 24px;
-  border: 1px solid rgba(109, 138, 255, 0.2);
+  border: 1px solid var(--color-glass-border);
   background: rgba(255, 255, 255, 0.06);
   box-shadow:
-    inset 9px 9px 18px rgba(38, 85, 108, 0.56),
-    inset -9px -9px 18px rgba(148, 241, 255, 0.52);
+    inset 9px 9px 18px var(--shadow-inset-a),
+    inset -9px -9px 18px var(--shadow-inset-b);
   overflow: hidden;
 }
 
