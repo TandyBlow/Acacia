@@ -2,10 +2,12 @@ import { computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/authStore';
 import { useNodeStore } from '../stores/nodeStore';
+import { useStyleStore } from '../stores/styleStore';
 
 export function useAppInit() {
   const authStore = useAuthStore();
   const nodeStore = useNodeStore();
+  const styleStore = useStyleStore();
   const route = useRoute();
 
   const isBusy = computed(() => nodeStore.isBusy || authStore.isBusy);
@@ -14,6 +16,9 @@ export function useAppInit() {
     await authStore.initialize();
     if (authStore.isAuthenticated) {
       await nodeStore.initialize();
+      if (authStore.user?.id) {
+        styleStore.fetchStyle(authStore.user.id);
+      }
     }
   });
 
@@ -25,6 +30,12 @@ export function useAppInit() {
       }
       if (authenticated && !prevAuthenticated) {
         await nodeStore.initialize();
+        if (authStore.user?.id) {
+          styleStore.fetchStyle(authStore.user.id);
+        }
+      }
+      if (!authenticated && prevAuthenticated) {
+        styleStore.reset();
       }
     },
   );
