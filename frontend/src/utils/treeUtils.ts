@@ -1,4 +1,5 @@
 import type { NodeRecord, TreeNode } from '../types/node';
+import { UI } from '../constants/uiStrings';
 
 export function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -61,7 +62,7 @@ export function assertSiblingNameUnique(
       (ignoreId ? node.id !== ignoreId : true),
   );
   if (duplicate) {
-    throw new Error('同一父节点下已存在同名节点。');
+    throw new Error(UI.errors.siblingNameConflict);
   }
 }
 

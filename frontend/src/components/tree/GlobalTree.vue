@@ -1,7 +1,7 @@
 <template>
   <div class="tree-shell">
     <header class="header">
-      <h2>移动节点</h2>
+      <h2>{{ UI.tree.moveNode }}</h2>
     </header>
 
     <div class="root-picker">
@@ -10,7 +10,7 @@
         :class="{ selected: moveTargetParentId === null }"
         @click="store.setMoveTargetParent(null)"
       >
-        主页
+        {{ UI.tree.home }}
       </button>
     </div>
 
@@ -36,6 +36,7 @@ import { storeToRefs } from 'pinia';
 import TreeNodeItem from './TreeNodeItem.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import type { TreeNode } from '../../types/node';
+import { UI } from '../../constants/uiStrings';
 
 const store = useNodeStore();
 const { treeNodes, moveTargetParentId, blockedParentIds } = storeToRefs(store);

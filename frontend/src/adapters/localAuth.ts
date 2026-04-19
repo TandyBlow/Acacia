@@ -1,7 +1,6 @@
 import type { AuthAdapter, AuthResult, AuthUser } from '../types/auth';
-
-const USERS_KEY = 'seewhat_local_users_v1';
-const SESSION_KEY = 'seewhat_local_session_v1';
+import { LOCAL_USERS_KEY, LOCAL_SESSION_KEY } from '../constants/app';
+import { UI } from '../constants/uiStrings';
 
 interface StoredUser {
   id: string;
@@ -24,7 +23,7 @@ function generateUserId(): string {
 }
 
 function readStoredUsers(): StoredUser[] {
-  const raw = localStorage.getItem(USERS_KEY);
+  const raw = localStorage.getItem(LOCAL_USERS_KEY);
   if (!raw) {
     return [];
   }
@@ -37,11 +36,11 @@ function readStoredUsers(): StoredUser[] {
 }
 
 function writeStoredUsers(users: StoredUser[]): void {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
 }
 
 function readSession(): AuthUser | null {
-  const raw = localStorage.getItem(SESSION_KEY);
+  const raw = localStorage.getItem(LOCAL_SESSION_KEY);
   if (!raw) {
     return null;
   }
@@ -58,9 +57,9 @@ function readSession(): AuthUser | null {
 
 function writeSession(user: AuthUser | null): void {
   if (user) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+    localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(user));
   } else {
-    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LOCAL_SESSION_KEY);
   }
 }
 
@@ -77,15 +76,15 @@ export const localAuth: AuthAdapter = {
   async signUp(username: string, password: string): Promise<AuthResult> {
     const trimmed = username.trim();
     if (!trimmed) {
-      throw new Error('用户名不能为空。');
+      throw new Error(UI.errors.usernameEmpty);
     }
     if (!password) {
-      throw new Error('密码不能为空。');
+      throw new Error(UI.errors.passwordEmpty);
     }
 
     const users = readStoredUsers();
     if (users.some((u) => u.username === trimmed)) {
-      throw new Error('该用户名已被注册。');
+      throw new Error(UI.errors.usernameTaken);
     }
 
     const passwordHash = await sha256Hex(password);
@@ -106,7 +105,7 @@ export const localAuth: AuthAdapter = {
   async signIn(username: string, password: string): Promise<AuthResult> {
     const trimmed = username.trim();
     if (!trimmed || !password) {
-      throw new Error('用户名和密码不能为空。');
+      throw new Error(UI.errors.usernamePasswordEmpty);
     }
 
     const users = readStoredUsers();
@@ -114,7 +113,7 @@ export const localAuth: AuthAdapter = {
     const matched = users.find((u) => u.username === trimmed && u.passwordHash === passwordHash);
 
     if (!matched) {
-      throw new Error('用户名或密码错误。');
+      throw new Error(UI.errors.usernamePasswordWrong);
     }
 
     const authUser: AuthUser = { id: matched.id, username: matched.username };

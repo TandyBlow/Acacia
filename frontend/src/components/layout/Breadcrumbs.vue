@@ -15,7 +15,7 @@
 
       <GlassWrapper v-if="showCurrentNode" key="current-node" class="crumb-wrap current-wrap" :class="{ sinking: phase === 'collapsing' }" pressed>
         <div class="current-node">
-          {{ activeNode ? activeNode.name : '主页' }}
+          {{ activeNode ? activeNode.name : UI.breadcrumbs.home }}
         </div>
       </GlassWrapper>
     </TransitionGroup>
@@ -23,7 +23,7 @@
     <div v-else class="crumb-track">
       <GlassWrapper class="crumb-wrap current-wrap" pressed>
         <div class="current-node">
-          欢迎！
+          {{ UI.breadcrumbs.welcome }}
         </div>
       </GlassWrapper>
     </div>
@@ -37,6 +37,7 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
+import { UI } from '../../constants/uiStrings';
 
 const store = useNodeStore();
 const authStore = useAuthStore();

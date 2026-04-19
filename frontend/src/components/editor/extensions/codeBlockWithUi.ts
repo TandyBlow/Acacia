@@ -1,9 +1,9 @@
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { COPY_RESET_DELAY_MS } from '../../../constants/app';
 
 const COPY_DEFAULT_TEXT = 'Copy';
 const COPY_SUCCESS_TEXT = 'Copied';
-const COPY_RESET_DELAY_MS = 1200;
 
 function getLineCount(text: string): number {
   return text.length > 0 ? text.split('\n').length : 1;

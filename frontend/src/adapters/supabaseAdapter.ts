@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../api/supabase';
+import { config } from '../config';
+import { UI } from '../constants/uiStrings';
 import {
   assertSiblingNameUnique,
   buildPath,
@@ -32,7 +34,7 @@ function extractContent(value: unknown): string {
 
 function requireSupabase(): SupabaseClient {
   if (!supabase) {
-    throw new Error('Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。');
+    throw new Error(UI.errors.supabaseNotConfigured);
   }
   return supabase;
 }
@@ -75,10 +77,8 @@ function markRpcUnavailable(): void {
 // Backend HTTP helpers (not Supabase SDK)
 // ---------------------------------------------------------------------------
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:7860';
-
 async function fetchTreeSkeletonHttp(userId: string): Promise<SkeletonData> {
-  const res = await fetch(`${BACKEND_URL}/generate-tree-skeleton/${userId}`, { method: 'POST' });
+  const res = await fetch(`${config.backendUrl}/generate-tree-skeleton/${userId}`, { method: 'POST' });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to fetch skeleton: ${text}`);
@@ -87,13 +87,27 @@ async function fetchTreeSkeletonHttp(userId: string): Promise<SkeletonData> {
 }
 
 async function tagNodesHttp(userId: string): Promise<void> {
-  await fetch(`${BACKEND_URL}/tag-nodes/${userId}`, { method: 'POST' });
+  await fetch(`${config.backendUrl}/tag-nodes/${userId}`, { method: 'POST' });
 }
 
 async function fetchStyleHttp(userId: string): Promise<StyleResult> {
-  const res = await fetch(`${BACKEND_URL}/style/${userId}`);
+  const res = await fetch(`${config.backendUrl}/style/${userId}`);
   if (!res.ok) throw new Error('Failed to fetch style');
   return res.json();
+}
+
+async function testSakuraTagImpl(userId: string): Promise<void> {
+  const sb = requireSupabase();
+  const { data } = await sb
+    .from('nodes')
+    .select('id')
+    .eq('owner_id', userId)
+    .eq('is_deleted', false);
+  if (data) {
+    for (const row of data) {
+      await sb.from('nodes').update({ domain_tag: UI.tree.sakuraDomainTag }).eq('id', row.id);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +190,7 @@ const directQueryImpl: DataAdapter = {
   async createNode(parentId: string | null, name: string): Promise<NodeRecord> {
     const sb = requireSupabase();
     const trimmedName = name.trim();
-    if (!trimmedName) throw new Error('节点名称不能为空。');
+    if (!trimmedName) throw new Error(UI.errors.nodeNameEmpty);
 
     const nodes = await fetchAllNodes();
     assertSiblingNameUnique(nodes, parentId, trimmedName);
@@ -189,7 +203,7 @@ const directQueryImpl: DataAdapter = {
       .single();
 
     if (nodeError || !nodeData) {
-      throw new Error(nodeError?.message ?? '创建节点失败。');
+      throw new Error(nodeError?.message ?? UI.errors.createNodeFailed);
     }
 
     const { error: edgeError } = await sb.from('edges').insert({
@@ -227,7 +241,7 @@ const directQueryImpl: DataAdapter = {
     const sb = requireSupabase();
     const nodes = await fetchAllNodes();
     const target = nodes.find((n) => n.id === nodeId);
-    if (!target) throw new Error('未找到该节点。');
+    if (!target) throw new Error(UI.errors.nodeNotFound);
 
     if (deleteChildren) {
       const removeIds = new Set<string>([nodeId]);
@@ -274,16 +288,16 @@ const directQueryImpl: DataAdapter = {
     const sb = requireSupabase();
     const nodes = await fetchAllNodes();
     const target = nodes.find((n) => n.id === nodeId);
-    if (!target) throw new Error('未找到该节点。');
+    if (!target) throw new Error(UI.errors.nodeNotFound);
 
     if (target.parentId === newParentId) return;
 
     if (newParentId) {
       const parentExists = nodes.some((n) => n.id === newParentId);
-      if (!parentExists) throw new Error('目标父节点不存在。');
+      if (!parentExists) throw new Error(UI.errors.parentNotFound);
       const blocked = new Set<string>([nodeId]);
       collectDescendantIds(nodes, nodeId, blocked);
-      if (blocked.has(newParentId)) throw new Error('不能将节点移动到自身或其子节点下。');
+      if (blocked.has(newParentId)) throw new Error(UI.errors.cannotMoveToChild);
     }
 
     assertSiblingNameUnique(nodes, newParentId, target.name, target.id);
@@ -323,6 +337,7 @@ const directQueryImpl: DataAdapter = {
   fetchTreeSkeleton: fetchTreeSkeletonHttp,
   tagNodes: tagNodesHttp,
   fetchStyle: fetchStyleHttp,
+  testSakuraTag: testSakuraTagImpl,
 };
 
 // ---------------------------------------------------------------------------
@@ -360,7 +375,7 @@ const rpcImpl: DataAdapter = {
 
     const rows = data as RpcNodeRow[];
     const row = rows?.[0];
-    if (!row) throw new Error('创建节点失败。');
+    if (!row) throw new Error(UI.errors.createNodeFailed);
     return mapRpcRow(row);
   },
 
@@ -400,6 +415,7 @@ const rpcImpl: DataAdapter = {
   fetchTreeSkeleton: fetchTreeSkeletonHttp,
   tagNodes: tagNodesHttp,
   fetchStyle: fetchStyleHttp,
+  testSakuraTag: testSakuraTagImpl,
 };
 
 // ---------------------------------------------------------------------------

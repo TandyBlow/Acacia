@@ -1,13 +1,13 @@
 <template>
   <div class="auth-shell">
     <div class="auth-card">
-      <h2 class="auth-title">{{ isRegisterMode ? '注册' : '登录' }}</h2>
+      <h2 class="auth-title">{{ isRegisterMode ? UI.auth.register : UI.auth.login }}</h2>
       <p class="auth-hint">
-        短按右侧旋钮切换登录/注册，长按旋钮提交。
+        {{ UI.auth.hint }}
       </p>
 
       <label class="field">
-        <span class="field-label">账号</span>
+        <span class="field-label">{{ UI.auth.username }}</span>
         <input
           v-model="username"
           type="text"
@@ -19,7 +19,7 @@
       </label>
 
       <label class="field">
-        <span class="field-label">密码</span>
+        <span class="field-label">{{ UI.auth.password }}</span>
         <input
           v-model="password"
           type="password"
@@ -31,7 +31,7 @@
       </label>
 
       <label v-if="isRegisterMode" class="field">
-        <span class="field-label">确认密码</span>
+        <span class="field-label">{{ UI.auth.confirmPassword }}</span>
         <input
           v-model="confirmPassword"
           type="password"
@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/authStore';
+import { UI } from '../../constants/uiStrings';
 
 const authStore = useAuthStore();
 const {
