@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { outlineVertexShader, outlineFragmentShader, createCelGradientMap } from './treeShaders';
+import { OUTLINE_COLOR, type TreeTheme } from '../../constants/theme';
 
 let sharedGradientMap: THREE.DataTexture | null = null;
 
@@ -25,7 +26,7 @@ export function createOutlineMaterial(width: number = 0.3): THREE.ShaderMaterial
     fragmentShader: outlineFragmentShader,
     uniforms: {
       uOutlineWidth: { value: width },
-      uOutlineColor: { value: new THREE.Color(0x2C1A0E) },
+      uOutlineColor: { value: new THREE.Color(OUTLINE_COLOR) },
     },
     side: THREE.BackSide,
     depthWrite: false,
@@ -47,7 +48,7 @@ const SAKURA_LEAF_COLORS = [
   { stops: ['rgba(255, 192, 203, 0.95)', 'rgba(255, 175, 190, 0.85)', 'rgba(255, 155, 175, 0.5)', 'rgba(255, 140, 160, 0)'] }, // 淡粉
 ];
 
-export type TreeTheme = 'default' | 'sakura';
+export type { TreeTheme } from '../../constants/theme';
 
 // Canvas 动态生成叶团纹理：径向渐变圆，中心深绿边缘透明
 export function createLeafClusterTexture(colorIndex = 0, size = 128, theme: TreeTheme = 'default'): THREE.Texture {

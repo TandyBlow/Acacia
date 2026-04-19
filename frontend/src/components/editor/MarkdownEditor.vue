@@ -18,10 +18,10 @@ import DOMPurify from 'dompurify';
 import { useNodeStore } from '../../stores/nodeStore';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
+import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
-const AUTO_SAVE_DELAY_MS = 1000;
 const PROSEMIRROR_SLICE_MIME = 'application/x-prosemirror-slice';
 
 const store = useNodeStore();

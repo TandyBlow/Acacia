@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onErrorCaptured, ref } from 'vue';
 import MainLayout from './views/MainLayout.vue';
+import { UI } from './constants/uiStrings';
 
 const hasError = ref(false);
 
@@ -17,8 +18,8 @@ function retry() {
 <template>
   <MainLayout v-if="!hasError" />
   <div v-else class="error-boundary">
-    <p>应用遇到了一个错误，请重试。</p>
-    <button type="button" @click="retry">重试</button>
+    <p>{{ UI.app.errorOccurred }}</p>
+    <button type="button" @click="retry">{{ UI.app.retry }}</button>
   </div>
 </template>
 
