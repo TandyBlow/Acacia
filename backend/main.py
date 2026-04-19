@@ -4,7 +4,9 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 
-from tree_generator import generate_tree_visualization, fetch_user_tree, generate_lsystem_skeleton
+from tree_generator import generate_tree_visualization
+from tree_repository import fetch_user_tree
+from lsystem import generate_lsystem_skeleton
 from tag_service import tag_all_nodes
 from style_service import compute_style
 

@@ -3,17 +3,16 @@ Integration test for tree_generator.py with mock Supabase data
 """
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from tree_generator import (
-    fetch_user_tree,
-    generate_tree_visualization,
-    save_skeleton,
-)
+from tree_generator import generate_tree_visualization
+from tree_repository import fetch_user_tree
+from persistence import save_skeleton
 
 
 @pytest.fixture
 def mock_supabase():
-    """Mock Supabase client"""
-    with patch('tree_generator.supabase') as mock:
+    """Mock Supabase client in all modules that use it"""
+    with patch('tree_repository.supabase') as mock, \
+         patch('persistence.supabase', mock):
         yield mock
 
 
@@ -75,7 +74,7 @@ class TestFetchUserTree:
         # Mock edges response
         edges_mock = Mock()
         edges_mock.data = sample_edges
-        mock_supabase.table.return_value.select.return_value.in_.return_value.execute.return_value = edges_mock
+        mock_supabase.table.return_value.select.return_value.or_.return_value.execute.return_value = edges_mock
 
         result = fetch_user_tree("test-user-id")
 
@@ -172,7 +171,7 @@ class TestGenerateTreeVisualization:
             elif table_name == "edges":
                 return Mock(
                     select=Mock(return_value=Mock(
-                        in_=Mock(return_value=Mock(
+                        or_=Mock(return_value=Mock(
                             execute=Mock(return_value=edges_mock)
                         ))
                     ))

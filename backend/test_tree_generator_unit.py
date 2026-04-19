@@ -4,13 +4,13 @@ Unit tests for tree_generator.py
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from io import BytesIO
-from tree_generator import (
+from lsystem import (
     generate_lsystem_rule,
     lsystem_iterate,
     interpret_lsystem,
     generate_lsystem_skeleton,
-    render_skeleton_png,
 )
+from renderer import render_skeleton_png
 
 
 class TestLSystemRules:
@@ -165,6 +165,8 @@ class TestPNGRendering:
                 {
                     "start": [100, 100],
                     "end": [200, 200],
+                    "control1": [120, 110],
+                    "control2": [180, 190],
                     "thickness": 5,
                     "node_id": "test",
                     "depth": 0
