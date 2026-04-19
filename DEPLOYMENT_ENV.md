@@ -8,7 +8,7 @@
 VITE_DATA_MODE=supabase
 VITE_SUPABASE_URL=https://uqblmypxkljuqwtzsrzy.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxYmxteXB4a2xqdXF3dHpzcnp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3NDAwNjIsImV4cCI6MjA4NDMxNjA2Mn0.LQLkurTkUxVyUFLd0MEgmKCoLhq6NW0RIJuLxKUMTMs
-VITE_BACKEND_URL=https://tandyblow-seewhat.hf.space
+VITE_BACKEND_URL=https://TandyBlow-seewhat.hf.space
 ```
 
 ## Hugging Face Spaces 后端环境变量
