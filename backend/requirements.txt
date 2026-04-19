@@ -2,10 +2,5 @@
 uvicorn
 supabase
 python-dotenv
-sentence-transformers
-torch
 Pillow
 numpy
-pytest
-pytest-asyncio
-httpx
