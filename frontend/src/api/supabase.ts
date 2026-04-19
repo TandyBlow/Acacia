@@ -1,7 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { config } from '../config';
 
-const url = (import.meta.env.VITE_SUPABASE_URL ?? '').trim();
-const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+let _supabase: SupabaseClient | null = null;
 
-export const supabase =
-  url && anonKey ? createClient(url, anonKey) : null;
+export function getSupabase(): SupabaseClient | null {
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
+  if (!_supabase) {
+    _supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+  }
+  return _supabase;
+}
+
+export const supabase = getSupabase();

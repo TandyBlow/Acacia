@@ -1,23 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import type { NodeContext, NodeRecord, TreeNode } from '../types/node';
+import type { NodeContext, NodeRecord, TreeNode, CoreDataAdapter } from '../types/node';
 
-const mocks = vi.hoisted(() => ({
-  dataAdapter: {
-    getNodeContext: vi.fn<(nodeId: string | null) => Promise<NodeContext>>(),
-    createNode: vi.fn<(parentId: string | null, name: string) => Promise<NodeRecord>>(),
-    updateNodeContent: vi.fn<(nodeId: string, content: string) => Promise<void>>(),
-    deleteNode: vi.fn<(nodeId: string, deleteChildren: boolean) => Promise<void>>(),
-    moveNode: vi.fn<(nodeId: string, newParentId: string | null) => Promise<void>>(),
-    getTree: vi.fn<() => Promise<TreeNode[]>>(),
-  },
-  clearLocalNodeCache: vi.fn(),
-}));
-
-vi.mock('../adapters', () => ({
-  dataAdapter: mocks.dataAdapter,
-  clearLocalNodeCache: mocks.clearLocalNodeCache,
-}));
+const mockAdapter: CoreDataAdapter = {
+  getNodeContext: vi.fn<(nodeId: string | null) => Promise<NodeContext>>(),
+  createNode: vi.fn<(parentId: string | null, name: string) => Promise<NodeRecord>>(),
+  updateNodeContent: vi.fn<(nodeId: string, content: string) => Promise<void>>(),
+  deleteNode: vi.fn<(nodeId: string, deleteChildren: boolean) => Promise<void>>(),
+  moveNode: vi.fn<(nodeId: string, newParentId: string | null) => Promise<void>>(),
+  getTree: vi.fn<() => Promise<TreeNode[]>>(),
+  clearCache: vi.fn(),
+};
 
 vi.mock('../services/nodeCache', () => ({
   getCached: () => null,
@@ -26,11 +19,12 @@ vi.mock('../services/nodeCache', () => ({
   invalidateAll: () => {},
 }));
 
-import { useNodeStore } from './nodeStore';
+import { useNodeStore, setDataAdapter } from './nodeStore';
 
 describe('useNodeStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    setDataAdapter(mockAdapter);
     vi.clearAllMocks();
   });
 
@@ -41,11 +35,11 @@ describe('useNodeStore', () => {
       pathNodes: [],
       children: [{ id: 'c1', name: 'Child', content: '', parentId: null, sortOrder: 0 }],
     };
-    mocks.dataAdapter.getNodeContext.mockResolvedValueOnce(rootContext);
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(rootContext);
 
     await store.loadNode(null);
 
-    expect(mocks.dataAdapter.getNodeContext).toHaveBeenCalledWith(null);
+    expect(mockAdapter.getNodeContext).toHaveBeenCalledWith(null);
     expect(store.viewState).toBe('display');
     expect(store.childNodes).toEqual(rootContext.children);
     expect(store.errorMessage).toBeNull();
@@ -60,7 +54,7 @@ describe('useNodeStore', () => {
       parentId: null,
       sortOrder: 0,
     };
-    mocks.dataAdapter.getTree.mockResolvedValueOnce([
+    mockAdapter.getTree!.mockResolvedValueOnce([
       {
         id: 'a',
         name: 'A',
@@ -93,18 +87,16 @@ describe('useNodeStore', () => {
       sortOrder: 0,
     };
 
-    mocks.dataAdapter.getNodeContext
-      .mockResolvedValueOnce({
-        nodeInfo: { id: 'parent-1', name: 'Parent', content: '', parentId: null, sortOrder: 0 },
-        pathNodes: [],
-        children: [],
-      })
-      .mockResolvedValueOnce({
-        nodeInfo: createdNode,
-        pathNodes: [{ id: 'parent-1', name: 'Parent', content: '', parentId: null, sortOrder: 0 }],
-        children: [],
-      });
-    mocks.dataAdapter.createNode.mockResolvedValueOnce(createdNode);
+    mockAdapter.getNodeContext!.mockResolvedValueOnce({
+      nodeInfo: { id: 'parent-1', name: 'Parent', content: '', parentId: null, sortOrder: 0 },
+      pathNodes: [],
+      children: [],
+    }).mockResolvedValueOnce({
+      nodeInfo: createdNode,
+      pathNodes: [{ id: 'parent-1', name: 'Parent', content: '', parentId: null, sortOrder: 0 }],
+      children: [],
+    });
+    mockAdapter.createNode!.mockResolvedValueOnce(createdNode);
 
     await store.loadNode('parent-1');
     store.startAdd();
@@ -112,8 +104,8 @@ describe('useNodeStore', () => {
 
     await store.confirmOperation();
 
-    expect(mocks.dataAdapter.createNode).toHaveBeenCalledWith('parent-1', 'New Node');
-    expect(mocks.dataAdapter.getNodeContext).toHaveBeenLastCalledWith('new-1');
+    expect(mockAdapter.createNode).toHaveBeenCalledWith('parent-1', 'New Node');
+    expect(mockAdapter.getNodeContext).toHaveBeenLastCalledWith('new-1');
     expect(store.viewState).toBe('display');
   });
 });

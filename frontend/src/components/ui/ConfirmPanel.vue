@@ -1,7 +1,7 @@
 <template>
   <div class="panel">
-    <section v-if="viewState === 'add'" class="block">
-      <h2>添加节点</h2>
+    <section v-if="viewState === ViewStates.ADD" class="block">
+      <h2>{{ UI.confirm.addNode }}</h2>
       <input
         v-model="pendingNodeName"
         class="name-input"
@@ -10,8 +10,8 @@
       />
     </section>
 
-    <section v-else-if="viewState === 'delete'" class="block">
-      <h2>删除节点</h2>
+    <section v-else-if="viewState === ViewStates.DELETE" class="block">
+      <h2>{{ UI.confirm.deleteNode }}</h2>
       <div class="target-name">{{ operationNode?.name ?? '' }}</div>
 
       <button
@@ -31,8 +31,8 @@
       </button>
     </section>
 
-    <section v-else-if="viewState === 'logout'" class="block">
-      <h2>退出登录</h2>
+    <section v-else-if="isLoggingOut" class="block">
+      <h2>{{ UI.confirm.logout }}</h2>
       <div class="target-name">{{ logoutPrompt }}</div>
     </section>
   </div>
@@ -44,14 +44,18 @@ import { storeToRefs } from 'pinia';
 import GlassWrapper from './GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useKnobDispatch } from '../../composables/useKnobDispatch';
+import { ViewStates } from '../../types/node';
+import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
 const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteWithChildren } =
   storeToRefs(nodeStore);
 const { currentUsername } = storeToRefs(authStore);
+const { isLoggingOut } = useKnobDispatch();
 
-const logoutPrompt = computed(() => `当前账号为${currentUsername.value}，请确认退出操作。`);
+const logoutPrompt = computed(() => UI.confirm.logoutPrompt(currentUsername.value));
 </script>
 
 <style scoped>

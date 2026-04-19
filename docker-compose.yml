@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "7860:7860"
+    volumes:
+      - seewhat-data:/data
+    environment:
+      - DB_PATH=/data/seewhat.db
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_DATA_MODE=backend
+        - VITE_BACKEND_URL=http://localhost:7860
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  seewhat-data:

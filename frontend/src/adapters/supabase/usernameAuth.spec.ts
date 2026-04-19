@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { usernameToSyntheticEmail } from './usernameAuth';
+import { usernameToSyntheticEmail } from '../adapters/supabase/usernameAuth';
 
 describe('usernameToSyntheticEmail', () => {
   it('maps a username to a deterministic synthetic email', async () => {

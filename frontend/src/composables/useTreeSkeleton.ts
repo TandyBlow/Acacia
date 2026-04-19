@@ -1,8 +1,7 @@
 import { ref } from 'vue';
 import { useAuthStore } from '../stores/authStore';
 import { useStyleStore } from '../stores/styleStore';
-import { dataAdapter } from '../adapters';
-import { supabase } from '../api/supabase';
+import { getDataAdapter } from '../stores/nodeStore';
 import type { SkeletonData } from '../types/tree';
 
 export function useTreeSkeleton() {
@@ -13,7 +12,11 @@ export function useTreeSkeleton() {
   async function fetchSkeleton(): Promise<SkeletonData> {
     const userId = authStore.user?.id;
     if (!userId) throw new Error('Not authenticated');
-    return dataAdapter.fetchTreeSkeleton(userId);
+    const adapter = getDataAdapter();
+    if (!adapter.fetchTreeSkeleton) {
+      return { branches: [], canvas_size: [512, 512], trunk: null, ground: null, roots: null };
+    }
+    return adapter.fetchTreeSkeleton(userId);
   }
 
   async function onTagNodes(): Promise<void> {
@@ -21,7 +24,8 @@ export function useTreeSkeleton() {
     if (!userId) return;
     busy.value = true;
     try {
-      await dataAdapter.tagNodes(userId);
+      const adapter = getDataAdapter();
+      await adapter.tagNodes?.(userId);
       await styleStore.fetchStyle(userId);
     } finally {
       busy.value = false;
@@ -30,19 +34,11 @@ export function useTreeSkeleton() {
 
   async function onTestSakura(): Promise<void> {
     const userId = authStore.user?.id;
-    if (!userId || !supabase) return;
+    if (!userId) return;
     busy.value = true;
     try {
-      const { data } = await supabase
-        .from('nodes')
-        .select('id')
-        .eq('owner_id', userId)
-        .eq('is_deleted', false);
-      if (data) {
-        for (const row of data) {
-          await supabase.from('nodes').update({ domain_tag: '日本文化' }).eq('id', row.id);
-        }
-      }
+      const adapter = getDataAdapter();
+      await adapter.testSakuraTag?.(userId);
       await styleStore.fetchStyle(userId);
     } finally {
       busy.value = false;

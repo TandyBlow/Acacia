@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
-import { dataAdapter } from '../adapters';
+import { getDataAdapter } from './nodeStore';
 
 export type ThemeStyle = 'default' | 'sakura' | 'cyberpunk' | 'ink';
 
@@ -23,10 +23,13 @@ export const useStyleStore = defineStore('style', () => {
 
   async function fetchStyle(userId: string): Promise<void> {
     try {
-      await dataAdapter.tagNodes(userId);
-      const data = await dataAdapter.fetchStyle(userId);
-      style.value = (data.style as ThemeStyle) ?? 'default';
-      distribution.value = data.distribution ?? {};
+      const adapter = getDataAdapter();
+      await adapter.tagNodes?.(userId);
+      const data = await adapter.fetchStyle?.(userId);
+      if (data) {
+        style.value = (data.style as ThemeStyle) ?? 'default';
+        distribution.value = data.distribution ?? {};
+      }
     } catch {
       // silent fallback — keep default theme
     } finally {

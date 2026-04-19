@@ -9,13 +9,13 @@ import {
   nextSortOrder,
   normalizeSiblingOrder,
 } from '../utils/treeUtils';
-import type { DataAdapter, NodeContext, NodeRecord, StyleResult, TreeNode } from '../types/node';
-import type { SkeletonData } from '../types/tree';
+import type { CoreDataAdapter, NodeContext, NodeRecord, TreeNode } from '../types/node';
+import { LOCAL_NODES_KEY } from '../constants/app';
+import { UI } from '../constants/uiStrings';
 
-const STORAGE_KEY = 'seewhat_local_nodes_v1';
-
+/** @deprecated Use adapter.clearCache() via the injected adapter instead. */
 export function clearLocalNodeCache(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LOCAL_NODES_KEY);
 }
 
 const seedNodes: NodeRecord[] = [
@@ -57,9 +57,9 @@ const seedNodes: NodeRecord[] = [
 ];
 
 function readLocalNodes(): NodeRecord[] {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = localStorage.getItem(LOCAL_NODES_KEY);
   if (!raw) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seedNodes));
+    localStorage.setItem(LOCAL_NODES_KEY, JSON.stringify(seedNodes));
     return seedNodes.map(cloneNode);
   }
 
@@ -80,15 +80,15 @@ function readLocalNodes(): NodeRecord[] {
     // fallback to seed below
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(seedNodes));
+  localStorage.setItem(LOCAL_NODES_KEY, JSON.stringify(seedNodes));
   return seedNodes.map(cloneNode);
 }
 
 function writeLocalNodes(nodes: NodeRecord[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes));
+  localStorage.setItem(LOCAL_NODES_KEY, JSON.stringify(nodes));
 }
 
-export const localAdapter: DataAdapter = {
+export const localAdapter: CoreDataAdapter = {
   async getNodeContext(nodeId: string | null): Promise<NodeContext> {
     const nodes = readLocalNodes();
     if (!nodeId) {
@@ -118,7 +118,7 @@ export const localAdapter: DataAdapter = {
   async createNode(parentId: string | null, name: string): Promise<NodeRecord> {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      throw new Error('节点名称不能为空。');
+      throw new Error(UI.errors.nodeNameEmpty);
     }
 
     const nodes = readLocalNodes();
@@ -142,7 +142,7 @@ export const localAdapter: DataAdapter = {
     const nodes = readLocalNodes();
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) {
-      throw new Error('未找到该节点。');
+      throw new Error(UI.errors.nodeNotFound);
     }
     node.content = content;
     writeLocalNodes(nodes);
@@ -152,7 +152,7 @@ export const localAdapter: DataAdapter = {
     const nodes = readLocalNodes();
     const target = nodes.find((node) => node.id === nodeId);
     if (!target) {
-      throw new Error('未找到该节点。');
+      throw new Error(UI.errors.nodeNotFound);
     }
 
     if (deleteChildren) {
@@ -181,7 +181,7 @@ export const localAdapter: DataAdapter = {
     const nodes = readLocalNodes();
     const target = nodes.find((node) => node.id === nodeId);
     if (!target) {
-      throw new Error('未找到该节点。');
+      throw new Error(UI.errors.nodeNotFound);
     }
 
     if (target.parentId === newParentId) {
@@ -191,12 +191,12 @@ export const localAdapter: DataAdapter = {
     if (newParentId) {
       const parentExists = nodes.some((node) => node.id === newParentId);
       if (!parentExists) {
-        throw new Error('目标父节点不存在。');
+        throw new Error(UI.errors.parentNotFound);
       }
       const blocked = new Set<string>([nodeId]);
       collectDescendantIds(nodes, nodeId, blocked);
       if (blocked.has(newParentId)) {
-        throw new Error('不能将节点移动到自身或其子节点下。');
+        throw new Error(UI.errors.cannotMoveToChild);
       }
     }
 
@@ -216,15 +216,7 @@ export const localAdapter: DataAdapter = {
     return buildTree(nodes, null);
   },
 
-  async fetchTreeSkeleton(): Promise<SkeletonData> {
-    throw new Error('Tree skeleton requires a backend connection.');
-  },
-
-  async tagNodes(): Promise<void> {
-    // no-op in local mode
-  },
-
-  async fetchStyle(): Promise<StyleResult> {
-    return { style: 'default', distribution: {} };
+  clearCache(): void {
+    clearLocalNodeCache();
   },
 };

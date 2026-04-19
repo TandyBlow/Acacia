@@ -21,7 +21,7 @@ vi.mock('../api/supabase', () => ({
   },
 }));
 
-vi.mock('../services/usernameAuth', () => ({
+vi.mock('../adapters/supabase/usernameAuth', () => ({
   usernameToSyntheticEmail: vi.fn(async (username: string) => `${username}@seewhat.local`),
 }));
 

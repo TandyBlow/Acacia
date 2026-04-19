@@ -2,12 +2,12 @@ import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
+import { useLogoutFlow } from './useLogoutFlow';
 
 export function useKnobDispatch() {
   const nodeStore = useNodeStore();
   const authStore = useAuthStore();
   const {
-    viewState,
     canConfirm: canNodeConfirm,
     isBusy: nodeBusy,
   } = storeToRefs(nodeStore);
@@ -17,19 +17,18 @@ export function useKnobDispatch() {
     isBusy: authBusy,
   } = storeToRefs(authStore);
 
+  const { isLoggingOut, startLogout, cancelLogout, confirmLogout } = useLogoutFlow();
+
   const isBusy = computed(() => nodeBusy.value || authBusy.value);
   const inAuthMode = computed(() => !isAuthenticated.value);
   const inConfirmMode = computed(() => {
     if (inAuthMode.value) return true;
-    return (
-      viewState.value === 'add' ||
-      viewState.value === 'move' ||
-      viewState.value === 'delete' ||
-      viewState.value === 'logout'
-    );
+    if (isLoggingOut.value) return true;
+    return nodeStore.isEditState;
   });
   const canConfirm = computed(() => {
     if (inAuthMode.value) return canAuthSubmit.value;
+    if (isLoggingOut.value) return true;
     return canNodeConfirm.value;
   });
 
@@ -38,13 +37,11 @@ export function useKnobDispatch() {
       await authStore.submitByKnob();
       return;
     }
-    if (viewState.value === 'logout') {
-      const loggedOut = await authStore.logout();
-      if (loggedOut) {
-        nodeStore.clearForLogout();
-        return;
+    if (isLoggingOut.value) {
+      const loggedOut = await confirmLogout();
+      if (!loggedOut) {
+        cancelLogout();
       }
-      nodeStore.cancelOperation();
       return;
     }
     await nodeStore.confirmOperation();
@@ -55,8 +52,12 @@ export function useKnobDispatch() {
       authStore.toggleMode();
       return;
     }
+    if (isLoggingOut.value) {
+      cancelLogout();
+      return;
+    }
     await nodeStore.onKnobClick();
   }
 
-  return { isBusy, inAuthMode, inConfirmMode, canConfirm, onHoldConfirm, onClick };
+  return { isBusy, inAuthMode, inConfirmMode, canConfirm, onHoldConfirm, onClick, isLoggingOut, startLogout, cancelLogout };
 }

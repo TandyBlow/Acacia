@@ -1,8 +1,9 @@
 <template>
   <div ref="containerRef" class="tree-canvas">
-    <div v-if="isDev" class="dev-buttons">
-      <button class="dev-btn" :disabled="busy" @click="onTagNodes">打标签</button>
-      <button class="dev-btn" :disabled="busy" @click="onTestSakura">测试樱花</button>
+    <div v-if="noTreeData" class="no-tree-msg">{{ UI.tree.noBackend }}</div>
+    <div v-if="isDev && !noTreeData" class="dev-buttons">
+      <button class="dev-btn" :disabled="busy" @click="onTagNodes">{{ UI.tree.devTagNodes }}</button>
+      <button class="dev-btn" :disabled="busy" @click="onTestSakura">{{ UI.tree.devTestSakura }}</button>
     </div>
   </div>
 </template>
@@ -14,22 +15,14 @@ import { useStyleStore } from '../../stores/styleStore';
 import { useTreeSkeleton } from '../../composables/useTreeSkeleton';
 import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, type TreeTheme } from './treeMaterials';
 import type { Branch, SkeletonData } from '../../types/tree';
-
-const BARK_COLORS: Record<TreeTheme, number> = {
-  default: 0xA0522D,
-  sakura: 0x4a3728,
-};
-const GROUND_COLOR = 0x5c3a1e;
-const DIRT_COLOR = 0x3b2413;
-const LEAF_SIZE_MULT: Record<TreeTheme, number> = {
-  default: 1.0,
-  sakura: 1.25,
-};
+import { BARK_COLORS, GROUND_COLOR, DIRT_COLOR, LEAF_SIZE_MULT, SCENE_BACKGROUND } from '../../constants/theme';
+import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
 const styleStore = useStyleStore();
 const { busy, fetchSkeleton, onTagNodes, onTestSakura } = useTreeSkeleton();
 const isDev = import.meta.env.DEV;
+const noTreeData = ref(false);
 
 let lastSkeleton: SkeletonData | null = null;
 let currentTheme: TreeTheme = 'default';
@@ -187,7 +180,7 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   const [canvasW, canvasH] = skeleton.canvas_size;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf5f0eb);
+  scene.background = new THREE.Color(SCENE_BACKGROUND);
 
   // 灯光 — 卡通着色需要光源
   const mainLight = new THREE.DirectionalLight(0xffffff, 3.0);
@@ -377,10 +370,15 @@ onMounted(async () => {
 
   try {
     const skeleton = await fetchSkeleton();
+    if (!skeleton.branches || skeleton.branches.length === 0) {
+      noTreeData.value = true;
+      return;
+    }
     lastSkeleton = skeleton;
     const theme: TreeTheme = styleStore.style === 'sakura' ? 'sakura' : 'default';
     setupScene(skeleton, theme);
   } catch (err) {
+    noTreeData.value = true;
     console.error('Failed to load tree skeleton:', err);
   }
 });
@@ -403,6 +401,17 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   position: relative;
+}
+
+.no-tree-msg {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--color-primary);
+  opacity: 0.6;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .dev-buttons {

@@ -1,19 +1,21 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { clearLocalNodeCache, dataAdapter } from '../adapters';
 import { findTreeNode, collectTreeDescendantIds } from '../utils/treeUtils';
 import * as nodeCache from '../services/nodeCache';
-import type { NodeRecord, TreeNode, ViewState } from '../types/node';
+import type { DataAdapter, NodeRecord, TreeNode, ViewState } from '../types/node';
+import { ViewStates } from '../types/node';
+import { UI } from '../constants/uiStrings';
 
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return '发生了未知错误';
+  return UI.errors.unknown;
 }
 
 let navigator: ((path: string, replace: boolean) => void) | null = null;
 let getInitialNodeId: (() => string | null) | null = null;
+let dataAdapter: DataAdapter | null = null;
 
 export function setNavigator(
   nav: (path: string, replace: boolean) => void,
@@ -23,12 +25,21 @@ export function setNavigator(
   getInitialNodeId = getRouteId;
 }
 
+export function setDataAdapter(adapter: DataAdapter): void {
+  dataAdapter = adapter;
+}
+
+export function getDataAdapter(): DataAdapter {
+  if (!dataAdapter) throw new Error('Data adapter not initialized');
+  return dataAdapter;
+}
+
 function navigate(path: string, replace = false): void {
   navigator?.(path, replace);
 }
 
 export const useNodeStore = defineStore('node', () => {
-  const viewState = ref<ViewState>('display');
+  const viewState = ref<ViewState>(ViewStates.DISPLAY);
   const activeNode = ref<NodeRecord | null>(null);
   const pathNodes = ref<NodeRecord[]>([]);
   const childNodes = ref<NodeRecord[]>([]);
@@ -46,20 +57,22 @@ export const useNodeStore = defineStore('node', () => {
 
   const isEditState = computed(
     () =>
-      viewState.value === 'add' ||
-      viewState.value === 'move' ||
-      viewState.value === 'delete' ||
-      viewState.value === 'logout',
+      viewState.value === ViewStates.ADD ||
+      viewState.value === ViewStates.MOVE ||
+      viewState.value === ViewStates.DELETE,
   );
 
+  const isTreeState = computed(() => viewState.value === ViewStates.TREE);
+  const isConfirmState = computed(() => isEditState.value);
+
   const canConfirm = computed(() => {
-    if (viewState.value === 'add') {
+    if (viewState.value === ViewStates.ADD) {
       return pendingNodeName.value.trim().length > 0;
     }
-    if (viewState.value === 'delete') {
+    if (viewState.value === ViewStates.DELETE) {
       return Boolean(operationNode.value);
     }
-    if (viewState.value === 'move') {
+    if (viewState.value === ViewStates.MOVE) {
       if (!operationNode.value) {
         return false;
       }
@@ -70,9 +83,6 @@ export const useNodeStore = defineStore('node', () => {
         return true;
       }
       return !blockedParentIds.value.includes(moveTargetParentId.value);
-    }
-    if (viewState.value === 'logout') {
-      return true;
     }
     return false;
   });
@@ -89,7 +99,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function refreshTree(): Promise<void> {
-    treeNodes.value = await dataAdapter.getTree();
+    treeNodes.value = await dataAdapter!.getTree();
   }
 
   let syncRouteFromLoad = false;
@@ -100,7 +110,7 @@ export const useNodeStore = defineStore('node', () => {
       activeNode.value = cached.nodeInfo;
       pathNodes.value = cached.pathNodes;
       childNodes.value = cached.children;
-      viewState.value = 'display';
+      viewState.value = ViewStates.DISPLAY;
       clearTransientState();
 
       syncRouteFromLoad = true;
@@ -112,11 +122,11 @@ export const useNodeStore = defineStore('node', () => {
     isBusy.value = true;
     errorMessage.value = null;
     try {
-      const context = await dataAdapter.getNodeContext(nodeId);
+      const context = await dataAdapter!.getNodeContext(nodeId);
       activeNode.value = context.nodeInfo;
       pathNodes.value = context.pathNodes;
       childNodes.value = context.children;
-      viewState.value = 'display';
+      viewState.value = ViewStates.DISPLAY;
       clearTransientState();
 
       nodeCache.setCache(nodeId, context);
@@ -153,7 +163,7 @@ export const useNodeStore = defineStore('node', () => {
 
   function startAdd(): void {
     errorMessage.value = null;
-    viewState.value = 'add';
+    viewState.value = ViewStates.ADD;
     pendingNodeName.value = '';
     operationNode.value = null;
     deleteWithChildren.value = false;
@@ -161,15 +171,9 @@ export const useNodeStore = defineStore('node', () => {
     blockedParentIds.value = [];
   }
 
-  function startLogout(): void {
-    errorMessage.value = null;
-    viewState.value = 'logout';
-    clearTransientState();
-  }
-
   async function startDelete(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
-    viewState.value = 'delete';
+    viewState.value = ViewStates.DELETE;
     operationNode.value = node;
     deleteWithChildren.value = false;
     await refreshTree();
@@ -179,7 +183,7 @@ export const useNodeStore = defineStore('node', () => {
 
   async function startMove(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
-    viewState.value = 'move';
+    viewState.value = ViewStates.MOVE;
     operationNode.value = node;
     moveTargetParentId.value = node.parentId;
     deleteWithChildren.value = false;
@@ -196,19 +200,18 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   function cancelOperation(): void {
-    viewState.value = 'display';
+    viewState.value = ViewStates.DISPLAY;
     clearTransientState();
   }
 
-  function clearForLogout(): void {
-    viewState.value = 'display';
+  function resetAfterLogout(): void {
     activeNode.value = null;
     pathNodes.value = [];
     childNodes.value = [];
     treeNodes.value = [];
     errorMessage.value = null;
     clearTransientState();
-    clearLocalNodeCache();
+    dataAdapter?.clearCache?.();
     nodeCache.invalidateAll();
     navigate('/', true);
   }
@@ -220,7 +223,7 @@ export const useNodeStore = defineStore('node', () => {
 
     errorMessage.value = null;
     try {
-      await dataAdapter.updateNodeContent(nodeId, content);
+      await dataAdapter!.updateNodeContent(nodeId, content);
       if (activeNode.value?.id === nodeId) {
         activeNode.value = { ...activeNode.value, content };
       }
@@ -232,7 +235,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function onKnobClick(): Promise<void> {
-    if (viewState.value === 'display') {
+    if (viewState.value === ViewStates.DISPLAY) {
       await loadNode(null);
       return;
     }
@@ -247,8 +250,8 @@ export const useNodeStore = defineStore('node', () => {
     isBusy.value = true;
     errorMessage.value = null;
     try {
-      if (viewState.value === 'add') {
-        const created = await dataAdapter.createNode(
+      if (viewState.value === ViewStates.ADD) {
+        const created = await dataAdapter!.createNode(
           currentNodeId.value,
           pendingNodeName.value.trim(),
         );
@@ -257,8 +260,8 @@ export const useNodeStore = defineStore('node', () => {
         return;
       }
 
-      if (viewState.value === 'delete' && operationNode.value) {
-        await dataAdapter.deleteNode(operationNode.value.id, deleteWithChildren.value);
+      if (viewState.value === ViewStates.DELETE && operationNode.value) {
+        await dataAdapter!.deleteNode(operationNode.value.id, deleteWithChildren.value);
         nodeCache.invalidate(currentNodeId.value);
         nodeCache.invalidate(operationNode.value.parentId);
         const reloadId = currentNodeId.value;
@@ -266,19 +269,12 @@ export const useNodeStore = defineStore('node', () => {
         return;
       }
 
-      if (viewState.value === 'move' && operationNode.value) {
+      if (viewState.value === ViewStates.MOVE && operationNode.value) {
         const movingId = operationNode.value.id;
-        await dataAdapter.moveNode(movingId, moveTargetParentId.value);
+        await dataAdapter!.moveNode(movingId, moveTargetParentId.value);
         nodeCache.invalidate(moveTargetParentId.value);
         nodeCache.invalidate(operationNode.value.parentId);
         await loadNode(movingId);
-        return;
-      }
-
-      if (viewState.value === 'logout') {
-        // Logout is handled by Knob.vue (authStore.logout + clearForLogout).
-        // This branch exists because confirmOperation is a shared dispatch path,
-        // but logout confirmation flow is managed externally.
         return;
       }
     } catch (error) {
@@ -303,19 +299,20 @@ export const useNodeStore = defineStore('node', () => {
     isBusy,
     errorMessage,
     isEditState,
+    isTreeState,
+    isConfirmState,
     canConfirm,
     currentNodeId,
     initialize,
     loadNode,
     startAdd,
-    startLogout,
     startDelete,
     startMove,
     setMoveTargetParent,
     cancelOperation,
     saveActiveNodeContent,
     refreshTree,
-    clearForLogout,
+    resetAfterLogout,
     syncFromRoute,
     onKnobClick,
     confirmOperation,

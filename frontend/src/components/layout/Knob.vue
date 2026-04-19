@@ -23,7 +23,7 @@
         </div>
       </GlassWrapper>
     </div>
-    <p v-if="showBottomLabel" class="knob-label knob-label-bottom">长按旋钮确认</p>
+    <p v-if="showBottomLabel" class="knob-label knob-label-bottom">{{ UI.knob.holdToConfirm }}</p>
   </div>
 </template>
 
@@ -34,12 +34,11 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
-
-const HOLD_MS = 700;
+import { KNOB_HOLD_MS } from '../../constants/app';
+import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
-const { viewState } = storeToRefs(nodeStore);
 const { isAuthenticated } = storeToRefs(authStore);
 
 const {
@@ -48,6 +47,7 @@ const {
   canConfirm,
   onHoldConfirm,
   onClick,
+  isLoggingOut,
 } = useKnobDispatch();
 
 const pressed = ref(false);
@@ -59,7 +59,7 @@ const showBottomLabel = computed(() =>
   isAuthenticated.value && inConfirmMode.value,
 );
 const topLabel = computed(() =>
-  viewState.value === 'display' ? '点击旋钮返回主页面' : '点击旋钮返回',
+  !nodeStore.isEditState && !isLoggingOut.value ? UI.knob.clickToHome : UI.knob.clickToReturn,
 );
 
 function clearTimer(): void {
@@ -81,7 +81,7 @@ function onPressStart(): void {
       triggeredByHold.value = true;
       pressed.value = false;
       await onHoldConfirm();
-    }, HOLD_MS);
+    }, KNOB_HOLD_MS);
   }
 }
 

@@ -56,25 +56,27 @@ import AuthPanel from '../components/auth/AuthPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
+import { useKnobDispatch } from '../composables/useKnobDispatch';
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
-const { viewState, activeNode } = storeToRefs(nodeStore);
+const { activeNode } = storeToRefs(nodeStore);
 const {
   mode: authMode,
   isAuthenticated,
 } = storeToRefs(authStore);
 
 const { isBusy } = useAppInit();
+const { isLoggingOut } = useKnobDispatch();
 
 const currentContent = computed(() => {
   if (!isAuthenticated.value) {
     return AuthPanel;
   }
-  if (viewState.value === 'move') {
+  if (nodeStore.isTreeState) {
     return GlobalTree;
   }
-  if (viewState.value === 'add' || viewState.value === 'delete' || viewState.value === 'logout') {
+  if (nodeStore.isConfirmState || isLoggingOut.value) {
     return ConfirmPanel;
   }
   if (!activeNode.value) {
@@ -87,7 +89,8 @@ const contentKey = computed(() => {
   if (!isAuthenticated.value) {
     return `auth:${authMode.value}`;
   }
-  return `${viewState.value}:${activeNode.value?.id ?? 'home'}`;
+  const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
+  return `${state}:${activeNode.value?.id ?? 'home'}`;
 });
 
 </script>

@@ -27,8 +27,8 @@
               </template>
               <template v-else>
                 <div class="inline-actions">
-                  <button type="button" class="action-half" @click.stop="moveNode(node)">移动</button>
-                  <button type="button" class="action-half" @click.stop="deleteNode(node)">删除</button>
+                  <button type="button" class="action-half" @click.stop="moveNode(node)">{{ UI.nav.move }}</button>
+                  <button type="button" class="action-half" @click.stop="deleteNode(node)">{{ UI.nav.delete }}</button>
                 </div>
               </template>
             </div>
@@ -38,7 +38,7 @@
 
       <GlassWrapper class="add-shell" interactive :pressed="addPressed" @click="onAddClick">
         <button type="button" class="add-button">
-          + 添加节点
+          {{ UI.nav.addNode }}
         </button>
       </GlassWrapper>
 
@@ -46,7 +46,7 @@
 
     <div v-else class="auth-tip-shell">
       <GlassWrapper class="auth-tip-card">
-        <div class="auth-tip">注册或登录以继续</div>
+        <div class="auth-tip">{{ UI.nav.authTip }}</div>
       </GlassWrapper>
     </div>
   </div>
@@ -59,15 +59,14 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
+import { NAV_ROW_H, NAV_ROW_GAP, NAV_ANIM_MS } from '../../constants/app';
+import { UI } from '../../constants/uiStrings';
 
-const ROW_H = 54;
-const ROW_GAP = 1;
-const ROW_STEP = ROW_H + ROW_GAP;
-const ANIM_MS = 240;
+const ROW_STEP = NAV_ROW_H + NAV_ROW_GAP;
 
 const store = useNodeStore();
 const authStore = useAuthStore();
-const { childNodes, viewState } = storeToRefs(store);
+const { childNodes } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
 
 // --- scroll state ---
@@ -112,7 +111,7 @@ watch(maxVisible, (mv) => {
 
 // --- interaction state ---
 const actionNodeId = ref<string | null>(null);
-const addPressed = computed(() => viewState.value === 'add');
+const addPressed = computed(() => store.viewState === 'add');
 const pressedNodeId = ref<string | null>(null);
 
 function onRowClick(nodeId: string): void {
@@ -209,7 +208,7 @@ function scrollDown(): void {
         scrollOffset.value,
         scrollOffset.value + maxVisible.value,
       );
-    }, ANIM_MS + 60);
+    }, NAV_ANIM_MS + 60);
   }, 180);
 }
 
@@ -245,7 +244,7 @@ function scrollUp(): void {
         scrollOffset.value,
         scrollOffset.value + maxVisible.value,
       );
-    }, ANIM_MS + 60);
+    }, NAV_ANIM_MS + 60);
   }, 180);
 }
 
