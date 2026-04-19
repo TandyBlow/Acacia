@@ -58,22 +58,6 @@ function mapRpcRow(row: RpcNodeRow): NodeRecord {
 }
 
 // ---------------------------------------------------------------------------
-// RPC availability detection
-// ---------------------------------------------------------------------------
-
-let rpcAvailable: boolean | null = null;
-
-function markRpcUnavailable(): void {
-  if (rpcAvailable !== false) {
-    console.warn(
-      'SeeWhat: RPC functions not found in database. Falling back to direct queries. ' +
-      'Deploy the RPC functions from supabase/schema.sql for better performance.',
-    );
-    rpcAvailable = false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Backend HTTP helpers (not Supabase SDK)
 // ---------------------------------------------------------------------------
 
@@ -419,7 +403,7 @@ const rpcImpl: DataAdapter = {
 };
 
 // ---------------------------------------------------------------------------
-// Public adapter: auto-detects RPC availability and falls back gracefully
+// Per-method RPC availability tracking
 // ---------------------------------------------------------------------------
 
 type AdapterMethod = (...a: unknown[]) => unknown;
@@ -435,27 +419,30 @@ function callMethod(
   return Promise.resolve(fn.apply(impl, args));
 }
 
+const rpcMethodAvailable: Record<string, boolean> = {};
+
 export const supabaseAdapter: DataAdapter = new Proxy({} as DataAdapter, {
   get(_target, method: string) {
     return async (...args: unknown[]) => {
-      if (rpcAvailable === false) {
+      // If this specific method was confirmed unavailable, skip RPC
+      if (rpcMethodAvailable[method] === false) {
         return callMethod(directQueryImpl, method, args);
       }
 
-      if (rpcAvailable === null) {
-        // First call: try RPC, fall back on ANY failure
-        try {
-          const result = await callMethod(rpcImpl, method, args);
-          rpcAvailable = true;
-          return result;
-        } catch {
-          markRpcUnavailable();
-          return callMethod(directQueryImpl, method, args);
+      // Try RPC first, fall back on failure
+      try {
+        const result = await callMethod(rpcImpl, method, args);
+        rpcMethodAvailable[method] = true;
+        return result;
+      } catch {
+        if (rpcMethodAvailable[method] === undefined) {
+          console.warn(
+            `SeeWhat: RPC '${method}' not available, falling back to direct query.`,
+          );
         }
+        rpcMethodAvailable[method] = false;
+        return callMethod(directQueryImpl, method, args);
       }
-
-      // RPC confirmed available
-      return callMethod(rpcImpl, method, args);
     };
   },
 });
