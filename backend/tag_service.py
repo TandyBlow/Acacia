@@ -1,18 +1,9 @@
 """
 Domain tag service: assigns domain tags to nodes via keyword matching.
 """
-from os import getenv
 from collections import Counter
 
-from dotenv import load_dotenv
-from supabase import create_client, Client
-
-load_dotenv()
-
-supabase: Client = create_client(
-    getenv("SUPABASE_URL") or "https://placeholder.supabase.co",
-    getenv("SUPABASE_SERVICE_KEY") or "placeholder-key"
-)
+from db import supabase
 
 DOMAIN_KEYWORDS = {
     '日本文化': ['日本', '动漫', '漫画', '樱花', '东京', '日语', '二次元', 'anime', 'manga', '和风', '武士', '忍者', '京都'],
