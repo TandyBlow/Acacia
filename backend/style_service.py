@@ -1,17 +1,7 @@
 """
 Style service: computes visual style based on domain tag distribution.
 """
-from os import getenv
-
-from dotenv import load_dotenv
-from supabase import create_client, Client
-
-load_dotenv()
-
-supabase: Client = create_client(
-    getenv("SUPABASE_URL") or "https://placeholder.supabase.co",
-    getenv("SUPABASE_SERVICE_KEY") or "placeholder-key"
-)
+from db import supabase
 
 STYLE_RULES = [
     ('日本文化', 0.30, 'sakura'),
