@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
+import { dataAdapter } from '../adapters';
 
 export type ThemeStyle = 'default' | 'sakura' | 'cyberpunk' | 'ink';
 
@@ -21,15 +22,9 @@ export const useStyleStore = defineStore('style', () => {
   }
 
   async function fetchStyle(userId: string): Promise<void> {
-    const baseUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:7860';
-
     try {
-      await fetch(`${baseUrl}/tag-nodes/${userId}`, { method: 'POST' });
-
-      const res = await fetch(`${baseUrl}/style/${userId}`);
-      if (!res.ok) return;
-
-      const data = await res.json();
+      await dataAdapter.tagNodes(userId);
+      const data = await dataAdapter.fetchStyle(userId);
       style.value = (data.style as ThemeStyle) ?? 'default';
       distribution.value = data.distribution ?? {};
     } catch {
