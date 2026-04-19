@@ -3,9 +3,10 @@
     <template v-if="isAuthenticated">
       <TransitionGroup
         ref="nodeListRef"
-        name="nav-row"
+        :name="transitionName"
         tag="div"
         class="node-list"
+        :class="{ 'scroll-dir-up': scrollDirection === 'up' }"
         @wheel.prevent="onWheel"
         @touchstart.passive="onTouchStart"
         @touchend="onTouchEnd"
@@ -40,6 +41,7 @@
           + 添加节点
         </button>
       </GlassWrapper>
+
     </template>
 
     <div v-else class="auth-tip-shell">
@@ -51,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, type ComponentPublicInstance } from 'vue';
+import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
@@ -76,6 +78,8 @@ const isScrolling = ref(false);
 const displayNodes = ref<NodeRecord[]>([]);
 const scrollingTopId = ref<string | null>(null);
 const scrollingBottomId = ref<string | null>(null);
+const scrollDirection = ref<'up' | 'down' | null>(null);
+const transitionName = ref('nav-row');
 
 // [Bug3 fix] cancel token to invalidate stale scroll callbacks
 let scrollCancelToken = 0;
@@ -92,7 +96,11 @@ watch(childNodes, (list) => {
   scrollOffset.value = 0;
   scrollingTopId.value = null;
   scrollingBottomId.value = null;
+  scrollDirection.value = null;
   displayNodes.value = list.slice(0, maxVisible.value);
+  if (transitionName.value === 'none') {
+    nextTick(() => { transitionName.value = 'nav-row'; });
+  }
 }, { immediate: true });
 
 // [Bug4 fix] update visible window when container resizes
@@ -122,6 +130,7 @@ function openNode(nodeId: string): void {
   if (pressedNodeId.value) return;
   actionNodeId.value = null;
   pressedNodeId.value = nodeId;
+  transitionName.value = 'none';
   setTimeout(async () => {
     await store.loadNode(nodeId);
     pressedNodeId.value = null;
@@ -132,6 +141,7 @@ function onAddClick(): void {
   if (addPressed.value) return;
   store.startAdd();
 }
+
 
 function toggleActions(nodeId: string): void {
   actionNodeId.value = actionNodeId.value === nodeId ? null : nodeId;
@@ -172,6 +182,7 @@ function scrollDown(): void {
   if (off + mv >= childNodes.value.length) return;
 
   isScrolling.value = true;
+  scrollDirection.value = 'down';
   const token = ++scrollCancelToken;
   const topId = displayNodes.value[0]!.id;
   const newNode = childNodes.value[off + mv];
@@ -193,6 +204,7 @@ function scrollDown(): void {
       // 阶段3: 底部浮起
       scrollingBottomId.value = null;
       isScrolling.value = false;
+      scrollDirection.value = null;
       displayNodes.value = childNodes.value.slice(
         scrollOffset.value,
         scrollOffset.value + maxVisible.value,
@@ -206,27 +218,29 @@ function scrollUp(): void {
   if (off <= 0) return;
 
   isScrolling.value = true;
+  scrollDirection.value = 'up';
   const token = ++scrollCancelToken;
-  const topId = displayNodes.value[0]!.id;
+  const bottomId = displayNodes.value[displayNodes.value.length - 1]!.id;
   const newNode = childNodes.value[off - 1];
   if (!newNode) { isScrolling.value = false; return; }
 
-  // 阶段1: 顶部凹陷
-  scrollingTopId.value = topId;
+  // 阶段1: 底部凹陷
+  scrollingBottomId.value = bottomId;
 
   setTimeout(() => {
     if (token !== scrollCancelToken) return;
-    // 阶段2: 顶行消失 + 其他行上移 + 底部新行凹陷进入
-    scrollingTopId.value = null;
-    scrollingBottomId.value = newNode.id;
+    // 阶段2: 底行消失 + 其他行下移 + 顶部新行凹陷进入
+    scrollingBottomId.value = null;
+    scrollingTopId.value = newNode.id;
     displayNodes.value = [newNode, ...displayNodes.value.slice(0, -1)];
     scrollOffset.value = off - 1;
 
     setTimeout(() => {
       if (token !== scrollCancelToken) return;
-      // 阶段3: 底部浮起
-      scrollingBottomId.value = null;
+      // 阶段3: 顶部浮起
+      scrollingTopId.value = null;
       isScrolling.value = false;
+      scrollDirection.value = null;
       displayNodes.value = childNodes.value.slice(
         scrollOffset.value,
         scrollOffset.value + maxVisible.value,
@@ -291,8 +305,8 @@ onUnmounted(() => ro?.disconnect());
 .row-glass :deep(.glass-raised),
 .add-shell :deep(.glass-raised) {
   box-shadow:
-    4px 4px 8px rgba(49, 78, 151, 0.15),
-    -4px -4px 8px rgba(255, 255, 255, 0.3);
+    4px 4px 8px var(--shadow-raised-a),
+    -4px -4px 8px var(--shadow-raised-b);
 }
 
 .row-content {
@@ -347,9 +361,7 @@ onUnmounted(() => ro?.disconnect());
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
-}
-
-.empty {
+}.empty {
   min-height: 54px;
 }
 
@@ -396,5 +408,21 @@ onUnmounted(() => ro?.disconnect());
 
 .nav-row-leave-to {
   opacity: 0;
+}
+
+.scroll-dir-up .nav-row-enter-from {
+  opacity: 0;
+  transform: translateY(-12px) scale(0.97);
+}
+
+.none-enter-active,
+.none-leave-active,
+.none-move {
+  transition: none !important;
+}
+.none-enter-from,
+.none-leave-to {
+  opacity: 1 !important;
+  transform: none !important;
 }
 </style>

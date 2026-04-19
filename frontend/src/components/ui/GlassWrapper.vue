@@ -52,15 +52,15 @@ defineProps<{
 
 .glass-raised {
   box-shadow:
-    5px 5px 10px rgba(49, 78, 151, 0.14),
-    -5px -5px 10px rgba(255, 255, 255, 0.28);
+    5px 5px 10px var(--shadow-raised-a),
+    -5px -5px 10px var(--shadow-raised-b);
 }
 
 .glass-inset {
   box-shadow:
-    inset 9px 9px 18px rgba(38, 85, 108, 0.56),
-    inset -9px -9px 18px rgba(148, 241, 255, 0.52);
-  border-color: rgba(109, 138, 255, 0.28);
+    inset 9px 9px 18px var(--shadow-inset-a),
+    inset -9px -9px 18px var(--shadow-inset-b);
+  border-color: var(--color-glass-border);
 }
 
 .glass-pressed {

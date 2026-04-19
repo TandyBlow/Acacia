@@ -230,8 +230,8 @@ function onPressCancel(): void {
 
 .knob-body :deep(.glass-raised) {
   box-shadow:
-    4px 4px 8px rgba(49, 78, 151, 0.16),
-    -4px -4px 8px rgba(255, 255, 255, 0.3);
+    4px 4px 8px var(--shadow-raised-a),
+    -4px -4px 8px var(--shadow-raised-b);
 }
 
 .knob-body :deep(.glass-content) {

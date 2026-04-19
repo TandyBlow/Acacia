@@ -1,16 +1,6 @@
 <template>
   <div class="editor-shell">
-    <template v-if="activeNode">
-      <EditorContent :editor="editor" class="editor-input" spellcheck="false" />
-    </template>
-    <div v-else class="home-state">
-      <button type="button" class="logout-button" @click="startLogout">
-        <GlassWrapper class="logout-toggle" shape="circle" interactive>
-          <span class="logout-toggle-mark" />
-        </GlassWrapper>
-        <span class="logout-label">退出登录</span>
-      </button>
-    </div>
+    <EditorContent :editor="editor" class="editor-input" spellcheck="false" />
   </div>
 </template>
 
@@ -25,7 +15,6 @@ import { Mathematics, mathMigrationRegex, migrateMathStrings } from '@tiptap/ext
 import { Markdown } from '@tiptap/markdown';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
-import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
@@ -116,9 +105,6 @@ function parseMarkdownDoc(instance: Editor, content: string): JSONContent | null
   }
 }
 
-function startLogout(): void {
-  store.startLogout();
-}
 
 function clearAutoSaveTimer(): void {
   if (autoSaveTimer !== null) {
@@ -535,48 +521,4 @@ onBeforeUnmount(() => {
   margin: 0.9em 0;
 }
 
-.home-state {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  color: var(--color-primary);
-}
-
-.logout-button {
-  width: fit-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.logout-toggle {
-  width: 28px;
-  height: 28px;
-  padding: 1px;
-}
-
-.logout-toggle :deep(.glass-raised) {
-  box-shadow:
-    3px 3px 6px rgba(49, 78, 151, 0.16),
-    -3px -3px 6px rgba(255, 255, 255, 0.3);
-}
-
-.logout-toggle-mark {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-}
-
-.logout-label {
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 700;
-}
 </style>
