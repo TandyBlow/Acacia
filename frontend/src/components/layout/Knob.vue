@@ -33,45 +33,26 @@ import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useKnobDispatch } from '../../composables/useKnobDispatch';
 
 const HOLD_MS = 700;
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
+const { viewState } = storeToRefs(nodeStore);
+const { isAuthenticated } = storeToRefs(authStore);
+
 const {
-  viewState,
-  canConfirm: canNodeConfirm,
-  isBusy: nodeBusy,
-} = storeToRefs(nodeStore);
-const {
-  isAuthenticated,
-  canSubmit: canAuthSubmit,
-  isBusy: authBusy,
-} = storeToRefs(authStore);
+  isBusy,
+  inConfirmMode,
+  canConfirm,
+  onHoldConfirm,
+  onClick,
+} = useKnobDispatch();
 
 const pressed = ref(false);
 const triggeredByHold = ref(false);
 let holdTimer: number | null = null;
-
-const isBusy = computed(() => nodeBusy.value || authBusy.value);
-const inAuthMode = computed(() => !isAuthenticated.value);
-const inConfirmMode = computed(() => {
-  if (inAuthMode.value) {
-    return true;
-  }
-  return (
-    viewState.value === 'add' ||
-    viewState.value === 'move' ||
-    viewState.value === 'delete' ||
-    viewState.value === 'logout'
-  );
-});
-const canConfirm = computed(() => {
-  if (inAuthMode.value) {
-    return canAuthSubmit.value;
-  }
-  return canNodeConfirm.value;
-});
 
 const showLabels = computed(() => isAuthenticated.value);
 const showBottomLabel = computed(() =>
@@ -89,9 +70,7 @@ function clearTimer(): void {
 }
 
 function onPressStart(): void {
-  if (isBusy.value) {
-    return;
-  }
+  if (isBusy.value) return;
 
   pressed.value = true;
   triggeredByHold.value = false;
@@ -101,28 +80,13 @@ function onPressStart(): void {
     holdTimer = window.setTimeout(async () => {
       triggeredByHold.value = true;
       pressed.value = false;
-      if (inAuthMode.value) {
-        await authStore.submitByKnob();
-        return;
-      }
-      if (viewState.value === 'logout') {
-        const loggedOut = await authStore.logout();
-        if (loggedOut) {
-          nodeStore.clearForLogout();
-          return;
-        }
-        nodeStore.cancelOperation();
-        return;
-      }
-      await nodeStore.confirmOperation();
+      await onHoldConfirm();
     }, HOLD_MS);
   }
 }
 
 async function onPressEnd(): Promise<void> {
-  if (!pressed.value && !holdTimer) {
-    return;
-  }
+  if (!pressed.value && !holdTimer) return;
 
   clearTimer();
   const shouldClick = !triggeredByHold.value;
@@ -130,18 +94,12 @@ async function onPressEnd(): Promise<void> {
   triggeredByHold.value = false;
 
   if (shouldClick) {
-    if (inAuthMode.value) {
-      authStore.toggleMode();
-      return;
-    }
-    await nodeStore.onKnobClick();
+    await onClick();
   }
 }
 
 function onPressCancel(): void {
-  if (!pressed.value && !holdTimer) {
-    return;
-  }
+  if (!pressed.value && !holdTimer) return;
 
   clearTimer();
   pressed.value = false;
