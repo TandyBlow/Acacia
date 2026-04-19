@@ -31,6 +31,9 @@ export default defineConfig({
       filename: 'sw.js',
       manifestFilename: 'manifest.json',
       manifest,
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+      },
     }),
   ],
 })
