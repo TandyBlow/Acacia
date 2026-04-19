@@ -9,7 +9,8 @@ import {
   collectDescendantIds,
   nextSortOrder,
 } from '../utils/treeUtils';
-import type { DataAdapter, NodeContext, NodeRecord, TreeNode } from '../types/node';
+import type { DataAdapter, NodeContext, NodeRecord, StyleResult, TreeNode } from '../types/node';
+import type { SkeletonData } from '../types/tree';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -68,6 +69,31 @@ function markRpcUnavailable(): void {
     );
     rpcAvailable = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Backend HTTP helpers (not Supabase SDK)
+// ---------------------------------------------------------------------------
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:7860';
+
+async function fetchTreeSkeletonHttp(userId: string): Promise<SkeletonData> {
+  const res = await fetch(`${BACKEND_URL}/generate-tree-skeleton/${userId}`, { method: 'POST' });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch skeleton: ${text}`);
+  }
+  return res.json();
+}
+
+async function tagNodesHttp(userId: string): Promise<void> {
+  await fetch(`${BACKEND_URL}/tag-nodes/${userId}`, { method: 'POST' });
+}
+
+async function fetchStyleHttp(userId: string): Promise<StyleResult> {
+  const res = await fetch(`${BACKEND_URL}/style/${userId}`);
+  if (!res.ok) throw new Error('Failed to fetch style');
+  return res.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +319,10 @@ const directQueryImpl: DataAdapter = {
     const nodes = await fetchAllNodes();
     return buildTree(nodes, null);
   },
+
+  fetchTreeSkeleton: fetchTreeSkeletonHttp,
+  tagNodes: tagNodesHttp,
+  fetchStyle: fetchStyleHttp,
 };
 
 // ---------------------------------------------------------------------------
@@ -366,6 +396,10 @@ const rpcImpl: DataAdapter = {
     const nodes: NodeRecord[] = rows.map(mapRpcRow);
     return buildTree(nodes, null);
   },
+
+  fetchTreeSkeleton: fetchTreeSkeletonHttp,
+  tagNodes: tagNodesHttp,
+  fetchStyle: fetchStyleHttp,
 };
 
 // ---------------------------------------------------------------------------

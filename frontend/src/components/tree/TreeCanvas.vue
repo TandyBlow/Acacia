@@ -10,29 +10,10 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import * as THREE from 'three';
-import { useAuthStore } from '../../stores/authStore';
 import { useStyleStore } from '../../stores/styleStore';
-import { supabase } from '../../api/supabase';
+import { useTreeSkeleton } from '../../composables/useTreeSkeleton';
 import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, type TreeTheme } from './treeMaterials';
-
-interface Branch {
-  start: [number, number];
-  end: [number, number];
-  control1: [number, number];
-  control2: [number, number];
-  thickness: number;
-  node_id: string;
-  depth: number;
-  descendants?: number;
-}
-
-interface SkeletonData {
-  branches: Branch[];
-  canvas_size: [number, number];
-  trunk: Branch[] | null;
-  ground: [number, number][] | null;
-  roots: Branch[] | null;
-}
+import type { Branch, SkeletonData } from '../../types/tree';
 
 const BARK_COLORS: Record<TreeTheme, number> = {
   default: 0xA0522D,
@@ -46,10 +27,9 @@ const LEAF_SIZE_MULT: Record<TreeTheme, number> = {
 };
 
 const containerRef = ref<HTMLDivElement>();
-const authStore = useAuthStore();
 const styleStore = useStyleStore();
+const { busy, fetchSkeleton, onTagNodes, onTestSakura } = useTreeSkeleton();
 const isDev = import.meta.env.DEV;
-const busy = ref(false);
 
 let lastSkeleton: SkeletonData | null = null;
 let currentTheme: TreeTheme = 'default';
@@ -62,8 +42,6 @@ let branchMeshes: THREE.Mesh[] = [];
 let outlineMeshes: THREE.Mesh[] = [];
 let leafMeshes: THREE.Mesh[] = [];
 let animationFrameId = 0;
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
 
 function to3D(x: number, y: number, canvasW: number, canvasH: number): THREE.Vector3 {
   return new THREE.Vector3(
@@ -364,58 +342,6 @@ function onResize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
-}
-
-async function onTagNodes(): Promise<void> {
-  const userId = authStore.user?.id;
-  if (!userId) return;
-  busy.value = true;
-  try {
-    await styleStore.fetchStyle(userId);
-    console.log('[dev] tag result:', styleStore.style, styleStore.distribution);
-  } finally {
-    busy.value = false;
-  }
-}
-
-async function onTestSakura(): Promise<void> {
-  const userId = authStore.user?.id;
-  if (!userId || !supabase) return;
-  busy.value = true;
-  try {
-    const { data } = await supabase
-      .from('nodes')
-      .select('id')
-      .eq('owner_id', userId)
-      .eq('is_deleted', false);
-    if (data) {
-      for (const row of data) {
-        await supabase.from('nodes').update({ domain_tag: '日本文化' }).eq('id', row.id);
-      }
-    }
-    const res = await fetch(`${BACKEND_URL}/style/${userId}`);
-    if (res.ok) {
-      const result = await res.json();
-      styleStore.forceStyle('sakura', result.distribution);
-      console.log('[dev] force sakura:', result.distribution);
-    }
-  } finally {
-    busy.value = false;
-  }
-}
-
-async function fetchSkeleton(): Promise<SkeletonData> {
-  const userId = authStore.user?.id;
-  if (!userId) throw new Error('Not authenticated');
-
-  const res = await fetch(`${BACKEND_URL}/generate-tree-skeleton/${userId}`, {
-    method: 'POST',
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to fetch skeleton: ${text}`);
-  }
-  return res.json();
 }
 
 const allDisposable: THREE.Object3D[] = [];

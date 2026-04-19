@@ -9,7 +9,8 @@ import {
   nextSortOrder,
   normalizeSiblingOrder,
 } from '../utils/treeUtils';
-import type { DataAdapter, NodeContext, NodeRecord, TreeNode } from '../types/node';
+import type { DataAdapter, NodeContext, NodeRecord, StyleResult, TreeNode } from '../types/node';
+import type { SkeletonData } from '../types/tree';
 
 const STORAGE_KEY = 'seewhat_local_nodes_v1';
 
@@ -213,5 +214,17 @@ export const localAdapter: DataAdapter = {
   async getTree(): Promise<TreeNode[]> {
     const nodes = readLocalNodes();
     return buildTree(nodes, null);
+  },
+
+  async fetchTreeSkeleton(): Promise<SkeletonData> {
+    throw new Error('Tree skeleton requires a backend connection.');
+  },
+
+  async tagNodes(): Promise<void> {
+    // no-op in local mode
+  },
+
+  async fetchStyle(): Promise<StyleResult> {
+    return { style: 'default', distribution: {} };
   },
 };
