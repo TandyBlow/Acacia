@@ -20,6 +20,16 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "SeeWhat API is running"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
 class NodeCreate(BaseModel):
     name: str
     parent_id: str | None = None
