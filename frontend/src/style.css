@@ -4,12 +4,70 @@
   --color-hint: #66ffe5;
   --color-glass-border: rgba(109, 138, 255, 0.28);
   --color-glass-bg: rgba(255, 255, 255, 0.12);
+  --shadow-inset-a: rgba(38, 85, 108, 0.56);
+  --shadow-inset-b: rgba(148, 241, 255, 0.52);
+  --shadow-raised-a: rgba(49, 78, 151, 0.14);
+  --shadow-raised-b: rgba(255, 255, 255, 0.28);
   color: var(--color-primary);
   line-height: 1.35;
   font-weight: 400;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* sakura theme */
+.theme-sakura {
+  --color-primary: #d4618c;
+  --color-hint: #ffb7d5;
+  --color-glass-border: rgba(212, 97, 140, 0.28);
+  --color-glass-bg: rgba(255, 255, 255, 0.15);
+  --shadow-inset-a: rgba(140, 50, 80, 0.56);
+  --shadow-inset-b: rgba(255, 183, 213, 0.52);
+  --shadow-raised-a: rgba(151, 49, 90, 0.14);
+  --shadow-raised-b: rgba(255, 255, 255, 0.3);
+}
+
+.theme-sakura body {
+  background:
+    linear-gradient(180deg, #fff5f8 0%, #ffe4ee 20%, #ffb7d5 55%, #ff8fbf 100%);
+  background-attachment: fixed;
+}
+
+/* cyberpunk theme */
+.theme-cyberpunk {
+  --color-primary: #00ffe0;
+  --color-hint: #ff00ff;
+  --color-glass-border: rgba(0, 255, 224, 0.28);
+  --color-glass-bg: rgba(0, 0, 0, 0.18);
+  --shadow-inset-a: rgba(0, 40, 50, 0.7);
+  --shadow-inset-b: rgba(0, 255, 224, 0.35);
+  --shadow-raised-a: rgba(0, 255, 224, 0.12);
+  --shadow-raised-b: rgba(255, 0, 255, 0.08);
+}
+
+.theme-cyberpunk body {
+  background:
+    linear-gradient(180deg, #0a0a1a 0%, #0d1b2a 20%, #1b2838 55%, #0a192f 100%);
+  background-attachment: fixed;
+}
+
+/* ink theme */
+.theme-ink {
+  --color-primary: #2c2c2c;
+  --color-hint: #c8a87c;
+  --color-glass-border: rgba(44, 44, 44, 0.2);
+  --color-glass-bg: rgba(255, 255, 255, 0.08);
+  --shadow-inset-a: rgba(60, 50, 40, 0.5);
+  --shadow-inset-b: rgba(200, 168, 124, 0.3);
+  --shadow-raised-a: rgba(44, 44, 44, 0.12);
+  --shadow-raised-b: rgba(255, 255, 255, 0.25);
+}
+
+.theme-ink body {
+  background:
+    linear-gradient(180deg, #f5f0e8 0%, #ece4d4 20%, #ddd2bc 55%, #c8b99a 100%);
+  background-attachment: fixed;
 }
 
 * {
