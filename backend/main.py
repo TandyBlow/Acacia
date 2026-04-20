@@ -15,6 +15,7 @@ from tag_service import tag_all_nodes
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service import compute_style
 from style_service_sqlite import compute_style_sqlite
+from ai_generate_service import ai_generate_nodes
 
 app = FastAPI()
 
@@ -442,6 +443,24 @@ def tag_nodes(user_id: str):
 def get_style(user_id: str):
     try:
         return compute_style(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# --- AI node generation (Supabase-backed) ---
+
+class AiGenerateRequest(BaseModel):
+    input: str
+
+
+@app.post("/ai-generate-nodes/{user_id}")
+def ai_generate(user_id: str, payload: AiGenerateRequest):
+    if not payload.input.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Input text is required")
+    try:
+        return ai_generate_nodes(payload.input.strip(), user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
