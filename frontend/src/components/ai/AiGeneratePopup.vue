@@ -58,7 +58,7 @@ import { useAiGenerate } from '../../composables/useAiGenerate';
 const authStore = useAuthStore();
 const nodeStore = useNodeStore();
 const { user } = storeToRefs(authStore);
-const { isBusy, generate } = useAiGenerate();
+const { isBusy, errorMessage, generate } = useAiGenerate();
 
 const isOpen = ref(false);
 const inputText = ref('');
