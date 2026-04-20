@@ -101,3 +101,17 @@ export function createLeafBillboard(
   mesh.userData.isLeaf = true;
   return mesh;
 }
+
+export function createSkyGradient(topColor: number, bottomColor: number): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+  gradient.addColorStop(0, '#' + new THREE.Color(topColor).getHexString());
+  gradient.addColorStop(1, '#' + new THREE.Color(bottomColor).getHexString());
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 2, 256);
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}

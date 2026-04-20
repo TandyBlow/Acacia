@@ -4,19 +4,31 @@ import { useStyleStore } from '../stores/styleStore';
 import { getDataAdapter } from '../stores/nodeStore';
 import type { SkeletonData } from '../types/tree';
 
+const skeletonData = ref<SkeletonData | null>(null);
+const skeletonLoaded = ref(false);
+
 export function useTreeSkeleton() {
   const authStore = useAuthStore();
   const styleStore = useStyleStore();
   const busy = ref(false);
 
   async function fetchSkeleton(): Promise<SkeletonData> {
+    if (skeletonLoaded.value && skeletonData.value) {
+      return skeletonData.value;
+    }
     const userId = authStore.user?.id;
     if (!userId) throw new Error('Not authenticated');
     const adapter = getDataAdapter();
     if (!adapter.fetchTreeSkeleton) {
-      return { branches: [], canvas_size: [512, 512], trunk: null, ground: null, roots: null };
+      const empty: SkeletonData = { branches: [], canvas_size: [512, 512], trunk: null, ground: null, roots: null };
+      skeletonData.value = empty;
+      skeletonLoaded.value = true;
+      return empty;
     }
-    return adapter.fetchTreeSkeleton(userId);
+    const result = await adapter.fetchTreeSkeleton(userId);
+    skeletonData.value = result;
+    skeletonLoaded.value = true;
+    return result;
   }
 
   async function onTagNodes(): Promise<void> {
@@ -45,5 +57,20 @@ export function useTreeSkeleton() {
     }
   }
 
-  return { busy, fetchSkeleton, onTagNodes, onTestSakura };
+  return { busy, fetchSkeleton, onTagNodes, onTestSakura, skeletonData, skeletonLoaded };
+}
+
+export function invalidateSkeleton(): void {
+  skeletonData.value = null;
+  skeletonLoaded.value = false;
+}
+
+export async function preloadSkeleton(): Promise<void> {
+  if (skeletonLoaded.value) return;
+  try {
+    const { fetchSkeleton } = useTreeSkeleton();
+    await fetchSkeleton();
+  } catch {
+    // silent — TreeCanvas onMounted will retry
+  }
 }

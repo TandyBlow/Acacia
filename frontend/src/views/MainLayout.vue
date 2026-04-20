@@ -23,8 +23,9 @@
         <section class="content-area">
           <GlassWrapper inset class="content-well content-shell">
             <GlassWrapper class="content-surface">
-              <Transition name="content-fade" mode="out-in">
-                <component :is="currentContent" :key="contentKey" class="content-host" />
+              <div v-show="showTree" class="content-host"><TreeCanvas /></div>
+              <Transition v-if="!showTree" name="content-fade" mode="out-in">
+                <component :is="nonTreeContent" :key="contentKey" class="content-host" />
               </Transition>
             </GlassWrapper>
           </GlassWrapper>
@@ -69,7 +70,11 @@ const {
 const { isBusy } = useAppInit();
 const { isLoggingOut } = useKnobDispatch();
 
-const currentContent = computed(() => {
+const showTree = computed(() => {
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value;
+});
+
+const nonTreeContent = computed(() => {
   if (!isAuthenticated.value) {
     return AuthPanel;
   }
@@ -79,9 +84,6 @@ const currentContent = computed(() => {
   if (nodeStore.isConfirmState || isLoggingOut.value) {
     return ConfirmPanel;
   }
-  if (!activeNode.value) {
-    return TreeCanvas;
-  }
   return MarkdownEditor;
 });
 
@@ -90,7 +92,7 @@ const contentKey = computed(() => {
     return `auth:${authMode.value}`;
   }
   const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
-  return `${state}:${activeNode.value?.id ?? 'home'}`;
+  return `${state}:${activeNode.value?.id ?? 'editor'}`;
 });
 
 </script>

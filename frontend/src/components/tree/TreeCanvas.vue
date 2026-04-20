@@ -13,9 +13,9 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import * as THREE from 'three';
 import { useStyleStore } from '../../stores/styleStore';
 import { useTreeSkeleton } from '../../composables/useTreeSkeleton';
-import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, type TreeTheme } from './treeMaterials';
+import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, createSkyGradient, type TreeTheme } from './treeMaterials';
 import type { Branch, SkeletonData } from '../../types/tree';
-import { BARK_COLORS, GROUND_COLOR, DIRT_COLOR, LEAF_SIZE_MULT, SCENE_BACKGROUND } from '../../constants/theme';
+import { BARK_COLORS, GROUND_COLOR, DIRT_COLOR, LEAF_SIZE_MULT, SKY_COLORS } from '../../constants/theme';
 import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
@@ -35,6 +35,10 @@ let branchMeshes: THREE.Mesh[] = [];
 let outlineMeshes: THREE.Mesh[] = [];
 let leafMeshes: THREE.Mesh[] = [];
 let animationFrameId = 0;
+let resizeObserver: ResizeObserver | null = null;
+let refContainerW = 0;
+let refContainerH = 0;
+let refCameraDist = 0;
 
 function to3D(x: number, y: number, canvasW: number, canvasH: number): THREE.Vector3 {
   return new THREE.Vector3(
@@ -180,7 +184,8 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   const [canvasW, canvasH] = skeleton.canvas_size;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(SCENE_BACKGROUND);
+  const skyColors = SKY_COLORS[theme] ?? SKY_COLORS.default;
+  scene.background = createSkyGradient(skyColors.top, skyColors.bottom);
 
   // 灯光 — 卡通着色需要光源
   const mainLight = new THREE.DirectionalLight(0xffffff, 3.0);
@@ -277,12 +282,17 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   scene.add(group);
 
   // Camera: positioned to see full tree from front
-  const aspect = containerRef.value!.clientWidth / containerRef.value!.clientHeight;
+  const containerW = containerRef.value!.clientWidth;
+  const containerH = containerRef.value!.clientHeight;
+  refContainerW = containerW;
+  refContainerH = containerH;
+
+  const aspect = containerW / containerH;
   camera = new THREE.PerspectiveCamera(60, aspect, 1, 2000);
 
   const halfHeight = canvasH / 2;
-  const dist = halfHeight / Math.tan(THREE.MathUtils.degToRad(30)) + halfHeight * 0.3;
-  camera.position.set(0, 0, dist);
+  refCameraDist = halfHeight / Math.tan(THREE.MathUtils.degToRad(30)) + halfHeight * 0.3;
+  camera.position.set(0, 0, refCameraDist);
   camera.lookAt(0, 0, 0);
   camera.layers.enable(1); // 渲染描边图层
 
@@ -294,13 +304,16 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   raycaster = new THREE.Raycaster();
 
   renderer.domElement.addEventListener('click', onCanvasClick);
-  window.addEventListener('resize', onResize);
+  resizeObserver = new ResizeObserver(onResize);
+  resizeObserver.observe(containerRef.value!);
 
   animate();
 }
 
 function animate() {
   animationFrameId = requestAnimationFrame(animate);
+
+  if (!containerRef.value || containerRef.value.offsetParent === null) return;
 
   // billboard: 叶片始终朝向相机
   if (camera) {
@@ -332,16 +345,25 @@ function onResize() {
   if (!containerRef.value || !camera || !renderer) return;
   const w = containerRef.value.clientWidth;
   const h = containerRef.value.clientHeight;
+  if (w === 0 || h === 0 || refContainerW === 0 || refContainerH === 0) return;
+
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+
+  const scaleX = w / refContainerW;
+  const scaleY = h / refContainerH;
+  const scale = Math.min(scaleX, scaleY);
+  camera.position.z = refCameraDist / scale;
+  camera.lookAt(0, 0, 0);
 }
 
 const allDisposable: THREE.Object3D[] = [];
 
 function cleanup() {
   cancelAnimationFrame(animationFrameId);
-  window.removeEventListener('resize', onResize);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
 
   if (renderer) {
     renderer.domElement.removeEventListener('click', onCanvasClick);

@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { useAuthStore } from '../stores/authStore';
 import { useNodeStore } from '../stores/nodeStore';
+import { invalidateSkeleton } from './useTreeSkeleton';
 
 export function useLogoutFlow() {
   const isLoggingOut = ref(false);
@@ -19,6 +20,7 @@ export function useLogoutFlow() {
     const ok = await authStore.logout();
     if (ok) {
       nodeStore.resetAfterLogout();
+      invalidateSkeleton();
       isLoggingOut.value = false;
       return true;
     }
