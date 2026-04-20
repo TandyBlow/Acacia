@@ -10,7 +10,9 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { storeToRefs } from 'pinia';
 import * as THREE from 'three';
+import { useAuthStore } from '../../stores/authStore';
 import { useStyleStore } from '../../stores/styleStore';
 import { useTreeSkeleton } from '../../composables/useTreeSkeleton';
 import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, createSkyGradient, type TreeTheme } from './treeMaterials';
@@ -19,6 +21,8 @@ import { BARK_COLORS, GROUND_COLOR, DIRT_COLOR, LEAF_SIZE_MULT, SKY_COLORS } fro
 import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
+const authStore = useAuthStore();
+const { isAuthenticated } = storeToRefs(authStore);
 const styleStore = useStyleStore();
 const { busy, fetchSkeleton, onTagNodes, onTestSakura } = useTreeSkeleton();
 const isDev = import.meta.env.DEV;
@@ -387,8 +391,10 @@ function cleanup() {
   leafMeshes = [];
 }
 
-onMounted(async () => {
-  if (!containerRef.value) return;
+let treeLoaded = false;
+
+async function loadTree() {
+  if (!containerRef.value || treeLoaded) return;
 
   try {
     const skeleton = await fetchSkeleton();
@@ -399,11 +405,22 @@ onMounted(async () => {
     lastSkeleton = skeleton;
     const theme: TreeTheme = styleStore.style === 'sakura' ? 'sakura' : 'default';
     setupScene(skeleton, theme);
+    treeLoaded = true;
   } catch (err) {
     noTreeData.value = true;
     console.error('Failed to load tree skeleton:', err);
   }
-});
+}
+
+watch(isAuthenticated, (authed) => {
+  if (authed) {
+    loadTree();
+  } else {
+    cleanup();
+    treeLoaded = false;
+    noTreeData.value = false;
+  }
+}, { immediate: true });
 
 watch(() => styleStore.style, (newStyle) => {
   if (!lastSkeleton || !containerRef.value) return;

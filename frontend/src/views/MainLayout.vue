@@ -29,6 +29,7 @@
               </Transition>
             </GlassWrapper>
           </GlassWrapper>
+          <AiGeneratePopup v-if="isAuthenticated" />
         </section>
       </div>
     </section>
@@ -54,6 +55,7 @@ import GlobalTree from '../components/tree/GlobalTree.vue';
 import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
+import AiGeneratePopup from '../components/ai/AiGeneratePopup.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
@@ -143,6 +145,7 @@ const contentKey = computed(() => {
 .content-area {
   grid-column: 2;
   grid-row: 2;
+  position: relative;
 }
 
 .knob-area {
