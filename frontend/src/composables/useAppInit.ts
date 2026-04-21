@@ -1,4 +1,4 @@
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, provide, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/authStore';
 import { useNodeStore } from '../stores/nodeStore';
@@ -12,6 +12,7 @@ export function useAppInit() {
   const route = useRoute();
 
   const isBusy = computed(() => nodeStore.isBusy || authStore.isBusy);
+  provide('isBusy', isBusy);
 
   onMounted(async () => {
     await authStore.initialize();

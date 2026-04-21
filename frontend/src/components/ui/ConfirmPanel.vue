@@ -131,6 +131,10 @@ h2 {
     -3px -3px 6px rgba(255, 255, 255, 0.3);
 }
 
+.delete-toggle :deep(.glass-pressed) {
+  box-shadow: none;
+}
+
 .delete-toggle-mark {
   width: 100%;
   height: 100%;

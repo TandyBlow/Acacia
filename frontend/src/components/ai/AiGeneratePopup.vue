@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/authStore';
 import { useNodeStore } from '../../stores/nodeStore';
@@ -58,11 +58,18 @@ import { useAiGenerate } from '../../composables/useAiGenerate';
 const authStore = useAuthStore();
 const nodeStore = useNodeStore();
 const { user } = storeToRefs(authStore);
-const { isBusy, errorMessage, generate } = useAiGenerate();
+const { isBusy, errorMessage, generate, requestOpen } = useAiGenerate();
 
 const isOpen = ref(false);
 const inputText = ref('');
 const result = ref<Awaited<ReturnType<typeof generate>> | null>(null);
+
+watch(requestOpen, (v) => {
+  if (v) {
+    isOpen.value = true;
+    requestOpen.value = false;
+  }
+});
 
 const canSubmit = computed(() => inputText.value.trim().length > 0);
 

@@ -3,6 +3,7 @@ export const NODE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // UI Timing
 export const KNOB_HOLD_MS = 700;
+export const KNOB_DBLCLICK_MS = 300;
 export const AUTO_SAVE_DELAY_MS = 1000;
 export const COPY_RESET_DELAY_MS = 1200;
 export const NAV_ROW_H = 54;

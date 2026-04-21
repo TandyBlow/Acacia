@@ -5,6 +5,8 @@ export interface AiGenerateResult {
   nodes: Array<{ id: string; name: string; parent_id: string | null; skipped?: boolean }>;
 }
 
+const requestOpen = ref(false);
+
 export function useAiGenerate() {
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
@@ -31,5 +33,9 @@ export function useAiGenerate() {
     }
   }
 
-  return { isBusy, errorMessage, generate };
+  function requestOpenPopup(): void {
+    requestOpen.value = true;
+  }
+
+  return { isBusy, errorMessage, generate, requestOpen, requestOpenPopup };
 }
