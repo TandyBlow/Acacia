@@ -199,6 +199,10 @@ async function goTo(nodeId: string): Promise<void> {
     -4px -4px 8px rgba(255, 255, 255, 0.3);
 }
 
+.crumb-wrap :deep(.glass-pressed) {
+  box-shadow: none;
+}
+
 .crumb-enter-active,
 .crumb-move {
   transition:

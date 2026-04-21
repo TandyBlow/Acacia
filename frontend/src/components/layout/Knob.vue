@@ -2,7 +2,7 @@
   <div class="knob-panel">
     <p v-if="showLabels" class="knob-label knob-label-top">{{ topLabel }}</p>
     <div class="knob-stage">
-      <GlassWrapper inset shape="circle" class="knob-well">
+      <div class="knob-well">
         <div class="knob-well-inner">
           <button
             type="button"
@@ -21,7 +21,7 @@
             <span v-if="inConfirmMode && canConfirm && pressed" class="hold-ring" />
           </button>
         </div>
-      </GlassWrapper>
+      </div>
     </div>
     <p v-if="showBottomLabel" class="knob-label knob-label-bottom">{{ UI.knob.holdToConfirm }}</p>
   </div>
@@ -34,7 +34,7 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
-import { KNOB_HOLD_MS } from '../../constants/app';
+import { KNOB_HOLD_MS, KNOB_DBLCLICK_MS } from '../../constants/app';
 import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
@@ -47,20 +47,25 @@ const {
   canConfirm,
   onHoldConfirm,
   onClick,
+  onDoubleClick,
   isLoggingOut,
+  isFeaturePanel,
 } = useKnobDispatch();
 
 const pressed = ref(false);
 const triggeredByHold = ref(false);
+const lastPressTime = ref(0);
+const dblPressDetected = ref(false);
 let holdTimer: number | null = null;
 
 const showLabels = computed(() => isAuthenticated.value);
 const showBottomLabel = computed(() =>
-  isAuthenticated.value && inConfirmMode.value,
+  isAuthenticated.value && inConfirmMode.value && !isFeaturePanel.value,
 );
-const topLabel = computed(() =>
-  !nodeStore.isEditState && !isLoggingOut.value ? UI.knob.clickToHome : UI.knob.clickToReturn,
-);
+const topLabel = computed(() => {
+  if (isFeaturePanel.value) return UI.knob.clickToHome;
+  return !nodeStore.isEditState && !isLoggingOut.value ? UI.knob.clickToHome : UI.knob.clickToReturn;
+});
 
 function clearTimer(): void {
   if (holdTimer !== null) {
@@ -70,8 +75,19 @@ function clearTimer(): void {
 }
 
 function onPressStart(): void {
+  const now = Date.now();
+  const isDblPress = now - lastPressTime.value < KNOB_DBLCLICK_MS;
+  lastPressTime.value = now;
+
   if (isBusy.value) return;
 
+  if (isDblPress) {
+    dblPressDetected.value = true;
+    lastPressTime.value = 0;
+    return;
+  }
+
+  dblPressDetected.value = false;
   pressed.value = true;
   triggeredByHold.value = false;
   clearTimer();
@@ -86,6 +102,12 @@ function onPressStart(): void {
 }
 
 async function onPressEnd(): Promise<void> {
+  if (dblPressDetected.value) {
+    dblPressDetected.value = false;
+    await onDoubleClick();
+    return;
+  }
+
   if (!pressed.value && !holdTimer) return;
 
   clearTimer();
@@ -149,7 +171,12 @@ function onPressCancel(): void {
 .knob-well {
   width: 76px;
   height: 76px;
-  padding: 1px;
+  border-radius: 50%;
+  border: 1px solid var(--color-glass-border);
+  overflow: hidden;
+  box-shadow:
+    inset 9px 9px 18px var(--shadow-inset-a),
+    inset -9px -9px 18px var(--shadow-inset-b);
 }
 
 .knob-well-inner {
@@ -192,9 +219,20 @@ function onPressCancel(): void {
     -4px -4px 8px var(--shadow-raised-b);
 }
 
+.knob-body :deep(.glass-pressed) {
+  box-shadow: none;
+}
+
 .knob-body :deep(.glass-content) {
   position: relative;
   animation: knob-idle 2.8s ease-in-out infinite;
+}
+
+.knob-body :deep(.glass-pressed .glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  animation: none;
 }
 
 .confirmable .knob-body :deep(.glass-content)::after {

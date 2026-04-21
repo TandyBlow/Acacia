@@ -4,7 +4,10 @@
     :class="[
       inset ? 'glass-inset' : 'glass-raised',
       shape === 'circle' ? 'glass-circle' : 'glass-rect',
-      { 'glass-pressed': pressed, 'glass-interactive': interactive },
+      {
+        'glass-pressed': (pressed || isBusy) && !inset,
+        'glass-interactive': interactive,
+      },
     ]"
   >
     <div class="glass-content">
@@ -14,12 +17,17 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed, inject, type Ref } from 'vue';
+
+const props = defineProps<{
   inset?: boolean;
   pressed?: boolean;
   interactive?: boolean;
   shape?: 'rect' | 'circle';
 }>();
+
+const injectedBusy = inject<Ref<boolean> | null>('isBusy', null);
+const isBusy = computed(() => injectedBusy?.value ?? false);
 </script>
 
 <style scoped>
@@ -66,7 +74,7 @@ defineProps<{
 .glass-pressed {
   transform: none;
   box-shadow: none;
-  border-color: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .glass-pressed .glass-content {

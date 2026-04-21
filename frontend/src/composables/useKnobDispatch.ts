@@ -1,8 +1,10 @@
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useLogoutFlow } from './useLogoutFlow';
+
+const isFeaturePanel = ref(false);
 
 export function useKnobDispatch() {
   const nodeStore = useNodeStore();
@@ -23,6 +25,7 @@ export function useKnobDispatch() {
   const inAuthMode = computed(() => !isAuthenticated.value);
   const inConfirmMode = computed(() => {
     if (inAuthMode.value) return true;
+    if (isFeaturePanel.value) return false;
     if (isLoggingOut.value) return true;
     return nodeStore.isEditState;
   });
@@ -31,6 +34,14 @@ export function useKnobDispatch() {
     if (isLoggingOut.value) return true;
     return canNodeConfirm.value;
   });
+
+  function openFeaturePanel(): void {
+    isFeaturePanel.value = true;
+  }
+
+  function closeFeaturePanel(): void {
+    isFeaturePanel.value = false;
+  }
 
   async function onHoldConfirm(): Promise<void> {
     if (inAuthMode.value) {
@@ -52,6 +63,9 @@ export function useKnobDispatch() {
       authStore.toggleMode();
       return;
     }
+    if (isFeaturePanel.value) {
+      closeFeaturePanel();
+    }
     if (isLoggingOut.value) {
       cancelLogout();
       return;
@@ -59,5 +73,19 @@ export function useKnobDispatch() {
     await nodeStore.onKnobClick();
   }
 
-  return { isBusy, inAuthMode, inConfirmMode, canConfirm, onHoldConfirm, onClick, isLoggingOut, startLogout, cancelLogout };
+  async function onDoubleClick(): Promise<void> {
+    if (inAuthMode.value || isBusy.value) return;
+    if (isFeaturePanel.value) {
+      closeFeaturePanel();
+    } else {
+      openFeaturePanel();
+    }
+  }
+
+  return {
+    isBusy, inAuthMode, inConfirmMode, canConfirm,
+    onHoldConfirm, onClick, onDoubleClick,
+    isLoggingOut, startLogout, cancelLogout,
+    isFeaturePanel, openFeaturePanel, closeFeaturePanel,
+  };
 }

@@ -29,16 +29,15 @@
               </Transition>
             </GlassWrapper>
           </GlassWrapper>
-          <AiGeneratePopup v-if="isAuthenticated" />
+          <AiGeneratePopup v-if="isAuthenticated && !isFeaturePanel" />
         </section>
       </div>
     </section>
 
-    <section class="knob-area">
+  <section class="knob-area">
       <Knob />
     </section>
 
-    <div v-if="isBusy" class="busy-mask" />
   </main>
 </template>
 
@@ -51,6 +50,7 @@ import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
 import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
+import FeaturePanel from '../components/ui/FeaturePanel.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
 import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
@@ -69,16 +69,19 @@ const {
   isAuthenticated,
 } = storeToRefs(authStore);
 
-const { isBusy } = useAppInit();
-const { isLoggingOut } = useKnobDispatch();
+useAppInit();
+const { isLoggingOut, isFeaturePanel } = useKnobDispatch();
 
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value && !isFeaturePanel.value;
 });
 
 const nonTreeContent = computed(() => {
   if (!isAuthenticated.value) {
     return AuthPanel;
+  }
+  if (isFeaturePanel.value) {
+    return FeaturePanel;
   }
   if (nodeStore.isTreeState) {
     return GlobalTree;
@@ -92,6 +95,9 @@ const nonTreeContent = computed(() => {
 const contentKey = computed(() => {
   if (!isAuthenticated.value) {
     return `auth:${authMode.value}`;
+  }
+  if (isFeaturePanel.value) {
+    return 'feature-panel';
   }
   const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
@@ -189,16 +195,6 @@ const contentKey = computed(() => {
   overflow: auto;
 }
 
-.busy-mask {
-  position: absolute;
-  inset: 38px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(3px);
-  z-index: 20;
-  animation: busy-pulse 1.2s ease-in-out infinite;
-}
-
 .content-fade-enter-active,
 .content-fade-leave-active {
   transition:
@@ -210,17 +206,6 @@ const contentKey = computed(() => {
 .content-fade-leave-to {
   opacity: 0;
   transform: translateY(12px) scale(0.985);
-}
-
-@keyframes busy-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-
-  50% {
-    opacity: 0.85;
-  }
 }
 
 @media (max-width: 1100px) {
@@ -280,10 +265,6 @@ const contentKey = computed(() => {
     grid-row: 3;
     justify-self: center;
     width: min(100%, 260px);
-  }
-
-  .busy-mask {
-    inset: 16px;
   }
 }
 </style>

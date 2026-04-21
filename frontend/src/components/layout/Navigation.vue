@@ -308,6 +308,11 @@ onUnmounted(() => ro?.disconnect());
     -4px -4px 8px var(--shadow-raised-b);
 }
 
+.row-glass :deep(.glass-pressed),
+.add-shell :deep(.glass-pressed) {
+  box-shadow: none;
+}
+
 .row-content {
   height: 100%;
   display: flex;
