@@ -6,6 +6,10 @@ import { useLogoutFlow } from './useLogoutFlow';
 
 const isFeaturePanel = ref(false);
 
+export type CompactMode = 'content' | 'nav' | 'feature';
+const compactMode = ref<CompactMode>('content');
+const isCompactLayout = ref(false);
+
 export function useKnobDispatch() {
   const nodeStore = useNodeStore();
   const authStore = useAuthStore();
@@ -75,6 +79,18 @@ export function useKnobDispatch() {
 
   async function onDoubleClick(): Promise<void> {
     if (inAuthMode.value || isBusy.value) return;
+    if (isCompactLayout.value) {
+      if (compactMode.value === 'content') {
+        compactMode.value = 'nav';
+      } else if (compactMode.value === 'nav') {
+        compactMode.value = 'feature';
+        openFeaturePanel();
+      } else {
+        compactMode.value = 'content';
+        closeFeaturePanel();
+      }
+      return;
+    }
     if (isFeaturePanel.value) {
       closeFeaturePanel();
     } else {
@@ -87,5 +103,6 @@ export function useKnobDispatch() {
     onHoldConfirm, onClick, onDoubleClick,
     isLoggingOut, startLogout, cancelLogout,
     isFeaturePanel, openFeaturePanel, closeFeaturePanel,
+    compactMode, isCompactLayout,
   };
 }

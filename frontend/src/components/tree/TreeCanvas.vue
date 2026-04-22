@@ -9,7 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue';
+import { ref, watch, onBeforeUnmount, provide } from 'vue';
 import { storeToRefs } from 'pinia';
 import * as THREE from 'three';
 import { useAuthStore } from '../../stores/authStore';
@@ -30,6 +30,9 @@ const noTreeData = ref(false);
 
 let lastSkeleton: SkeletonData | null = null;
 let currentTheme: TreeTheme = 'default';
+
+const isResizing = ref(false);
+let resizeDebounceTimer: number | null = null;
 
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
@@ -285,7 +288,7 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
 
   scene.add(group);
 
-  // Camera: positioned to see full tree from front
+  // Camera: positioned to see full tree from front, fitted to container
   const containerW = containerRef.value!.clientWidth;
   const containerH = containerRef.value!.clientHeight;
   refContainerW = containerW;
@@ -294,8 +297,15 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   const aspect = containerW / containerH;
   camera = new THREE.PerspectiveCamera(60, aspect, 1, 2000);
 
-  const halfHeight = canvasH / 2;
-  refCameraDist = halfHeight / Math.tan(THREE.MathUtils.degToRad(30)) + halfHeight * 0.3;
+  const [skeletonW, skeletonH] = skeleton.canvas_size;
+  const skeletonAspect = skeletonW / skeletonH;
+  let fitHeight: number;
+  if (aspect >= skeletonAspect) {
+    fitHeight = skeletonH;
+  } else {
+    fitHeight = skeletonW / aspect;
+  }
+  refCameraDist = fitHeight / 2 / Math.tan(THREE.MathUtils.degToRad(30)) + fitHeight * 0.3;
   camera.position.set(0, 0, refCameraDist);
   camera.lookAt(0, 0, 0);
   camera.layers.enable(1); // 渲染描边图层
@@ -330,6 +340,7 @@ function animate() {
 }
 
 function onCanvasClick(event: MouseEvent) {
+  if (isResizing.value) return;
   const rect = renderer.domElement.getBoundingClientRect();
   const mouse = new THREE.Vector2(
     ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -360,12 +371,36 @@ function onResize() {
   const scale = Math.min(scaleX, scaleY);
   camera.position.z = refCameraDist / scale;
   camera.lookAt(0, 0, 0);
+
+  isResizing.value = true;
+
+  if (resizeDebounceTimer !== null) {
+    window.clearTimeout(resizeDebounceTimer);
+  }
+  resizeDebounceTimer = window.setTimeout(() => {
+    resizeDebounceTimer = null;
+    redrawTree();
+  }, 1000);
+}
+
+function redrawTree() {
+  if (!lastSkeleton || !containerRef.value) {
+    isResizing.value = false;
+    return;
+  }
+  cleanup();
+  setupScene(lastSkeleton, currentTheme);
+  isResizing.value = false;
 }
 
 const allDisposable: THREE.Object3D[] = [];
 
 function cleanup() {
   cancelAnimationFrame(animationFrameId);
+  if (resizeDebounceTimer !== null) {
+    window.clearTimeout(resizeDebounceTimer);
+    resizeDebounceTimer = null;
+  }
   resizeObserver?.disconnect();
   resizeObserver = null;
 
@@ -390,6 +425,8 @@ function cleanup() {
   outlineMeshes = [];
   leafMeshes = [];
 }
+
+provide('isTreeResizing', isResizing);
 
 let treeLoaded = false;
 

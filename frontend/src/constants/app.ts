@@ -11,6 +11,8 @@ export const NAV_ROW_GAP = 1;
 export const NAV_ROW_STEP = NAV_ROW_H + NAV_ROW_GAP;
 export const NAV_ANIM_MS = 240;
 
+export const COMPACT_BREAKPOINT = 600;
+
 // localStorage keys
 export const LOCAL_NODES_KEY = 'seewhat_local_nodes_v1';
 export const LOCAL_USERS_KEY = 'seewhat_local_users_v1';

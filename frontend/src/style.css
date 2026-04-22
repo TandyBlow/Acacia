@@ -93,7 +93,7 @@ body,
 
 body {
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background:
     linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%);
   background-attachment: fixed;

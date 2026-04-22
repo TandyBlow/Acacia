@@ -279,7 +279,7 @@ function onPressCancel(): void {
 
 @media (max-width: 1100px) {
   .knob-stage {
-    width: 112px;
+    width: 82px;
   }
 }
 </style>

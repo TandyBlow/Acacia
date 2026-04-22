@@ -7,6 +7,7 @@
         tag="div"
         class="node-list"
         :class="{ 'scroll-dir-up': scrollDirection === 'up' }"
+        @before-leave="onBeforeLeave"
         @wheel.prevent="onWheel"
         @touchstart.passive="onTouchStart"
         @touchend="onTouchEnd"
@@ -137,8 +138,22 @@ function openNode(nodeId: string): void {
 }
 
 function onAddClick(): void {
-  if (addPressed.value) return;
+  if (addPressed.value) {
+    store.cancelOperation();
+    return;
+  }
   store.startAdd();
+}
+
+function onBeforeLeave(el: Element): void {
+  const htmlEl = el as HTMLElement;
+  const rect = htmlEl.getBoundingClientRect();
+  const parentRect = htmlEl.parentElement?.getBoundingClientRect();
+  if (parentRect) {
+    htmlEl.style.top = `${rect.top - parentRect.top}px`;
+    htmlEl.style.left = `${rect.left - parentRect.left}px`;
+    htmlEl.style.width = `${rect.width}px`;
+  }
 }
 
 
@@ -282,6 +297,7 @@ onUnmounted(() => ro?.disconnect());
 }
 
 .node-list {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -400,7 +416,6 @@ onUnmounted(() => ro?.disconnect());
 
 .nav-row-leave-active {
   position: absolute;
-  width: calc(100% - 2px);
   transition:
     opacity 120ms ease;
 }
