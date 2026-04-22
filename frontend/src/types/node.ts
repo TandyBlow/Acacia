@@ -1,6 +1,6 @@
 import type { SkeletonData } from './tree';
 
-export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'tree';
+export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'tree' | 'quiz' | 'stats';
 
 export const ViewStates = {
   DISPLAY: 'display',
@@ -8,6 +8,8 @@ export const ViewStates = {
   MOVE: 'move',
   DELETE: 'delete',
   TREE: 'tree',
+  QUIZ: 'quiz',
+  STATS: 'stats',
 } as const;
 
 export interface NodeRecord {
@@ -47,7 +49,7 @@ export interface CoreDataAdapter {
 }
 
 export interface TreeDataAdapter {
-  fetchTreeSkeleton(userId: string): Promise<SkeletonData>;
+  fetchTreeSkeleton(userId: string, canvasW?: number, canvasH?: number): Promise<SkeletonData>;
   tagNodes(userId: string): Promise<void>;
   fetchStyle(userId: string): Promise<StyleResult>;
   testSakuraTag(userId: string): Promise<void>;

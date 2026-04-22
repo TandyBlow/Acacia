@@ -4,6 +4,7 @@
       <TransitionGroup
         ref="nodeListRef"
         :name="transitionName"
+        :style="{ '--nav-anim-ms': `${currentAnimMs}ms` }"
         tag="div"
         class="node-list"
         :class="{ 'scroll-dir-up': scrollDirection === 'up' }"
@@ -54,13 +55,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
-import { NAV_ROW_H, NAV_ROW_GAP, NAV_ANIM_MS } from '../../constants/app';
+import {
+  NAV_ROW_H,
+  NAV_ROW_GAP,
+  NAV_ANIM_MS,
+  NAV_SCROLL_MIN_ANIM_MS,
+  NAV_SCROLL_MAX_ANIM_MS,
+  NAV_SCROLL_MOMENTUM_FRICTION,
+  NAV_SCROLL_MOMENTUM_THRESHOLD,
+  NAV_SCROLL_INPUT_WINDOW_MS,
+} from '../../constants/app';
 import { UI } from '../../constants/uiStrings';
 
 const ROW_STEP = NAV_ROW_H + NAV_ROW_GAP;
@@ -74,12 +84,26 @@ const { isAuthenticated } = storeToRefs(authStore);
 const nodeListRef = ref<ComponentPublicInstance | HTMLElement | null>(null);
 const containerH = ref(0);
 const scrollOffset = ref(0);
-const isScrolling = ref(false);
+const isAnimating = ref(false);
 const displayNodes = ref<NodeRecord[]>([]);
 const scrollingTopId = ref<string | null>(null);
 const scrollingBottomId = ref<string | null>(null);
 const scrollDirection = ref<'up' | 'down' | null>(null);
 const transitionName = ref('nav-row');
+
+// Animation queue
+interface ScrollEntry {
+  direction: 'up' | 'down';
+}
+const scrollQueue = ref<ScrollEntry[]>([]);
+const lastScrollDirection = ref<'up' | 'down'>('down');
+
+// Speed tracking
+const lastWheelTime = ref(0);
+const currentSpeed = ref(0); // rows/second
+
+// Current animation duration (for CSS variable)
+const currentAnimMs = ref(NAV_ANIM_MS);
 
 // [Bug3 fix] cancel token to invalidate stale scroll callbacks
 let scrollCancelToken = 0;
@@ -89,23 +113,34 @@ const maxVisible = computed(() => {
   return Math.floor(containerH.value / ROW_STEP);
 });
 
+// Calculate animation duration based on current speed
+function calcAnimDuration(): number {
+  const speed = currentSpeed.value;
+  if (speed <= 0) return NAV_ANIM_MS;
+  const clampedSpeed = Math.max(1, Math.min(speed, 12));
+  const duration = NAV_SCROLL_MAX_ANIM_MS - (clampedSpeed - 1) * (NAV_SCROLL_MAX_ANIM_MS - NAV_SCROLL_MIN_ANIM_MS) / 11;
+  return Math.round(duration);
+}
+
 // [Bug2 fix] reset when child nodes change — cancel any in-flight scroll
 watch(childNodes, (list) => {
   scrollCancelToken++;
-  isScrolling.value = false;
+  scrollQueue.value = [];
+  isAnimating.value = false;
   scrollOffset.value = 0;
   scrollingTopId.value = null;
   scrollingBottomId.value = null;
   scrollDirection.value = null;
+  currentSpeed.value = 0;
+  currentAnimMs.value = NAV_ANIM_MS;
   displayNodes.value = list.slice(0, maxVisible.value);
-  if (transitionName.value === 'none') {
-    nextTick(() => { transitionName.value = 'nav-row'; });
-  }
+  transitionName.value = 'nav-rise';
+  nextTick(() => { transitionName.value = 'nav-row'; });
 }, { immediate: true });
 
 // [Bug4 fix] update visible window when container resizes
 watch(maxVisible, (mv) => {
-  if (!isScrolling.value) {
+  if (!isAnimating.value) {
     displayNodes.value = childNodes.value.slice(scrollOffset.value, scrollOffset.value + mv);
   }
 });
@@ -116,13 +151,13 @@ const addPressed = computed(() => store.viewState === 'add');
 const pressedNodeId = ref<string | null>(null);
 
 function onRowClick(nodeId: string): void {
-  if (isScrolling.value) return;
+  if (isAnimating.value) return;
   if (actionNodeId.value === nodeId) return;
   openNode(nodeId);
 }
 
 function onContextMenu(nodeId: string): void {
-  if (isScrolling.value) return;
+  if (isAnimating.value) return;
   toggleActions(nodeId);
 }
 
@@ -161,6 +196,15 @@ function toggleActions(nodeId: string): void {
   actionNodeId.value = actionNodeId.value === nodeId ? null : nodeId;
 }
 
+function onDocumentClick(e: MouseEvent): void {
+  if (actionNodeId.value === null) return;
+  if ((e.target as HTMLElement).closest('.inline-actions')) return;
+  actionNodeId.value = null;
+}
+
+onMounted(() => document.addEventListener('click', onDocumentClick, true));
+onUnmounted(() => document.removeEventListener('click', onDocumentClick, true));
+
 async function moveNode(node: NodeRecord): Promise<void> {
   actionNodeId.value = null;
   await store.startMove(node);
@@ -171,11 +215,32 @@ async function deleteNode(node: NodeRecord): Promise<void> {
   await store.startDelete(node);
 }
 
-// --- custom scroll ---
+// --- scroll animation engine ---
 function onWheel(e: WheelEvent): void {
-  if (isScrolling.value) return;
-  if (e.deltaY > 0) scrollDown();
-  else if (e.deltaY < 0) scrollUp();
+  if (e.deltaY === 0) return;
+
+  const now = Date.now();
+  const dt = now - lastWheelTime.value;
+  lastWheelTime.value = now;
+
+  if (dt > 0 && dt < NAV_SCROLL_INPUT_WINDOW_MS * 3) {
+    const delta = Math.abs(e.deltaY);
+    const rowsEquiv = delta / 120;
+    currentSpeed.value = rowsEquiv / (dt / 1000);
+  } else {
+    currentSpeed.value = Math.max(1, currentSpeed.value * 0.5);
+  }
+
+  const direction: 'up' | 'down' = e.deltaY > 0 ? 'down' : 'up';
+  lastScrollDirection.value = direction;
+
+  if (scrollQueue.value.length < 20) {
+    scrollQueue.value.push({ direction });
+  }
+
+  if (!isAnimating.value) {
+    processScrollQueue();
+  }
 }
 
 let touchY = 0;
@@ -185,86 +250,123 @@ function onTouchStart(e: TouchEvent): void {
 function onTouchEnd(e: TouchEvent): void {
   if (!e.changedTouches[0]) return;
   const dy = touchY - e.changedTouches[0].clientY;
-  if (Math.abs(dy) < 30 || isScrolling.value) return;
-  if (dy > 0) scrollDown();
-  else scrollUp();
+  if (Math.abs(dy) < 30) return;
+
+  const direction: 'up' | 'down' = dy > 0 ? 'down' : 'up';
+  scrollQueue.value.push({ direction });
+  lastScrollDirection.value = direction;
+
+  if (!isAnimating.value) {
+    processScrollQueue();
+  }
 }
 
-function scrollDown(): void {
-  const mv = maxVisible.value;
-  const off = scrollOffset.value;
-  if (off + mv >= childNodes.value.length) return;
+async function processScrollQueue(): Promise<void> {
+  isAnimating.value = true;
 
-  isScrolling.value = true;
-  scrollDirection.value = 'down';
-  const token = ++scrollCancelToken;
-  const topId = displayNodes.value[0]!.id;
-  const newNode = childNodes.value[off + mv];
-  if (!newNode) { isScrolling.value = false; return; }
+  while (scrollQueue.value.length > 0) {
+    const entry = scrollQueue.value.shift()!;
 
-  // 阶段1: 顶部凹陷
-  scrollingTopId.value = topId;
+    const canScroll = entry.direction === 'down'
+      ? scrollOffset.value + maxVisible.value < childNodes.value.length
+      : scrollOffset.value > 0;
+    if (!canScroll) continue;
 
-  setTimeout(() => {
-    if (token !== scrollCancelToken) return;
-    // 阶段2: 顶行消失 + 其他行上移 + 底部新行凹陷进入
-    scrollingTopId.value = null;
-    scrollingBottomId.value = newNode.id;
-    displayNodes.value = [...displayNodes.value.slice(1), newNode];
-    scrollOffset.value = off + 1;
+    const duration = calcAnimDuration();
+    currentAnimMs.value = duration;
 
-    setTimeout(() => {
-      if (token !== scrollCancelToken) return;
-      // 阶段3: 底部浮起
-      scrollingBottomId.value = null;
-      isScrolling.value = false;
-      scrollDirection.value = null;
-      displayNodes.value = childNodes.value.slice(
-        scrollOffset.value,
-        scrollOffset.value + maxVisible.value,
-      );
-    }, NAV_ANIM_MS + 60);
-  }, 180);
+    await animateSingleScroll(entry.direction, duration);
+  }
+
+  // Queue empty — apply momentum
+  await applyMomentum();
+
+  isAnimating.value = false;
+  currentSpeed.value = 0;
 }
 
-function scrollUp(): void {
-  const off = scrollOffset.value;
-  if (off <= 0) return;
+async function applyMomentum(): Promise<void> {
+  let velocity = currentSpeed.value;
 
-  isScrolling.value = true;
-  scrollDirection.value = 'up';
+  while (velocity > NAV_SCROLL_MOMENTUM_THRESHOLD) {
+    velocity *= NAV_SCROLL_MOMENTUM_FRICTION;
+
+    const direction = lastScrollDirection.value;
+    const canScroll = direction === 'down'
+      ? scrollOffset.value + maxVisible.value < childNodes.value.length
+      : scrollOffset.value > 0;
+    if (!canScroll) break;
+
+    const duration = Math.max(NAV_SCROLL_MIN_ANIM_MS, Math.round(NAV_ANIM_MS / velocity));
+    currentAnimMs.value = duration;
+
+    await animateSingleScroll(direction, duration);
+  }
+}
+
+function animateSingleScroll(direction: 'up' | 'down', totalMs: number): Promise<void> {
   const token = ++scrollCancelToken;
-  const bottomId = displayNodes.value[displayNodes.value.length - 1]!.id;
-  const newNode = childNodes.value[off - 1];
-  if (!newNode) { isScrolling.value = false; return; }
+  const phase1Ms = Math.round(totalMs * 0.35);
+  const phase2Ms = Math.round(totalMs * 0.55);
 
-  // 阶段1: 底部凹陷
-  scrollingBottomId.value = bottomId;
+  scrollDirection.value = direction;
 
-  setTimeout(() => {
-    if (token !== scrollCancelToken) return;
-    // 阶段2: 底行消失 + 其他行下移 + 顶部新行凹陷进入
-    scrollingBottomId.value = null;
-    scrollingTopId.value = newNode.id;
-    displayNodes.value = [newNode, ...displayNodes.value.slice(0, -1)];
-    scrollOffset.value = off - 1;
+  return new Promise<void>((resolve) => {
+    if (direction === 'down') {
+      const topId = displayNodes.value[0]?.id;
+      const newNode = childNodes.value[scrollOffset.value + maxVisible.value];
+      if (!topId || !newNode) { resolve(); return; }
 
-    setTimeout(() => {
-      if (token !== scrollCancelToken) return;
-      // 阶段3: 顶部浮起
-      scrollingTopId.value = null;
-      isScrolling.value = false;
-      scrollDirection.value = null;
-      displayNodes.value = childNodes.value.slice(
-        scrollOffset.value,
-        scrollOffset.value + maxVisible.value,
-      );
-    }, NAV_ANIM_MS + 60);
-  }, 180);
+      scrollingTopId.value = topId;
+
+      setTimeout(() => {
+        if (token !== scrollCancelToken) { resolve(); return; }
+        scrollingTopId.value = null;
+        scrollingBottomId.value = newNode.id;
+        displayNodes.value = [...displayNodes.value.slice(1), newNode];
+        scrollOffset.value = scrollOffset.value + 1;
+
+        setTimeout(() => {
+          if (token !== scrollCancelToken) { resolve(); return; }
+          scrollingBottomId.value = null;
+          scrollDirection.value = null;
+          displayNodes.value = childNodes.value.slice(
+            scrollOffset.value,
+            scrollOffset.value + maxVisible.value,
+          );
+          resolve();
+        }, phase2Ms);
+      }, phase1Ms);
+    } else {
+      const bottomId = displayNodes.value[displayNodes.value.length - 1]?.id;
+      const newNode = childNodes.value[scrollOffset.value - 1];
+      if (!bottomId || !newNode) { resolve(); return; }
+
+      scrollingBottomId.value = bottomId;
+
+      setTimeout(() => {
+        if (token !== scrollCancelToken) { resolve(); return; }
+        scrollingBottomId.value = null;
+        scrollingTopId.value = newNode.id;
+        displayNodes.value = [newNode, ...displayNodes.value.slice(0, -1)];
+        scrollOffset.value = scrollOffset.value - 1;
+
+        setTimeout(() => {
+          if (token !== scrollCancelToken) { resolve(); return; }
+          scrollingTopId.value = null;
+          scrollDirection.value = null;
+          displayNodes.value = childNodes.value.slice(
+            scrollOffset.value,
+            scrollOffset.value + maxVisible.value,
+          );
+          resolve();
+        }, phase2Ms);
+      }, phase1Ms);
+    }
+  });
 }
 
 // --- resize observer ---
-// [Bug1 fix] use watch instead of onMounted to handle conditional rendering
 let ro: ResizeObserver | null = null;
 
 function attachObserver(el: Element): void {
@@ -317,16 +419,26 @@ onUnmounted(() => ro?.disconnect());
   height: 100%;
 }
 
-.row-glass :deep(.glass-raised),
-.add-shell :deep(.glass-raised) {
+.row-glass :deep(.glass-raised) {
   box-shadow:
     4px 4px 8px var(--shadow-raised-a),
     -4px -4px 8px var(--shadow-raised-b);
 }
 
+.add-shell :deep(.glass-raised) {
+  box-shadow:
+    2px 2px 6px var(--shadow-raised-a),
+    -2px -1px 4px var(--shadow-raised-b);
+}
+
 .row-glass :deep(.glass-pressed),
 .add-shell :deep(.glass-pressed) {
   box-shadow: none;
+}
+
+.row-glass :deep(.glass-pressed) .row-name {
+  filter: brightness(0.82);
+  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.12);
 }
 
 .row-content {
@@ -341,7 +453,7 @@ onUnmounted(() => ro?.disconnect());
   font-size: 14px;
   font-weight: 600;
   color: var(--color-primary);
-  transition: opacity 160ms ease;
+  transition: opacity 160ms ease, filter 160ms ease, text-shadow 160ms ease;
 }
 
 .inline-actions {
@@ -381,7 +493,8 @@ onUnmounted(() => ro?.disconnect());
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
-}.empty {
+}
+.empty {
   min-height: 54px;
 }
 
@@ -410,14 +523,14 @@ onUnmounted(() => ro?.disconnect());
 .nav-row-enter-active,
 .nav-row-move {
   transition:
-    opacity 240ms ease,
-    transform 240ms ease;
+    opacity var(--nav-anim-ms, 240ms) ease,
+    transform var(--nav-anim-ms, 240ms) ease;
 }
 
 .nav-row-leave-active {
   position: absolute;
   transition:
-    opacity 120ms ease;
+    opacity var(--nav-anim-ms, 240ms) ease;
 }
 
 .nav-row-enter-from {
@@ -443,5 +556,24 @@ onUnmounted(() => ro?.disconnect());
 .none-leave-to {
   opacity: 1 !important;
   transform: none !important;
+}
+
+.nav-rise-enter-active {
+  transition:
+    opacity 400ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nav-rise-leave-active {
+  transition: opacity 200ms ease;
+}
+
+.nav-rise-enter-from {
+  opacity: 0;
+  transform: translateY(24px) scale(0.97);
+}
+
+.nav-rise-leave-to {
+  opacity: 0;
 }
 </style>
