@@ -1,6 +1,30 @@
 <template>
   <div class="knob-panel">
-    <p v-if="showLabels" class="knob-label knob-label-top">{{ topLabel }}</p>
+    <!-- Hint columns (desktop) -->
+    <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-left">
+      <Transition name="hint-fade">
+        <span v-if="showClickHintLocal" class="knob-hint">{{ UI.knob.clickToHome }}</span>
+      </Transition>
+      <Transition name="hint-fade">
+        <span v-if="showHoldHintLocal" class="knob-hint">{{ UI.knob.holdToConfirm }}</span>
+      </Transition>
+    </div>
+    <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-right">
+      <Transition name="hint-fade">
+        <span v-if="showDblClickHintLocal" class="knob-hint">{{ UI.knob.dblClickFeature }}</span>
+      </Transition>
+    </div>
+
+    <!-- Compact hints (mobile, stacked above/below) -->
+    <div v-if="isAuthenticated && isCompactLayout && (showClickHintLocal || showHoldHintLocal)" class="hint-compact hint-compact-top">
+      <Transition name="hint-fade">
+        <span v-if="showClickHintLocal" class="knob-hint-compact">{{ UI.knob.clickToHome }}</span>
+      </Transition>
+      <Transition name="hint-fade">
+        <span v-if="showHoldHintLocal" class="knob-hint-compact">{{ UI.knob.holdToConfirm }}</span>
+      </Transition>
+    </div>
+
     <div class="knob-stage">
       <div class="knob-well">
         <div class="knob-well-inner">
@@ -23,7 +47,13 @@
         </div>
       </div>
     </div>
-    <p v-if="showBottomLabel" class="knob-label knob-label-bottom">{{ UI.knob.holdToConfirm }}</p>
+
+    <!-- Compact hint below (mobile) -->
+    <div v-if="isAuthenticated && isCompactLayout && showDblClickHintLocal" class="hint-compact hint-compact-bottom">
+      <Transition name="hint-fade">
+        <span class="knob-hint-compact">{{ UI.knob.dblClickFeature }}</span>
+      </Transition>
+    </div>
   </div>
 </template>
 
@@ -34,6 +64,7 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
+import { useKnobHints } from '../../composables/useKnobHints';
 import { KNOB_HOLD_MS, KNOB_DBLCLICK_MS } from '../../constants/app';
 import { UI } from '../../constants/uiStrings';
 
@@ -48,29 +79,43 @@ const {
   onHoldConfirm,
   onClick,
   onDoubleClick,
-  isLoggingOut,
   isFeaturePanel,
+  isCompactLayout,
 } = useKnobDispatch();
+
+const { recordAction, showClickHint, showHoldHint, showDblClickHint } = useKnobHints();
 
 const pressed = ref(false);
 const triggeredByHold = ref(false);
 const lastPressTime = ref(0);
 const dblPressDetected = ref(false);
 let holdTimer: number | null = null;
+let clickTimer: number | null = null;
 
-const showLabels = computed(() => isAuthenticated.value);
-const showBottomLabel = computed(() =>
-  isAuthenticated.value && inConfirmMode.value && !isFeaturePanel.value,
+// Context-aware hint visibility
+const showClickHintLocal = computed(() =>
+  showClickHint.value && (!nodeStore.isEditState || isFeaturePanel.value),
 );
-const topLabel = computed(() => {
-  if (isFeaturePanel.value) return UI.knob.clickToHome;
-  return !nodeStore.isEditState && !isLoggingOut.value ? UI.knob.clickToHome : UI.knob.clickToReturn;
-});
+
+const showHoldHintLocal = computed(() =>
+  showHoldHint.value && inConfirmMode.value && !isFeaturePanel.value,
+);
+
+const showDblClickHintLocal = computed(() =>
+  showDblClickHint.value,
+);
 
 function clearTimer(): void {
   if (holdTimer !== null) {
     window.clearTimeout(holdTimer);
     holdTimer = null;
+  }
+}
+
+function clearClickTimer(): void {
+  if (clickTimer !== null) {
+    window.clearTimeout(clickTimer);
+    clickTimer = null;
   }
 }
 
@@ -82,6 +127,7 @@ function onPressStart(): void {
   if (isBusy.value) return;
 
   if (isDblPress) {
+    clearClickTimer();
     dblPressDetected.value = true;
     lastPressTime.value = 0;
     return;
@@ -96,6 +142,7 @@ function onPressStart(): void {
     holdTimer = window.setTimeout(async () => {
       triggeredByHold.value = true;
       pressed.value = false;
+      recordAction('hold');
       await onHoldConfirm();
     }, KNOB_HOLD_MS);
   }
@@ -104,6 +151,7 @@ function onPressStart(): void {
 async function onPressEnd(): Promise<void> {
   if (dblPressDetected.value) {
     dblPressDetected.value = false;
+    recordAction('dblclick');
     await onDoubleClick();
     return;
   }
@@ -116,7 +164,11 @@ async function onPressEnd(): Promise<void> {
   triggeredByHold.value = false;
 
   if (shouldClick) {
-    await onClick();
+    recordAction('click');
+    clickTimer = window.setTimeout(async () => {
+      clickTimer = null;
+      await onClick();
+    }, KNOB_DBLCLICK_MS);
   }
 }
 
@@ -124,6 +176,7 @@ function onPressCancel(): void {
   if (!pressed.value && !holdTimer) return;
 
   clearTimer();
+  clearClickTimer();
   pressed.value = false;
   triggeredByHold.value = false;
 }
@@ -141,25 +194,66 @@ function onPressCancel(): void {
   padding: 1px;
 }
 
-.knob-label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  margin: 0;
+.knob-hint {
   font-size: 11px;
+  color: var(--color-primary);
+  opacity: 0.6;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.knob-hint-compact {
+  font-size: 10px;
   color: var(--color-primary);
   opacity: 0.6;
   text-align: center;
   line-height: 1.3;
-  word-break: break-all;
 }
 
-.knob-label-top {
-  top: 8px;
+.hint-column {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
 }
 
-.knob-label-bottom {
-  bottom: 8px;
+.hint-left {
+  right: calc(100% + 8px);
+  text-align: right;
+}
+
+.hint-right {
+  left: calc(100% + 8px);
+  text-align: left;
+}
+
+.hint-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.hint-compact-top {
+  margin-bottom: 2px;
+}
+
+.hint-compact-bottom {
+  margin-top: 2px;
+}
+
+.hint-fade-enter-active,
+.hint-fade-leave-active {
+  transition: opacity 300ms ease;
+}
+
+.hint-fade-enter-from,
+.hint-fade-leave-to {
+  opacity: 0;
 }
 
 .knob-stage {
@@ -277,7 +371,7 @@ function onPressCancel(): void {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .knob-stage {
     width: 82px;
   }

@@ -34,7 +34,7 @@ export function createOutlineMaterial(width: number = 0.3): THREE.ShaderMaterial
 }
 
 // 共享 billboard 几何体
-const sharedPlaneGeo = new THREE.PlaneGeometry(1, 1);
+export const sharedPlaneGeo = new THREE.PlaneGeometry(1, 1);
 
 const LEAF_COLORS = [
   { stops: ['rgba(50, 120, 30, 0.95)', 'rgba(60, 130, 35, 0.85)', 'rgba(45, 100, 25, 0.5)', 'rgba(30, 70, 15, 0)'] },   // 深绿
@@ -113,5 +113,38 @@ export function createSkyGradient(topColor: number, bottomColor: number): THREE.
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 2, 256);
   const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
+export function createParticleTexture(theme: TreeTheme = 'default'): THREE.Texture {
+  const size = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.clearRect(0, 0, size, size);
+
+  const cx = size / 2;
+  const r = size * 0.4;
+  const gradient = ctx.createRadialGradient(cx, cx, 0, cx, cx, r);
+
+  if (theme === 'sakura') {
+    gradient.addColorStop(0, 'rgba(255, 183, 197, 0.9)');
+    gradient.addColorStop(0.6, 'rgba(255, 183, 197, 0.5)');
+    gradient.addColorStop(1, 'rgba(255, 183, 197, 0)');
+  } else {
+    gradient.addColorStop(0, 'rgba(100, 200, 60, 0.8)');
+    gradient.addColorStop(0.6, 'rgba(100, 200, 60, 0.4)');
+    gradient.addColorStop(1, 'rgba(100, 200, 60, 0)');
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cx, r, 0, Math.PI * 2);
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
   return texture;
 }

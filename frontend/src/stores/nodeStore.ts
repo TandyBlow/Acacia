@@ -63,6 +63,8 @@ export const useNodeStore = defineStore('node', () => {
   );
 
   const isTreeState = computed(() => viewState.value === ViewStates.TREE);
+  const isQuizState = computed(() => viewState.value === ViewStates.QUIZ);
+  const isStatsState = computed(() => viewState.value === ViewStates.STATS);
   const isConfirmState = computed(() => isEditState.value);
 
   const canConfirm = computed(() => {
@@ -204,6 +206,18 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
   }
 
+  function startQuiz(): void {
+    errorMessage.value = null;
+    viewState.value = ViewStates.QUIZ;
+    clearTransientState();
+  }
+
+  function startStats(): void {
+    errorMessage.value = null;
+    viewState.value = ViewStates.STATS;
+    clearTransientState();
+  }
+
   function resetAfterLogout(): void {
     activeNode.value = null;
     pathNodes.value = [];
@@ -235,7 +249,12 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function onKnobClick(): Promise<void> {
-    if (viewState.value === ViewStates.DISPLAY) {
+    if (viewState.value === ViewStates.QUIZ || viewState.value === ViewStates.STATS) {
+      viewState.value = ViewStates.DISPLAY;
+      return;
+    }
+    if (viewState.value === ViewStates.DISPLAY || viewState.value === ViewStates.ADD) {
+      if (viewState.value === ViewStates.ADD) clearTransientState();
       await loadNode(null);
       return;
     }
@@ -300,6 +319,8 @@ export const useNodeStore = defineStore('node', () => {
     errorMessage,
     isEditState,
     isTreeState,
+    isQuizState,
+    isStatsState,
     isConfirmState,
     canConfirm,
     currentNodeId,
@@ -308,6 +329,8 @@ export const useNodeStore = defineStore('node', () => {
     startAdd,
     startDelete,
     startMove,
+    startQuiz,
+    startStats,
     setMoveTargetParent,
     cancelOperation,
     saveActiveNodeContent,

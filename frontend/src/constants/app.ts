@@ -11,7 +11,18 @@ export const NAV_ROW_GAP = 1;
 export const NAV_ROW_STEP = NAV_ROW_H + NAV_ROW_GAP;
 export const NAV_ANIM_MS = 240;
 
+// Navigation scroll dynamics
+export const NAV_SCROLL_MIN_ANIM_MS = 80;
+export const NAV_SCROLL_MAX_ANIM_MS = 300;
+export const NAV_SCROLL_MOMENTUM_FRICTION = 0.55;
+export const NAV_SCROLL_MOMENTUM_THRESHOLD = 1.2;
+export const NAV_SCROLL_INPUT_WINDOW_MS = 200;
+
 export const COMPACT_BREAKPOINT = 600;
+export const COMPACT_HEIGHT_BREAKPOINT = 500;
+export const MEDIUM_BREAKPOINT = 900;
+export const MIN_SPACE_WIDTH = 320;
+export const MIN_SPACE_HEIGHT = 400;
 
 // localStorage keys
 export const LOCAL_NODES_KEY = 'seewhat_local_nodes_v1';

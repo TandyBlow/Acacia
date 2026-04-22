@@ -46,6 +46,7 @@ def init_db():
                 parent_id TEXT,
                 sort_order REAL NOT NULL DEFAULT 0,
                 domain_tag TEXT,
+                mastery_score REAL NOT NULL DEFAULT 0,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -62,4 +63,19 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_nodes_owner ON nodes(owner_id, is_deleted);
             CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
             CREATE INDEX IF NOT EXISTS idx_edges_child ON edges(child_id);
+
+            CREATE TABLE IF NOT EXISTS quiz_records (
+                id TEXT PRIMARY KEY,
+                node_id TEXT NOT NULL REFERENCES nodes(id),
+                owner_id TEXT NOT NULL REFERENCES users(id),
+                is_correct INTEGER NOT NULL,
+                answered_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_quiz_records_node_owner ON quiz_records(node_id, owner_id, answered_at DESC);
         """)
+
+        # Migration: add mastery_score column if missing
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()]
+        if "mastery_score" not in cols:
+            conn.execute("ALTER TABLE nodes ADD COLUMN mastery_score REAL NOT NULL DEFAULT 0")

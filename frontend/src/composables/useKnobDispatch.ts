@@ -69,6 +69,7 @@ export function useKnobDispatch() {
     }
     if (isFeaturePanel.value) {
       closeFeaturePanel();
+      return;
     }
     if (isLoggingOut.value) {
       cancelLogout();

@@ -3,6 +3,7 @@ export const UI = {
   app: {
     errorOccurred: '应用遇到了一个错误，请重试。',
     retry: '重试',
+    insufficientSpace: '空间不足，请调整窗口大小。',
   },
 
   // Navigation
@@ -39,9 +40,10 @@ export const UI = {
 
   // Knob
   knob: {
-    holdToConfirm: '长按旋钮确认',
-    clickToHome: '点击旋钮返回主页面',
-    clickToReturn: '点击旋钮返回',
+    holdToConfirm: '长按旋钮，确认操作',
+    clickToHome: '单击旋钮，回到主页',
+    clickToReturn: '单击旋钮，回到主页',
+    dblClickFeature: '双击旋钮，选择功能',
   },
 
   // Global Tree

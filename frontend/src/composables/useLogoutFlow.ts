@@ -3,8 +3,9 @@ import { useAuthStore } from '../stores/authStore';
 import { useNodeStore } from '../stores/nodeStore';
 import { invalidateSkeleton } from './useTreeSkeleton';
 
+const isLoggingOut = ref(false);
+
 export function useLogoutFlow() {
-  const isLoggingOut = ref(false);
   const authStore = useAuthStore();
   const nodeStore = useNodeStore();
 

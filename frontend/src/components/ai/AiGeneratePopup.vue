@@ -1,14 +1,5 @@
 <template>
-  <!-- Floating action button -->
-  <button
-    type="button"
-    class="ai-fab"
-    @click="isOpen = true"
-  >
-    AI生成
-  </button>
-
-  <!-- Popup overlay -->
+  <!-- Popup overlay (only renders when triggered via requestOpenPopup) -->
   <Teleport to="body">
     <Transition name="overlay-fade">
       <div v-if="isOpen" class="ai-overlay" @click.self="close">
@@ -95,27 +86,6 @@ function close() {
 </script>
 
 <style scoped>
-.ai-fab {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  z-index: 10;
-  padding: 8px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--color-glass-border);
-  background: rgba(255, 255, 255, 0.18);
-  color: var(--color-primary);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  backdrop-filter: blur(6px);
-  transition: background 0.2s;
-}
-
-.ai-fab:hover {
-  background: rgba(255, 255, 255, 0.32);
-}
-
 .ai-overlay {
   position: fixed;
   inset: 0;
