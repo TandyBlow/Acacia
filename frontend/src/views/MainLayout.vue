@@ -1,5 +1,8 @@
 <template>
-  <main class="layout" :class="layoutClasses">
+  <div v-if="isTooSmall" class="insufficient-space">
+    <p>{{ UI.app.insufficientSpace }}</p>
+  </div>
+  <main v-else class="layout" :class="layoutClasses">
     <section class="logo-area">
       <div class="inset-shell static-shell">
         <LogoArea />
@@ -21,15 +24,17 @@
         </section>
 
         <section class="content-area">
-          <GlassWrapper inset class="content-well content-shell">
-            <GlassWrapper class="content-surface">
-              <div v-show="showTree" class="content-host"><TreeCanvas /></div>
-              <Transition v-if="!showTree" name="content-fade" mode="out-in">
-                <component :is="nonTreeContent" :key="contentKey" class="content-host" />
-              </Transition>
-            </GlassWrapper>
-          </GlassWrapper>
-          <AiGeneratePopup v-if="isAuthenticated && !isFeaturePanel" />
+          <template v-if="!isFeaturePanel">
+            <div class="inset-shell static-shell content-shell">
+              <GlassWrapper class="content-surface">
+                <div v-show="showTree" class="content-host"><TreeCanvas :visible="showTree" /></div>
+                <Transition v-if="!showTree" name="content-rise" mode="out-in">
+                  <component :is="nonTreeContent" :key="contentKey" class="content-host" />
+                </Transition>
+              </GlassWrapper>
+            </div>
+          </template>
+          <FeaturePanel v-else class="feature-host" />
         </section>
       </div>
     </section>
@@ -38,14 +43,15 @@
       <Knob />
     </section>
 
+    <AiGeneratePopup v-if="isAuthenticated" />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, ref, onMounted, onBeforeUnmount, watch, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import LogoArea from '../components/layout/LogoArea.vue';
+import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
 import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
@@ -56,11 +62,14 @@ import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
 import AiGeneratePopup from '../components/ai/AiGeneratePopup.vue';
+import QuizPanel from '../components/quiz/QuizPanel.vue';
+import StatsPanel from '../components/stats/StatsPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch } from '../composables/useKnobDispatch';
-import { COMPACT_BREAKPOINT } from '../constants/app';
+import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
+import { UI } from '../constants/uiStrings';
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
@@ -71,23 +80,30 @@ const {
 } = storeToRefs(authStore);
 
 useAppInit();
-const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout } = useKnobDispatch();
+const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout, closeFeaturePanel } = useKnobDispatch();
 
 const { isBusy: nodeBusy } = storeToRefs(nodeStore);
 const { isBusy: authBusy } = storeToRefs(authStore);
 const isBusy = computed(() => nodeBusy.value || authBusy.value);
 const injectedTreeResizing = inject<Ref<boolean> | null>('isTreeResizing', null);
 const isTreeResizing = computed(() => injectedTreeResizing?.value ?? false);
-const isLoading = computed(() => isBusy.value || isTreeResizing.value);
 
 // Compact layout tracking
 const isCompact = ref(false);
+const isTooSmall = ref(false);
 
 function updateCompactState(): void {
-  isCompact.value = window.innerWidth <= COMPACT_BREAKPOINT;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  isTooSmall.value = w <= MIN_SPACE_WIDTH && h <= MIN_SPACE_HEIGHT;
+  isCompact.value = w <= COMPACT_BREAKPOINT || h <= COMPACT_HEIGHT_BREAKPOINT;
   isCompactLayout.value = isCompact.value;
   if (!isCompact.value) {
     compactMode.value = 'content';
+    if (isFeaturePanel.value) {
+      closeFeaturePanel();
+    }
   } else if (isFeaturePanel.value) {
     compactMode.value = 'feature';
   }
@@ -114,24 +130,29 @@ const layoutClasses = computed(() => ({
   'compact-content': isCompact.value && compactMode.value === 'content',
   'compact-nav': isCompact.value && compactMode.value === 'nav',
   'compact-feature': isCompact.value && compactMode.value === 'feature',
+  'is-too-small': isTooSmall.value,
+  'is-rising': isRising.value,
 }));
 
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value && !isFeaturePanel.value;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value && !isFeaturePanel.value && !nodeStore.isQuizState && !nodeStore.isStatsState;
 });
 
 const nonTreeContent = computed(() => {
   if (!isAuthenticated.value) {
     return AuthPanel;
   }
-  if (isFeaturePanel.value) {
-    return FeaturePanel;
-  }
   if (nodeStore.isTreeState) {
     return GlobalTree;
   }
   if (nodeStore.isConfirmState || isLoggingOut.value) {
     return ConfirmPanel;
+  }
+  if (nodeStore.isQuizState) {
+    return QuizPanel;
+  }
+  if (nodeStore.isStatsState) {
+    return StatsPanel;
   }
   return MarkdownEditor;
 });
@@ -140,16 +161,61 @@ const contentKey = computed(() => {
   if (!isAuthenticated.value) {
     return `auth:${authMode.value}`;
   }
-  if (isFeaturePanel.value) {
-    return 'feature-panel';
-  }
   const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
+});
+
+// View transition tracking — force loading on content changes
+const isTransitioning = ref(false);
+let transitionTimer: number | null = null;
+
+function triggerTransition(): void {
+  if (transitionTimer !== null) window.clearTimeout(transitionTimer);
+  isTransitioning.value = true;
+  transitionTimer = window.setTimeout(() => {
+    isTransitioning.value = false;
+    transitionTimer = null;
+  }, 300);
+}
+
+watch(contentKey, triggerTransition);
+
+const isLoading = computed(() => isBusy.value || isTreeResizing.value || isTransitioning.value);
+
+// Rising animation for homepage navigation
+const isRising = ref(false);
+let risingTimer: number | null = null;
+
+watch(contentKey, () => {
+  const goingHome = isAuthenticated.value && !activeNode.value
+    && !nodeStore.isConfirmState && !isFeaturePanel.value
+    && !nodeStore.isQuizState && !nodeStore.isStatsState;
+
+  if (goingHome) {
+    if (risingTimer !== null) window.clearTimeout(risingTimer);
+    isRising.value = true;
+    risingTimer = window.setTimeout(() => {
+      isRising.value = false;
+      risingTimer = null;
+    }, 650);
+  }
 });
 
 </script>
 
 <style scoped>
+.insufficient-space {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--color-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
 .layout {
   position: relative;
   width: 100%;
@@ -158,7 +224,7 @@ const contentKey = computed(() => {
   padding: 38px;
   display: grid;
   grid-template-columns: 241px minmax(0, 1fr) 82px;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: 54px minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -185,11 +251,13 @@ const contentKey = computed(() => {
 .breadcrumbs-area {
   grid-column: 2;
   grid-row: 1;
+  position: relative;
 }
 
 .navigation-area {
   grid-column: 1;
   grid-row: 2;
+  position: relative;
 }
 
 .content-area {
@@ -203,6 +271,7 @@ const contentKey = computed(() => {
   grid-row: 1 / span 2;
   align-self: stretch;
   justify-self: stretch;
+  position: relative;
 }
 
 .inset-shell {
@@ -218,38 +287,66 @@ const contentKey = computed(() => {
   overflow: hidden;
 }
 
+/* 去除导航右边缘和内容左边缘的 inset shadow，避免间隙处阴影叠加 */
+.navigation-shell {
+  box-shadow:
+    inset 0 9px 18px var(--shadow-inset-a),
+    inset 9px 0 18px var(--shadow-inset-a),
+    inset 0 -9px 18px var(--shadow-inset-b);
+}
+
+.content-shell {
+  box-shadow:
+    inset 0 9px 18px var(--shadow-inset-a),
+    inset 0 -9px 18px var(--shadow-inset-b),
+    inset -9px 0 18px var(--shadow-inset-b);
+}
+
+/* 导航区 z-index 高于内容区，防止 outset shadow 覆盖导航边缘 */
+.navigation-area { z-index: 2; }
+.content-area { z-index: 1; }
+
 .static-shell {
   min-width: 0;
   min-height: 0;
 }
 
-.content-well {
-  width: 100%;
-  height: 100%;
-  padding: 2px;
-}
-
-.content-surface,
 .content-host {
   width: 100%;
   height: 100%;
-}
-
-.content-host {
   overflow: auto;
 }
 
-.content-fade-enter-active,
-.content-fade-leave-active {
-  transition:
-    opacity 240ms ease,
-    transform 240ms ease;
+.content-surface {
+  width: 100%;
+  height: 100%;
 }
 
-.content-fade-enter-from,
-.content-fade-leave-to {
+.feature-host {
+  width: 100%;
+  height: 100%;
+}
+
+.content-rise-enter-active {
+  transition:
+    opacity 300ms ease,
+    transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.content-rise-leave-active {
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+}
+
+.content-rise-enter-from {
   opacity: 0;
-  transform: translateY(12px) scale(0.985);
+  transform: translateY(24px) scale(0.97);
+}
+
+.content-rise-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.99);
 }
 
 .is-loading .breadcrumbs-area,
@@ -271,11 +368,57 @@ const contentKey = computed(() => {
   caret-color: transparent;
 }
 
-@media (max-width: 1100px) {
+.is-loading .navigation-area::after,
+.is-loading .content-area::after,
+.is-loading .breadcrumbs-area::after,
+.is-loading .knob-area::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.15);
+  animation: load-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.is-loading .navigation-shell,
+.is-loading .content-shell {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+@keyframes load-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes glass-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.is-rising .content-area :deep(.content-surface) {
+  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.is-rising .knob-area :deep(.knob-well) {
+  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 100ms;
+}
+
+@media (max-width: 900px) {
   .layout {
     padding: 16px;
     grid-template-columns: 241px minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) 100px;
+    grid-template-rows: 54px minmax(0, 1fr) 100px;
     row-gap: 10px;
     column-gap: 10px;
   }
@@ -311,6 +454,11 @@ const contentKey = computed(() => {
   .navigation-shell,
   .content-shell {
     display: contents;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    padding: 0;
   }
 
   .navigation-area {
@@ -333,6 +481,8 @@ const contentKey = computed(() => {
 
 @media (max-width: 600px) {
   .layout {
+    position: fixed;
+    inset: 0;
     padding: 8px;
     grid-template-columns: 1fr;
     gap: 6px;
@@ -373,7 +523,7 @@ const contentKey = computed(() => {
 
   /* Compact nav mode: breadcrumbs + navigation + knob */
   .layout.compact-nav {
-    grid-template-rows: auto minmax(0, 1fr) 90px;
+    grid-template-rows: 54px minmax(0, 1fr) 90px;
   }
 
   .layout.compact-nav .logo-area,

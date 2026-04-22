@@ -174,7 +174,7 @@ def _max_depth(node_id: str, children_map: Dict[str, List[str]], current: int = 
     return max(_max_depth(cid, children_map, current + 1) for cid in children)
 
 
-def generate_lsystem_skeleton(tree_data: List[Dict]) -> Dict:
+def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas_h: int = 512) -> Dict:
     """
     Generate visually appealing tree skeleton driven by data statistics.
 
@@ -185,7 +185,7 @@ def generate_lsystem_skeleton(tree_data: List[Dict]) -> Dict:
     - Branches carry root's node_id (clickable to identify which knowledge root)
     """
     if not tree_data:
-        return {"branches": [], "canvas_size": [512, 512], "trunk": None, "ground": None, "roots": []}
+        return {"branches": [], "canvas_size": [canvas_w, canvas_h], "trunk": None, "ground": None, "roots": []}
 
     # Build adjacency from tree_data
     parent_map: Dict[str, str | None] = {}
@@ -203,7 +203,7 @@ def generate_lsystem_skeleton(tree_data: List[Dict]) -> Dict:
     if not roots:
         roots = [n for n in tree_data if n["depth"] == 0]
     if not roots:
-        return {"branches": [], "canvas_size": [512, 512], "trunk": None, "ground": None, "roots": []}
+        return {"branches": [], "canvas_size": [canvas_w, canvas_h], "trunk": None, "ground": None, "roots": []}
 
     # --- Compute statistics per root ---
     root_stats: List[Dict] = []
@@ -227,7 +227,6 @@ def generate_lsystem_skeleton(tree_data: List[Dict]) -> Dict:
         print(f"  root {rs['name']!r}: descendants={rs['descendants']}, depth={rs['depth']}")
 
     # --- Canvas & layout ---
-    canvas_w, canvas_h = 512, 512
     ground_y = canvas_h * 0.88
     trunk_base = (canvas_w / 2, ground_y)
     trunk_height = canvas_h * 0.30

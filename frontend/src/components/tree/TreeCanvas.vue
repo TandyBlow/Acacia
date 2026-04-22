@@ -9,18 +9,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, provide } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, provide, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import * as THREE from 'three';
 import { useAuthStore } from '../../stores/authStore';
 import { useStyleStore } from '../../stores/styleStore';
-import { useTreeSkeleton } from '../../composables/useTreeSkeleton';
-import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, createSkyGradient, type TreeTheme } from './treeMaterials';
+import { useTreeSkeleton, invalidateSkeleton } from '../../composables/useTreeSkeleton';
+import { createCelMaterial, createOutlineMaterial, createLeafClusterTexture, createLeafBillboard, createSkyGradient, createParticleTexture, sharedPlaneGeo, type TreeTheme } from './treeMaterials';
 import type { Branch, SkeletonData } from '../../types/tree';
 import { BARK_COLORS, GROUND_COLOR, DIRT_COLOR, LEAF_SIZE_MULT, SKY_COLORS } from '../../constants/theme';
 import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
+const props = defineProps<{ visible?: boolean }>();
 const authStore = useAuthStore();
 const { isAuthenticated } = storeToRefs(authStore);
 const styleStore = useStyleStore();
@@ -41,11 +42,27 @@ let raycaster: THREE.Raycaster;
 let branchMeshes: THREE.Mesh[] = [];
 let outlineMeshes: THREE.Mesh[] = [];
 let leafMeshes: THREE.Mesh[] = [];
+let particles: THREE.Mesh[] = [];
+let clock: THREE.Clock | null = null;
+const PARTICLE_COUNT = 30;
 let animationFrameId = 0;
 let resizeObserver: ResizeObserver | null = null;
 let refContainerW = 0;
 let refContainerH = 0;
 let refCameraDist = 0;
+let contextLost = false;
+
+function onContextLost(event: Event) {
+  event.preventDefault();
+  contextLost = true;
+}
+
+function onContextRestored() {
+  contextLost = false;
+  if (lastSkeleton && containerRef.value) {
+    redrawTree();
+  }
+}
 
 function to3D(x: number, y: number, canvasW: number, canvasH: number): THREE.Vector3 {
   return new THREE.Vector3(
@@ -206,21 +223,27 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
   scene.add(ambientLight);
 
+  clock = new THREE.Clock();
+
   const group = new THREE.Group();
   branchMeshes = [];
   outlineMeshes = [];
   leafMeshes = [];
+  particles = [];
 
   // Render ground fill (below wavy line)
   if (skeleton.ground) {
     const groundMesh = createGroundMesh(skeleton.ground, canvasW, canvasH);
     group.add(groundMesh);
+    allDisposable.push(groundMesh);
 
     // Ground line on top
     const linePoints = skeleton.ground.map(pt => to3D(pt[0], pt[1], canvasW, canvasH));
     const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
     const lineMat = new THREE.LineBasicMaterial({ color: GROUND_COLOR, linewidth: 2 });
-    group.add(new THREE.Line(lineGeo, lineMat));
+    const line = new THREE.Line(lineGeo, lineMat);
+    group.add(line);
+    allDisposable.push(line);
   }
 
   // Render roots (not clickable)
@@ -228,9 +251,11 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
     for (const root of skeleton.roots) {
       const mesh = createBranchMesh(root, canvasW, canvasH, GROUND_COLOR);
       group.add(mesh);
+      allDisposable.push(mesh);
       const outline = createOutlineMesh(root, canvasW, canvasH);
       group.add(outline);
       outlineMeshes.push(outline);
+      allDisposable.push(outline);
     }
   }
 
@@ -239,9 +264,11 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
     for (const seg of skeleton.trunk) {
       const mesh = createBranchMesh(seg, canvasW, canvasH);
       group.add(mesh);
+      allDisposable.push(mesh);
       const outline = createOutlineMesh(seg, canvasW, canvasH);
       group.add(outline);
       outlineMeshes.push(outline);
+      allDisposable.push(outline);
     }
   }
 
@@ -265,15 +292,18 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
     const mesh = createBranchMesh(branch, canvasW, canvasH);
     group.add(mesh);
     branchMeshes.push(mesh);
+    allDisposable.push(mesh);
 
     const outline = createOutlineMesh(branch, canvasW, canvasH);
     group.add(outline);
     outlineMeshes.push(outline);
+    allDisposable.push(outline);
   }
 
   // 渲染叶片 — 所有枝干末端生成 billboard 叶团
   const leafTextures = [0, 1, 2].map(i => createLeafClusterTexture(i, 128, theme));
   const leafSizeMult = LEAF_SIZE_MULT[theme];
+  let leafIdx = 0;
   for (const branch of skeleton.branches) {
     const dx = branch.end[0] - branch.start[0];
     const dy = branch.end[1] - branch.start[1];
@@ -283,7 +313,49 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
     for (const leaf of leaves) {
       group.add(leaf);
       leafMeshes.push(leaf);
+      allDisposable.push(leaf);
+      // Store initial position and phase for sway animation
+      leaf.userData.initialPosition = leaf.position.clone();
+      leaf.userData.phaseOffset = leafIdx * 2.399; // golden angle
+      leafIdx++;
     }
+  }
+
+  // 飘落粒子
+  const particleTexture = createParticleTexture(theme);
+  const groundY = -(canvasH / 2);
+  const resetY = canvasH * 0.5;
+  const crownWidth = canvasW * 0.8;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const pSize = 2 + Math.random() * 4;
+    const material = new THREE.MeshBasicMaterial({
+      map: particleTexture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(sharedPlaneGeo, material);
+    mesh.scale.set(pSize, pSize, 1);
+    mesh.layers.set(1); // No raycast
+    mesh.renderOrder = -2;
+    mesh.position.set(
+      (Math.random() - 0.5) * crownWidth,
+      resetY + Math.random() * canvasH * 0.3,
+      (Math.random() - 0.5) * 10,
+    );
+    mesh.userData = {
+      fallSpeed: 15 + Math.random() * 25,
+      swayAmplitude: 3 + Math.random() * 6,
+      swayFrequency: 0.3 + Math.random() * 0.5,
+      rotateSpeed: (Math.random() - 0.5) * 0.02,
+      phaseOffset: Math.random() * Math.PI * 2,
+      startX: mesh.position.x,
+      resetY,
+      groundY,
+    };
+    scene.add(mesh);
+    particles.push(mesh);
+    allDisposable.push(mesh);
   }
 
   scene.add(group);
@@ -305,7 +377,7 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   } else {
     fitHeight = skeletonW / aspect;
   }
-  refCameraDist = fitHeight / 2 / Math.tan(THREE.MathUtils.degToRad(30)) + fitHeight * 0.3;
+  refCameraDist = fitHeight / 2 / Math.tan(THREE.MathUtils.degToRad(30));
   camera.position.set(0, 0, refCameraDist);
   camera.lookAt(0, 0, 0);
   camera.layers.enable(1); // 渲染描边图层
@@ -318,6 +390,8 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
   raycaster = new THREE.Raycaster();
 
   renderer.domElement.addEventListener('click', onCanvasClick);
+  renderer.domElement.addEventListener('webglcontextlost', onContextLost);
+  renderer.domElement.addEventListener('webglcontextrestored', onContextRestored);
   resizeObserver = new ResizeObserver(onResize);
   resizeObserver.observe(containerRef.value!);
 
@@ -327,12 +401,36 @@ function setupScene(skeleton: SkeletonData, theme: TreeTheme = 'default') {
 function animate() {
   animationFrameId = requestAnimationFrame(animate);
 
-  if (!containerRef.value || containerRef.value.offsetParent === null) return;
+  if (!containerRef.value || containerRef.value.offsetParent === null || contextLost) return;
 
-  // billboard: 叶片始终朝向相机
+  const elapsed = clock ? clock.getElapsedTime() : 0;
+
+  // billboard: 叶片始终朝向相机 + 微风摇摆
   if (camera) {
     for (const leaf of leafMeshes) {
       leaf.quaternion.copy(camera.quaternion);
+      const ip = leaf.userData.initialPosition;
+      const po = leaf.userData.phaseOffset;
+      if (ip) {
+        const scale = Math.max(leaf.scale.x, 1) * 0.02;
+        leaf.position.x = ip.x + Math.sin(elapsed * 0.8 + po) * scale * 4;
+        leaf.position.y = ip.y + Math.sin(elapsed * 0.6 + po * 1.3) * scale * 2;
+      }
+    }
+  }
+
+  // 飘落粒子更新
+  if (camera && particles.length > 0) {
+    for (const p of particles) {
+      const ud = p.userData;
+      p.position.y -= ud.fallSpeed * 0.016;
+      p.position.x = ud.startX + Math.sin(elapsed * ud.swayFrequency + ud.phaseOffset) * ud.swayAmplitude;
+      p.rotation.z += ud.rotateSpeed;
+      p.quaternion.copy(camera.quaternion);
+      if (p.position.y < ud.groundY) {
+        p.position.y = ud.resetY;
+        ud.startX = (Math.random() - 0.5) * (lastSkeleton ? lastSkeleton.canvas_size[0] * 0.8 : 100);
+      }
     }
   }
 
@@ -361,6 +459,8 @@ function onResize() {
   const w = containerRef.value.clientWidth;
   const h = containerRef.value.clientHeight;
   if (w === 0 || h === 0 || refContainerW === 0 || refContainerH === 0) return;
+  // 尺寸与 setupScene 刚设置的一致则跳过（防止 ResizeObserver 初始回调触发无限重绘）
+  if (w === refContainerW && h === refContainerH) return;
 
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -383,13 +483,16 @@ function onResize() {
   }, 1000);
 }
 
-function redrawTree() {
+async function redrawTree() {
   if (!lastSkeleton || !containerRef.value) {
     isResizing.value = false;
     return;
   }
+  // 窗口大小变化时用新尺寸重新生成骨架，让树匹配新的容器比例
   cleanup();
-  setupScene(lastSkeleton, currentTheme);
+  invalidateSkeleton();
+  treeLoaded = false;
+  await loadTree();
   isResizing.value = false;
 }
 
@@ -403,14 +506,18 @@ function cleanup() {
   }
   resizeObserver?.disconnect();
   resizeObserver = null;
+  clock = null;
 
   if (renderer) {
     renderer.domElement.removeEventListener('click', onCanvasClick);
+    renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+    renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
     renderer.dispose();
     if (containerRef.value && renderer.domElement.parentNode === containerRef.value) {
       containerRef.value.removeChild(renderer.domElement);
     }
   }
+  contextLost = false;
 
   for (const obj of allDisposable) {
     obj.traverse((child) => {
@@ -424,6 +531,7 @@ function cleanup() {
   branchMeshes = [];
   outlineMeshes = [];
   leafMeshes = [];
+  particles = [];
 }
 
 provide('isTreeResizing', isResizing);
@@ -434,7 +542,9 @@ async function loadTree() {
   if (!containerRef.value || treeLoaded) return;
 
   try {
-    const skeleton = await fetchSkeleton();
+    const cw = containerRef.value.clientWidth;
+    const ch = containerRef.value.clientHeight;
+    const skeleton = await fetchSkeleton(cw || undefined, ch || undefined);
     if (!skeleton.branches || skeleton.branches.length === 0) {
       noTreeData.value = true;
       return;
@@ -459,12 +569,33 @@ watch(isAuthenticated, (authed) => {
   }
 }, { immediate: true });
 
+onMounted(() => {
+  if (isAuthenticated.value && !treeLoaded) {
+    loadTree();
+  }
+});
+
 watch(() => styleStore.style, (newStyle) => {
   if (!lastSkeleton || !containerRef.value) return;
   const theme: TreeTheme = newStyle === 'sakura' ? 'sakura' : 'default';
   if (theme === currentTheme) return;
   cleanup();
   setupScene(lastSkeleton, theme);
+});
+
+function onBecameVisible() {
+  if (!lastSkeleton || !containerRef.value) return;
+  // 始终重建场景，确保 renderer/scene 尺寸与容器一致
+  redrawTree();
+}
+
+watch(() => props.visible, async (nowVisible, wasVisible) => {
+  if (!nowVisible || wasVisible) return;
+  // 等 v-show 的 DOM 更新生效（容器从 display:none 恢复）
+  await nextTick();
+  // 再等一帧确保浏览器完成布局计算
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  onBecameVisible();
 });
 
 onBeforeUnmount(() => {

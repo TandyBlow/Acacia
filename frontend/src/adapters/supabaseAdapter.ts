@@ -61,8 +61,15 @@ function mapRpcRow(row: RpcNodeRow): NodeRecord {
 // Backend HTTP helpers (not Supabase SDK)
 // ---------------------------------------------------------------------------
 
-async function fetchTreeSkeletonHttp(userId: string): Promise<SkeletonData> {
-  const res = await fetch(`${config.backendUrl}/generate-tree-skeleton/${userId}`, { method: 'POST' });
+async function fetchTreeSkeletonHttp(userId: string, canvasW?: number, canvasH?: number): Promise<SkeletonData> {
+  const body: Record<string, number> = {};
+  if (canvasW) body.canvas_w = canvasW;
+  if (canvasH) body.canvas_h = canvasH;
+  const res = await fetch(`${config.backendUrl}/generate-tree-skeleton/${userId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to fetch skeleton: ${text}`);

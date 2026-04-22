@@ -60,9 +60,14 @@ export const backendAdapter: DataAdapter = {
     return apiFetch<TreeNode[]>('/tree');
   },
 
-  async fetchTreeSkeleton(_userId: string): Promise<SkeletonData> {
+  async fetchTreeSkeleton(_userId: string, canvasW?: number, canvasH?: number): Promise<SkeletonData> {
+    const body: Record<string, number> = {};
+    if (canvasW) body.canvas_w = canvasW;
+    if (canvasH) body.canvas_h = canvasH;
     return apiFetch<SkeletonData>('/local/generate-tree-skeleton', {
       method: 'POST',
+      headers: Object.keys(body).length ? { 'Content-Type': 'application/json' } : undefined,
+      body: Object.keys(body).length ? JSON.stringify(body) : undefined,
     });
   },
 

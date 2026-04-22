@@ -16,6 +16,9 @@ from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service import compute_style
 from style_service_sqlite import compute_style_sqlite
 from ai_generate_service import ai_generate_nodes
+from quiz_service import generate_quiz_question, submit_quiz_answer
+from quiz_service_sqlite import generate_quiz_question_sqlite, submit_quiz_answer_sqlite
+from db import supabase
 
 app = FastAPI()
 
@@ -418,8 +421,12 @@ def generate_tree(user_id: str):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+class CanvasSize(BaseModel):
+    canvas_w: int = 512
+    canvas_h: int = 512
+
 @app.post("/generate-tree-skeleton/{user_id}")
-def generate_tree_skeleton(user_id: str):
+def generate_tree_skeleton(user_id: str, body: CanvasSize = CanvasSize()):
     try:
         tree_data = fetch_user_tree(user_id)
     except Exception as e:
@@ -428,7 +435,7 @@ def generate_tree_skeleton(user_id: str):
     if not tree_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No tree data found for user {user_id}")
 
-    return generate_lsystem_skeleton(tree_data)
+    return generate_lsystem_skeleton(tree_data, body.canvas_w, body.canvas_h)
 
 
 @app.post("/tag-nodes/{user_id}")
@@ -468,7 +475,7 @@ def ai_generate(user_id: str, payload: AiGenerateRequest):
 # --- Tree visualization (SQLite-backed, for local mode) ---
 
 @app.post("/local/generate-tree-skeleton")
-def generate_tree_skeleton_local(user: dict = Depends(get_current_user)):
+def generate_tree_skeleton_local(user: dict = Depends(get_current_user), body: CanvasSize = CanvasSize()):
     owner_id = user["sub"]
     try:
         tree_data = fetch_user_tree_sqlite(owner_id)
@@ -478,7 +485,7 @@ def generate_tree_skeleton_local(user: dict = Depends(get_current_user)):
     if not tree_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No tree data found")
 
-    return generate_lsystem_skeleton(tree_data)
+    return generate_lsystem_skeleton(tree_data, body.canvas_w, body.canvas_h)
 
 
 @app.post("/local/tag-nodes")
@@ -497,3 +504,80 @@ def get_style_local(user: dict = Depends(get_current_user)):
         return compute_style_sqlite(owner_id)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# --- Quiz (Supabase-backed) ---
+
+class QuizAnswerRequest(BaseModel):
+    is_correct: bool
+
+
+@app.post("/ai-generate-question/{user_id}/{node_id}")
+def generate_question_supabase(user_id: str, node_id: str):
+    try:
+        return generate_quiz_question(node_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/submit-answer-supabase/{user_id}/{node_id}")
+def submit_answer_supabase(user_id: str, node_id: str, payload: QuizAnswerRequest):
+    try:
+        return submit_quiz_answer(node_id, user_id, payload.is_correct)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/quiz-stats/{user_id}")
+def quiz_stats_supabase(user_id: str):
+    try:
+        resp = (
+            supabase.table("nodes")
+            .select("id, name, mastery_score, depth")
+            .eq("owner_id", user_id)
+            .eq("is_deleted", False)
+            .execute()
+        )
+        return {"nodes": resp.data}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# --- Quiz (SQLite-backed, local mode) ---
+
+@app.post("/generate-question/{node_id}")
+def generate_question_jwt(node_id: str, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return generate_quiz_question_sqlite(node_id, owner_id, conn)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/submit-answer/{node_id}")
+def submit_answer_jwt(node_id: str, payload: QuizAnswerRequest, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return submit_quiz_answer_sqlite(node_id, owner_id, payload.is_correct, conn)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/quiz-stats-local")
+def quiz_stats_local(user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT id, name, mastery_score, depth FROM nodes WHERE owner_id = ? AND is_deleted = 0",
+                (owner_id,),
+            ).fetchall()
+            return {"nodes": [dict(r) for r in rows]}
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

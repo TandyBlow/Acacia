@@ -12,7 +12,7 @@ export function useTreeSkeleton() {
   const styleStore = useStyleStore();
   const busy = ref(false);
 
-  async function fetchSkeleton(): Promise<SkeletonData> {
+  async function fetchSkeleton(canvasW?: number, canvasH?: number): Promise<SkeletonData> {
     if (skeletonLoaded.value && skeletonData.value) {
       return skeletonData.value;
     }
@@ -20,12 +20,12 @@ export function useTreeSkeleton() {
     if (!userId) throw new Error('Not authenticated');
     const adapter = getDataAdapter();
     if (!adapter.fetchTreeSkeleton) {
-      const empty: SkeletonData = { branches: [], canvas_size: [512, 512], trunk: null, ground: null, roots: null };
+      const empty: SkeletonData = { branches: [], canvas_size: [canvasW ?? 512, canvasH ?? 512], trunk: null, ground: null, roots: null };
       skeletonData.value = empty;
       skeletonLoaded.value = true;
       return empty;
     }
-    const result = await adapter.fetchTreeSkeleton(userId);
+    const result = await adapter.fetchTreeSkeleton(userId, canvasW, canvasH);
     skeletonData.value = result;
     skeletonLoaded.value = true;
     return result;
