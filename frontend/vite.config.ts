@@ -32,7 +32,7 @@ export default defineConfig({
       manifestFilename: 'manifest.json',
       manifest,
       injectManifest: {
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 8 MB
       },
     }),
   ],

@@ -57,7 +57,7 @@ export class UserDataMapper {
 
 export function mapUserDataToEzTreeParams(
   nodeCount: number,
-  maxDepth: number,
+  _maxDepth: number,
   widthDepthRatio: number,
   userId: string,
 ): Partial<EzTreeOptions> {
@@ -83,12 +83,12 @@ export function mapUserDataToEzTreeParams(
       levels,
       length: { 0: trunkLength, 1: branchLength, 2: branchLength * 0.6, 3: branchLength * 0.3 },
       children: { 0: baseChildren, 1: baseChildren - 1, 2: Math.max(baseChildren - 2, 2) },
-    },
+    } as any,
     leaves: {
       count: leafCount,
       size: lerp(2.0, 3.5, widthDepthRatio),
       sizeVariance: 0.7,
       billboard: 'double',
-    },
+    } as any,
   };
 }

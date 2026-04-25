@@ -9,8 +9,7 @@ import { mapUserDataToEzTreeParams } from './UserDataMapper';
 
 type EzTreeOptions = EzTree['options'];
 import type { StatsNode } from '../../../composables/useStats';
-import { ground2dVertexShader, ground2dFragmentShader } from '../shaders/ground2d';
-// ground2d import kept for future re-enable
+// import { ground2dVertexShader, ground2dFragmentShader } from '../shaders/ground2d';
 import { sky2dVertexShader, sky2dFragmentShader } from '../shaders/sky2d';
 import { crownVertexShader, crownFragmentShader } from '../shaders/crown';
 import { outlineVertexShader, outlineFragmentShader } from '../shaders/outline';
@@ -161,7 +160,7 @@ export class SceneManager {
     this.userId = id;
   }
 
-  updateUserData(statsNodes: StatsNode[], distribution: Record<string, number>) {
+  updateUserData(statsNodes: StatsNode[], _distribution: Record<string, number>) {
     if (!this.ezTree || !this.userId) return;
 
     const nodeCount = statsNodes.length;
@@ -172,7 +171,7 @@ export class SceneManager {
     this.lastUserOverrides = overrides;
 
     // loadFromJson does a recursive deep-copy merge, so pass overrides directly
-    this.ezTree.loadFromJson(overrides);
+    this.ezTree.loadFromJson(overrides as any);
     this.rebuildTreeGroups();
   }
 
@@ -276,14 +275,12 @@ export class SceneManager {
   // --- Private: Tree generation ---
 
   private buildTreeMeshes() {
-    const params = this.currentParams;
-
     this.ezTree = new EzTree();
     this.ezTree.loadPreset('Oak Medium');
 
     // Apply saved user overrides (loadFromJson deep-merges, keeping preset values)
     if (this.lastUserOverrides) {
-      this.ezTree.loadFromJson(this.lastUserOverrides);
+      this.ezTree.loadFromJson(this.lastUserOverrides as any);
     }
 
     this.ezTree.generate();
