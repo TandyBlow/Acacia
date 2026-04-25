@@ -53,9 +53,12 @@ const authStore = useAuthStore();
 const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteWithChildren } =
   storeToRefs(nodeStore);
 const { currentUsername } = storeToRefs(authStore);
-const { isLoggingOut } = useKnobDispatch();
+const { isLoggingOut, logoutUsername } = useKnobDispatch();
 
-const logoutPrompt = computed(() => UI.confirm.logoutPrompt(currentUsername.value));
+const logoutPrompt = computed(() => {
+  const name = logoutUsername.value || currentUsername.value || UI.errors.unknownUser;
+  return UI.confirm.logoutPrompt(name);
+});
 </script>
 
 <style scoped>

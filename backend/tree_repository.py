@@ -13,9 +13,15 @@ def fetch_user_tree(user_id: str) -> List[Dict]:
     Returns list of nodes with: id, name, depth, parent_id, child_count, mastery_score
     """
     # Fetch all nodes for user
-    nodes_response = supabase.table("nodes").select(
-        "id, name, content"
-    ).eq("owner_id", user_id).eq("is_deleted", False).execute()
+    # mastery_score may not exist on all Supabase instances; try with it, fall back without
+    try:
+        nodes_response = supabase.table("nodes").select(
+            "id, name, content, mastery_score"
+        ).eq("owner_id", user_id).eq("is_deleted", False).execute()
+    except Exception:
+        nodes_response = supabase.table("nodes").select(
+            "id, name, content"
+        ).eq("owner_id", user_id).eq("is_deleted", False).execute()
 
     nodes = nodes_response.data
     if not nodes:
@@ -70,7 +76,7 @@ def fetch_user_tree(user_id: str) -> List[Dict]:
             "depth": depth,
             "parent_id": parent_map.get(node_id),
             "child_count": child_count_map.get(node_id, 0),
-            "mastery_score": 0.5  # Placeholder
+            "mastery_score": node.get("mastery_score") or 0.0,
         })
 
     # --- Debug logging ---

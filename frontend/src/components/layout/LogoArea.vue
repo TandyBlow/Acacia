@@ -1,6 +1,6 @@
 <template>
   <div class="logo-area">
-    <p class="logo-title">SeeWhat</p>
+    <p class="logo-title">Acacia</p>
   </div>
 </template>
 

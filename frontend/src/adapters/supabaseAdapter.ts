@@ -407,6 +407,7 @@ const rpcImpl: DataAdapter = {
   tagNodes: tagNodesHttp,
   fetchStyle: fetchStyleHttp,
   testSakuraTag: testSakuraTagImpl,
+  clearCache(): void {},
 };
 
 // ---------------------------------------------------------------------------
@@ -442,11 +443,6 @@ export const supabaseAdapter: DataAdapter = new Proxy({} as DataAdapter, {
         rpcMethodAvailable[method] = true;
         return result;
       } catch {
-        if (rpcMethodAvailable[method] === undefined) {
-          console.warn(
-            `SeeWhat: RPC '${method}' not available, falling back to direct query.`,
-          );
-        }
         rpcMethodAvailable[method] = false;
         return callMethod(directQueryImpl, method, args);
       }

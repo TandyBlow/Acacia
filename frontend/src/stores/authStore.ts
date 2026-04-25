@@ -34,16 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => Boolean(user.value));
   const currentUsername = computed(() => {
-    if (user.value?.username) {
-      return user.value.username;
-    }
-
-    const inputUsername = username.value.trim();
-    if (inputUsername.length > 0) {
-      return inputUsername;
-    }
-
-    return UI.errors.unknownUser;
+    return user.value?.username || '';
   });
   const isRegisterMode = computed(() => mode.value === 'register');
   const canSubmit = computed(() => {
@@ -63,6 +54,20 @@ export const useAuthStore = defineStore('auth', () => {
   });
 
   function assignUser(next: AuthUser | null): void {
+    if (next && next.username) {
+      try { localStorage.setItem(`acacia_uname_${next.id}`, next.username); } catch { /* ignore */ }
+    }
+    if (next && !next.username && next.id) {
+      try {
+        const cached = localStorage.getItem(`acacia_uname_${next.id}`);
+        if (cached) {
+          next = { ...next, username: cached };
+        }
+      } catch { /* ignore */ }
+    }
+    if (next && !next.username && user.value?.username && user.value.id === next.id) {
+      next = { ...next, username: user.value.username };
+    }
     user.value = next;
   }
 
@@ -91,13 +96,17 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const currentUser = await authAdapter.initialize();
+      console.warn('[authStore] initialize() result:', JSON.stringify(currentUser));
       assignUser(currentUser);
+      console.warn('[authStore] after assignUser, currentUsername:', currentUsername.value, 'user:', JSON.stringify(user.value));
     } catch (error) {
       errorMessage.value = formatAuthError(error);
     }
 
     authAdapter.onAuthStateChange((nextUser) => {
+      console.warn('[authStore] onAuthStateChange:', JSON.stringify(nextUser), 'current user:', JSON.stringify(user.value));
       assignUser(nextUser);
+      console.warn('[authStore] after onAuthStateChange assignUser, currentUsername:', currentUsername.value);
       if (nextUser) {
         errorMessage.value = null;
       }
@@ -147,9 +156,13 @@ export const useAuthStore = defineStore('auth', () => {
       return false;
     }
 
+    const userId = user.value?.id;
     isBusy.value = true;
     try {
       await authAdapter.signOut();
+      if (userId) {
+        try { localStorage.removeItem(`acacia_uname_${userId}`); } catch { /* ignore */ }
+      }
       assignUser(null);
       clearAuthFormState();
       errorMessage.value = null;

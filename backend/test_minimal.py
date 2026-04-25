@@ -7,7 +7,7 @@ app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "SeeWhat backend is running"}
+    return {"status": "ok", "message": "Acacia backend is running"}
 
 @app.get("/health")
 def health():

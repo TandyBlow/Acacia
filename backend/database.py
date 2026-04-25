@@ -5,7 +5,7 @@ import sqlite3
 import os
 from contextlib import contextmanager
 
-DB_PATH = os.getenv("DB_PATH", "seewhat.db")
+DB_PATH = os.getenv("DB_PATH", "acacia.db")
 
 
 def get_db() -> sqlite3.Connection:

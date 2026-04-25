@@ -8,7 +8,7 @@ from huggingface_hub import HfApi, create_repo, upload_folder
 
 def deploy_to_hf_spaces():
     # Configuration
-    space_name = "seewhat"
+    space_name = "acacia"
     username = "TandyBlow"
     repo_id = f"{username}/{space_name}"
 

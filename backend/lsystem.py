@@ -174,7 +174,7 @@ def _max_depth(node_id: str, children_map: Dict[str, List[str]], current: int = 
     return max(_max_depth(cid, children_map, current + 1) for cid in children)
 
 
-def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas_h: int = 512) -> Dict:
+def generate_lsystem_skeleton(tree_data: List[Dict], _canvas_w: int = 512, _canvas_h: int = 512) -> Dict:
     """
     Generate visually appealing tree skeleton driven by data statistics.
 
@@ -184,8 +184,12 @@ def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas
     - Max tree depth → overall tree height
     - Branches carry root's node_id (clickable to identify which knowledge root)
     """
+    # Fixed 512x512 — tree structure depends on data, not viewport size
+    canvas_w = 512
+    canvas_h = 512
+
     if not tree_data:
-        return {"branches": [], "canvas_size": [canvas_w, canvas_h], "trunk": None, "ground": None, "roots": []}
+        return {"branches": [], "canvas_size": [canvas_w, canvas_h], "trunk": None, "ground": None, "roots": [], "crown_layers": []}
 
     # Build adjacency from tree_data
     parent_map: Dict[str, str | None] = {}
@@ -203,7 +207,7 @@ def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas
     if not roots:
         roots = [n for n in tree_data if n["depth"] == 0]
     if not roots:
-        return {"branches": [], "canvas_size": [canvas_w, canvas_h], "trunk": None, "ground": None, "roots": []}
+        return {"branches": [], "canvas_size": [canvas_w, canvas_h], "trunk": None, "ground": None, "roots": [], "crown_layers": []}
 
     # --- Compute statistics per root ---
     root_stats: List[Dict] = []
@@ -229,10 +233,22 @@ def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas
     # --- Canvas & layout ---
     ground_y = canvas_h * 0.88
     trunk_base = (canvas_w / 2, ground_y)
-    trunk_height = canvas_h * 0.30
+
+    n_roots_actual = len(roots)
+
+    # Trunk height: scales with max_depth and total_nodes
+    depth_factor = min(1.0, 0.4 + global_max_depth * 0.08)
+    node_factor = min(1.0, 0.5 + math.log2(max(total_nodes, 2)) * 0.08)
+    trunk_height = canvas_h * 0.20 * depth_factor * node_factor + canvas_h * 0.15
     trunk_top = (canvas_w / 2, ground_y - trunk_height)
 
-    # --- Trunk: tapered from 20 (base) to 10 (top) ---
+    # Trunk thickness: scales with root count and total_nodes
+    root_factor = min(1.0, 0.5 + n_roots_actual * 0.1)
+    node_thick_factor = min(1.0, 0.6 + math.log2(max(total_nodes, 2)) * 0.07)
+    trunk_base_thickness = 10 + 15 * root_factor * node_thick_factor
+    trunk_top_thickness = trunk_base_thickness * 0.45
+
+    # --- Trunk: tapered ---
     trunk_branches: List[Dict] = []
     trunk_segments = 8
     for i in range(trunk_segments):
@@ -240,7 +256,31 @@ def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas
         t1 = (i + 1) / trunk_segments
         y0 = trunk_base[1] - trunk_height * t0
         y1 = trunk_base[1] - trunk_height * t1
-        thickness = 20 - (20 - 10) * ((t0 + t1) / 2)
+        thickness = trunk_base_thickness - (trunk_base_thickness - trunk_top_thickness) * ((t0 + t1) / 2)
+        trunk_branches.append({
+            "start": [trunk_base[0], y0],
+            "end": [trunk_base[0], y1],
+            "control1": [trunk_base[0], y0 + (y1 - y0) * 0.33],
+            "control2": [trunk_base[0], y0 + (y1 - y0) * 0.67],
+            "thickness": thickness,
+            "node_id": "__trunk__",
+            "depth": -1,
+        })
+
+    # --- Trunk leader: continuation above the top branch layer ---
+    # The trunk doesn't stop at the top branch — it keeps going up, getting thinner
+    leader_length = canvas_h * 0.08
+    leader_base_y = trunk_base[1] - trunk_height
+    leader_top_y = leader_base_y - leader_length
+    leader_base_thickness = trunk_top_thickness
+    leader_top_thickness = leader_base_thickness * 0.4
+    leader_segments = 4
+    for i in range(leader_segments):
+        t0 = i / leader_segments
+        t1 = (i + 1) / leader_segments
+        y0 = leader_base_y - leader_length * t0
+        y1 = leader_base_y - leader_length * t1
+        thickness = leader_base_thickness - (leader_base_thickness - leader_top_thickness) * ((t0 + t1) / 2)
         trunk_branches.append({
             "start": [trunk_base[0], y0],
             "end": [trunk_base[0], y1],
@@ -287,113 +327,209 @@ def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas
             "depth": -1,
         })
 
-    # --- Generate L-system branches for each root ---
+    # --- Multi-layer canopy ---
     all_branches: List[Dict] = []
+    crown_layers: List[Dict] = []
 
-    # Height for canopy: proportional to max_depth, leaves room for trunk
-    # More depth → taller canopy, clamped to reasonable range
     canopy_height = canvas_h * min(0.55, 0.25 + global_max_depth * 0.06)
 
-    # Max descendants across roots, used for relative scaling
-    max_desc = max(rs["descendants"] for rs in root_stats) if root_stats else 1
-
-    # Angle spread for main branches: ±45° total
-    n_roots_actual = len(roots)
-    if n_roots_actual == 1:
-        main_angles = [90.0]
+    # Layer count and branches per layer driven by total_nodes only
+    if total_nodes <= 3:
+        n_layers = 1
+        branches_per_layer = [2]
+    elif total_nodes <= 8:
+        n_layers = 2
+        branches_per_layer = [2, 2]
+    elif total_nodes <= 20:
+        n_layers = 2
+        branches_per_layer = [3, 3]
+    elif total_nodes <= 40:
+        n_layers = 3
+        branches_per_layer = [2, 3, 3]
     else:
-        angle_span = min(90, 30 + n_roots_actual * 12)
-        main_angles = [
-            90 + (i - (n_roots_actual - 1) / 2) * (angle_span / (n_roots_actual - 1))
-            for i in range(n_roots_actual)
-        ]
+        n_layers = 3
+        branches_per_layer = [3, 4, 4]
 
-    for idx, rs in enumerate(root_stats):
-        root_id = rs["id"]
-        descendants = rs["descendants"]
+    base_thickness = 4 + min(8, total_nodes * 0.15)
+    # Base branch length for the lowest layer; upper layers get shorter
+    base_branch_length = canvas_w * min(0.18, 0.08 + math.log2(max(total_nodes, 2)) * 0.02)
 
-        # Thickness: root with more descendants is thicker (6-14)
-        rel = descendants / max(max_desc, 1)
-        base_thickness = 6 + rel * 8
+    for layer_idx in range(n_layers):
+        n_in_layer = branches_per_layer[layer_idx]
 
-        # Iterations: more descendants → more iterations → denser foliage (2-5)
-        iterations = min(5, max(2, 1 + descendants // 3))
+        # Layer emergence point along the trunk
+        # Layer 0 (lowest) → 35% up trunk, layer N-1 (highest) → 80% up trunk
+        layer_frac = (layer_idx + 0.5) / n_layers
+        trunk_frac = 0.35 + layer_frac * 0.45
+        emergence_y = trunk_base[1] - trunk_height * trunk_frac
+        emergence_pos = (canvas_w / 2, emergence_y)
 
-        # Branch rule: 2-3 sub-branches per F for a natural look
-        if descendants == 0:
-            rule = "F"
-        elif descendants <= 2:
-            rule = "F[+F][-F]"
-        elif descendants <= 5:
-            rule = "FF[+F][-F]"
-        else:
-            rule = "FF[+F][-F][+F]"
+        # Upper layers get shorter, thinner branches
+        layer_length = base_branch_length * (1.0 - layer_idx * 0.20)
+        layer_thickness = base_thickness * (1.0 - layer_idx * 0.15)
 
-        # Generate L-system string
+        # Symmetric base angles: lower layers spread more, upper layers steeper
+        # layer_idx 0 (bottom): ~40°/140°, layer N-1 (top): ~65°/115°
+        right_count = (n_in_layer + 1) // 2
+        left_count = n_in_layer // 2
+        base_right = 50.0 + layer_idx * 10.0  # 50, 60, 70
+        base_left = 130.0 - layer_idx * 10.0   # 130, 120, 110
+        layer_angles = []
+        for i in range(n_in_layer):
+            is_right = i % 2 == 0
+            if is_right:
+                idx = i // 2
+                base = base_right + idx * (8.0 / max(right_count, 1))
+            else:
+                idx = i // 2
+                base = base_left - idx * (8.0 / max(left_count, 1))
+            layer_angles.append(base)
+
+        iterations = 2
+        rule = "F[+F][-F]"
+
         lstring = lsystem_iterate("F", rule, iterations)
+        initial_length = layer_length * 0.5
+        angle_delta = max(15, 25 - iterations * 2)
 
-        # Initial segment length based on canopy height and depth
-        initial_length = canopy_height / (iterations + 1)
+        for li in range(n_in_layer):
+            base_angle = layer_angles[li]
+            seed = hash(f"branch_L{layer_idx}_{li}") % (2**32)
 
-        # Angle delta: slightly wider for sparser trees, tighter for dense ones
-        angle_delta = max(18, 30 - iterations * 2)
+            random.seed(seed)
+            # Random perturbation: angle ±8°, length ±20%
+            angle_perturbation = random.uniform(-8, 8)
+            length_multiplier = 0.8 + random.random() * 0.4  # 0.8 to 1.2
+            start_angle = base_angle + angle_perturbation
+            branch_initial_length = initial_length * length_multiplier
 
-        # Interpret into branches, with boundary-check retry
-        base_angle = main_angles[idx]
-        seed = hash(root_id) % (2**32)
+            print(f"  layer {layer_idx} branch {li}: emergence={trunk_frac:.2f} angle={base_angle:.1f}°+{angle_perturbation:.1f}° len_factor={length_multiplier:.2f} iterations={iterations}")
 
-        # Per-root angular perturbation
-        random.seed(seed)
-        perturbation = random.uniform(-3, 3)
-        start_angle = base_angle + perturbation
-
-        print(f"  root {rs['name']!r}: base_angle={base_angle:.1f}° perturbation={perturbation:.1f}° start_angle={start_angle:.1f}° iterations={iterations} rule={rule!r}")
-
-        # Try generating with boundary check; retry with angle clamped toward 90°
-        branches: List[Dict] = []
-        max_retries = 5
-        for attempt in range(max_retries):
-            candidate = interpret_lsystem(
-                lstring=lstring,
-                start_pos=trunk_top,
-                start_angle=start_angle,
-                initial_length=initial_length,
-                base_angle_delta=angle_delta,
-                node_id=root_id,
-                depth=0,
-            )
-
-            # Boundary check: any start/end outside [0, canvas_w] x [0, canvas_h]?
+            branches: List[Dict] = []
+            max_retries = 5
             out_of_bounds = False
-            for b in candidate:
-                for coord in [b["start"], b["end"]]:
-                    if coord[0] < 0 or coord[0] > canvas_w or coord[1] < 0 or coord[1] > canvas_h:
-                        out_of_bounds = True
+            for attempt in range(max_retries):
+                candidate = interpret_lsystem(
+                    lstring=lstring,
+                    start_pos=emergence_pos,
+                    start_angle=start_angle,
+                    initial_length=branch_initial_length,
+                    base_angle_delta=angle_delta,
+                    node_id=f"__layer{layer_idx}_branch{li}__",
+                    depth=0,
+                )
+
+                out_of_bounds = False
+                margin = canvas_w * 0.03
+                for b in candidate:
+                    for coord in [b["start"], b["end"]]:
+                        if coord[0] < -margin or coord[0] > canvas_w + margin or coord[1] < -margin or coord[1] > canvas_h + margin:
+                            out_of_bounds = True
+                            break
+                    if out_of_bounds:
                         break
-                if out_of_bounds:
+
+                if not out_of_bounds:
+                    branches = candidate
                     break
 
-            if not out_of_bounds:
-                branches = candidate
-                break
+                print(f"    attempt {attempt+1} out-of-bounds, clamping toward 90°")
+                start_angle = 90 + (start_angle - 90) * 0.5
 
-            # Clamp angle toward 90° (straight up) and retry
-            print(f"    attempt {attempt+1} out-of-bounds at start_angle={start_angle:.1f}°, clamping toward 90°")
-            start_angle = 90 + (start_angle - 90) * 0.5
+            if out_of_bounds:
+                print(f"    WARNING: branch {li} still OOB after {max_retries} retries, discarding")
+                continue
 
-        if out_of_bounds:
-            print(f"    WARNING: root {rs['name']!r} still out-of-bounds after {max_retries} retries, discarding")
-            continue
+            for b in branches:
+                b["thickness"] = max(1, layer_thickness * (0.7 ** b["depth"]))
+                b["node_id"] = roots[0]["id"] if roots else "__unknown__"
+                b["descendants"] = total_nodes
 
-        # Override thickness: base_thickness at depth 0, taper with depth
-        for b in branches:
-            b["thickness"] = max(1, base_thickness * (0.7 ** b["depth"]))
-            b["node_id"] = root_id
-            b["descendants"] = descendants
+            all_branches.extend(branches)
 
-        all_branches.extend(branches)
+        # Compute crown layer geometry
+        layer_start = len(all_branches) - len([b for b in all_branches if b.get("depth", -1) >= 0]) if not all_branches else 0
+        layer_xs = [b["end"][0] for b in all_branches if b.get("depth", -1) >= 0]
+        layer_ys = [b["end"][1] for b in all_branches if b.get("depth", -1) >= 0]
+
+        if layer_xs and layer_ys:
+            min_x, max_x = min(layer_xs), max(layer_xs)
+            min_y, max_y = min(layer_ys), max(layer_ys)
+            cx = (min_x + max_x) / 2
+            cy = (min_y + max_y) / 2
+            pad_x = (max_x - min_x) * 0.15 + canvas_w * 0.03
+            pad_y = (max_y - min_y) * 0.15 + canvas_h * 0.02
+            crown_layers.append({
+                "center": [cx, cy],
+                "width": (max_x - min_x) / 2 + pad_x,
+                "height": (max_y - min_y) / 2 + pad_y,
+            })
 
     print(f"[generate_lsystem_skeleton] generated {len(all_branches)} branches from {total_nodes} nodes ({n_roots_actual} roots)")
+
+    # --- Apex fill: branches along the bare trunk leader ---
+    # Find the actual highest canopy emergence point (where depth=0 branches start)
+    canopy_start_ys = [b["start"][1] for b in all_branches if b.get("depth", -1) == 0]
+    top_canopy_y = min(canopy_start_ys) if canopy_start_ys else trunk_base[1] - trunk_height * 0.80
+    bare_top_y = leader_top_y  # top of the leader
+
+    if top_canopy_y > bare_top_y:
+        bare_length = top_canopy_y - bare_top_y
+        # Place 3-5 pairs of branches along the bare section
+        n_pairs = max(2, min(5, int(bare_length / 20)))
+        fill_rule = "F[+F][-F]"
+        fill_iterations = 2
+        fill_lstring = lsystem_iterate("F", fill_rule, fill_iterations)
+
+        for pair_idx in range(n_pairs):
+            # Distribute evenly along the bare section, from bottom to top
+            frac = (pair_idx + 1) / (n_pairs + 1)
+            branch_y = top_canopy_y - bare_length * frac
+            branch_pos = (canvas_w / 2, branch_y)
+
+            # Branches get smaller and shorter toward the top
+            size_decay = 1.0 - pair_idx * 0.15
+            fill_len = base_branch_length * 0.30 * size_decay
+            fill_thick = base_thickness * 0.35 * size_decay
+            initial_len = fill_len * 0.5
+            angle_delta = 30
+
+            for side in [0, 1]:  # 0 = right, 1 = left
+                seed = hash(f"__apex_{pair_idx}_{side}__") % (2**32)
+                random.seed(seed)
+                if side == 0:
+                    base_angle = 55.0 + random.uniform(-10, 10)
+                else:
+                    base_angle = 125.0 + random.uniform(-10, 10)
+
+                fill_branches = interpret_lsystem(
+                    lstring=fill_lstring,
+                    start_pos=branch_pos,
+                    start_angle=base_angle,
+                    initial_length=initial_len,
+                    base_angle_delta=angle_delta,
+                    node_id=f"__apex_{pair_idx}_{side}__",
+                    depth=0,
+                )
+
+                # Check bounds
+                margin = canvas_w * 0.03
+                out_of_bounds = False
+                for b in fill_branches:
+                    for coord in [b["start"], b["end"]]:
+                        if coord[0] < -margin or coord[0] > canvas_w + margin or coord[1] < -margin or coord[1] > canvas_h + margin:
+                            out_of_bounds = True
+                            break
+                    if out_of_bounds:
+                        break
+
+                if not out_of_bounds and fill_branches:
+                    for b in fill_branches:
+                        b["thickness"] = max(1, fill_thick * (0.7 ** b["depth"]))
+                        b["node_id"] = roots[0]["id"] if roots else "__unknown__"
+                        b["descendants"] = total_nodes
+                    all_branches.extend(fill_branches)
+                    print(f"  apex pair {pair_idx} side {'R' if side == 0 else 'L'}: {len(fill_branches)} branches at y={branch_y:.0f}")
 
     return {
         "branches": all_branches,
@@ -401,4 +537,5 @@ def generate_lsystem_skeleton(tree_data: List[Dict], canvas_w: int = 512, canvas
         "trunk": trunk_branches,
         "ground": ground_points,
         "roots": roots_data,
+        "crown_layers": crown_layers,
     }

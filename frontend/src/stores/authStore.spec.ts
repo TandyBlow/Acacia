@@ -63,4 +63,48 @@ describe('useAuthStore', () => {
     expect(store.isAuthenticated).toBe(true);
     expect(store.password).toBe('');
   });
+
+  describe('assignUser username preservation', () => {
+    it('preserves existing username when onAuthStateChange fires with empty username for same user', async () => {
+      const store = useAuthStore();
+
+      mockAdapter.initialize.mockResolvedValueOnce({ id: 'u1', username: 'alice' });
+      await store.initialize();
+
+      expect(store.currentUsername).toBe('alice');
+
+      // Get the onAuthStateChange callback registered during initialize()
+      const onAuthCallback = mockAdapter.onAuthStateChange.mock.calls[0][0];
+
+      // Simulate auth state change with empty username (e.g., TOKEN_REFRESHED without user_metadata)
+      onAuthCallback({ id: 'u1', username: '' });
+
+      expect(store.currentUsername).toBe('alice');
+    });
+
+    it('does not preserve username across different user IDs', async () => {
+      const store = useAuthStore();
+
+      mockAdapter.initialize.mockResolvedValueOnce({ id: 'u1', username: 'alice' });
+      await store.initialize();
+
+      const onAuthCallback = mockAdapter.onAuthStateChange.mock.calls[0][0];
+      onAuthCallback({ id: 'u2', username: '' });
+
+      expect(store.currentUsername).toBe('');
+    });
+
+    it('sets user to null when onAuthStateChange fires with null', async () => {
+      const store = useAuthStore();
+
+      mockAdapter.initialize.mockResolvedValueOnce({ id: 'u1', username: 'alice' });
+      await store.initialize();
+
+      const onAuthCallback = mockAdapter.onAuthStateChange.mock.calls[0][0];
+      onAuthCallback(null);
+
+      expect(store.user).toBeNull();
+      expect(store.isAuthenticated).toBe(false);
+    });
+  });
 });

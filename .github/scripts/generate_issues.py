@@ -1,5 +1,5 @@
 """
-Auto Issue Generator for SeeWhat project.
+Auto Issue Generator for Acacia project.
 """
 
 import os

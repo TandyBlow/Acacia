@@ -5,12 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 
+import os
+
 from database import get_db_ctx, init_db
 from auth import hash_password, verify_password, create_token, verify_token
 from tree_generator import generate_tree_visualization
 from tree_repository import fetch_user_tree
 from tree_repository_sqlite import fetch_user_tree_sqlite
 from lsystem import generate_lsystem_skeleton
+from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
 from tag_service import tag_all_nodes
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service import compute_style
@@ -31,6 +34,14 @@ app.add_middleware(
 
 security = HTTPBearer(auto_error=False)
 
+TREE_GEN_VERSION = int(os.environ.get("TREE_GEN_VERSION", "2"))
+
+
+def _generate_skeleton(tree_data, canvas_w=512, canvas_h=512):
+    if TREE_GEN_VERSION == 2:
+        return generate_sc_skeleton(tree_data, canvas_w, canvas_h)
+    return generate_lsystem_skeleton(tree_data, canvas_w, canvas_h)
+
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     if not credentials:
@@ -48,7 +59,7 @@ def startup():
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "SeeWhat API is running"}
+    return {"status": "ok", "message": "Acacia API is running"}
 
 
 @app.get("/health")
@@ -435,7 +446,7 @@ def generate_tree_skeleton(user_id: str, body: CanvasSize = CanvasSize()):
     if not tree_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No tree data found for user {user_id}")
 
-    return generate_lsystem_skeleton(tree_data, body.canvas_w, body.canvas_h)
+    return _generate_skeleton(tree_data, body.canvas_w, body.canvas_h)
 
 
 @app.post("/tag-nodes/{user_id}")
@@ -485,7 +496,7 @@ def generate_tree_skeleton_local(user: dict = Depends(get_current_user), body: C
     if not tree_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No tree data found")
 
-    return generate_lsystem_skeleton(tree_data, body.canvas_w, body.canvas_h)
+    return _generate_skeleton(tree_data, body.canvas_w, body.canvas_h)
 
 
 @app.post("/local/tag-nodes")

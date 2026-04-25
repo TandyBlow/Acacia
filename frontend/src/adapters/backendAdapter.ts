@@ -2,7 +2,7 @@ import { config } from '../config';
 import type { DataAdapter, NodeContext, NodeRecord, StyleResult, TreeNode } from '../types/node';
 import type { SkeletonData } from '../types/tree';
 
-const TOKEN_KEY = 'seewhat_backend_token';
+const TOKEN_KEY = 'acacia_backend_token';
 
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

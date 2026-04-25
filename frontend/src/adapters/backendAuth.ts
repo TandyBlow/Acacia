@@ -1,7 +1,7 @@
 import { config } from '../config';
 import type { AuthAdapter, AuthResult, AuthUser } from '../types/auth';
 
-const TOKEN_KEY = 'seewhat_backend_token';
+const TOKEN_KEY = 'acacia_backend_token';
 
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

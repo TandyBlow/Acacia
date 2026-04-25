@@ -1,6 +1,6 @@
-# SeeWhat Frontend
+Acacia Frontend
 
-Vue 3 + Vite client for the SeeWhat knowledge-node app.
+Vue 3 + Vite client for the Acacia knowledge-node app.
 
 ## Quick Start
 

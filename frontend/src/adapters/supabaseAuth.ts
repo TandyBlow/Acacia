@@ -11,7 +11,7 @@ function toAuthUser(raw: { id: string; user_metadata?: Record<string, unknown> }
   }
   const username = typeof raw.user_metadata?.username === 'string'
     ? raw.user_metadata.username
-    : UI.errors.unknownUser;
+    : '';
   return { id: raw.id, username };
 }
 
@@ -21,11 +21,21 @@ export const supabaseAuth: AuthAdapter = {
       throw new Error(CONFIG_ERROR);
     }
 
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      throw error;
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      throw sessionError;
     }
-    return toAuthUser(data.session?.user ?? null);
+    if (!sessionData.session) {
+      return null;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      console.warn('[supabaseAuth] getUser() raw user_metadata:', JSON.stringify(userData.user.user_metadata));
+      return toAuthUser(userData.user);
+    }
+
+    return toAuthUser(sessionData.session.user);
   },
 
   onAuthStateChange(callback: (user: AuthUser | null) => void): () => void {
@@ -69,16 +79,22 @@ export const supabaseAuth: AuthAdapter = {
         }
         throw signInResult.error;
       }
-      const user = toAuthUser(signInResult.data.session?.user ?? null);
+      let user = toAuthUser(signInResult.data.session?.user ?? null);
       if (!user) {
         throw new Error(UI.errors.signupSuccessNoUser);
+      }
+      if (!user.username) {
+        user = { ...user, username };
       }
       return { user };
     }
 
-    const user = toAuthUser(data.session.user);
+    let user = toAuthUser(data.session.user);
     if (!user) {
       throw new Error(UI.errors.signupSuccessNoUser);
+    }
+    if (!user.username) {
+      user = { ...user, username };
     }
     return { user };
   },
@@ -95,9 +111,13 @@ export const supabaseAuth: AuthAdapter = {
       throw error;
     }
 
-    const user = toAuthUser(data.session?.user ?? null);
+    let user = toAuthUser(data.session?.user ?? null);
     if (!user) {
       throw new Error(UI.errors.loginFailed);
+    }
+    if (!user.username) {
+      user = { ...user, username };
+      supabase.auth.updateUser({ data: { username } }).catch(() => {});
     }
     return { user };
   },

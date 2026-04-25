@@ -23,7 +23,7 @@ export function useKnobDispatch() {
     isBusy: authBusy,
   } = storeToRefs(authStore);
 
-  const { isLoggingOut, startLogout, cancelLogout, confirmLogout } = useLogoutFlow();
+  const { isLoggingOut, logoutUsername, startLogout, cancelLogout, confirmLogout } = useLogoutFlow();
 
   const isBusy = computed(() => nodeBusy.value || authBusy.value);
   const inAuthMode = computed(() => !isAuthenticated.value);
@@ -102,7 +102,7 @@ export function useKnobDispatch() {
   return {
     isBusy, inAuthMode, inConfirmMode, canConfirm,
     onHoldConfirm, onClick, onDoubleClick,
-    isLoggingOut, startLogout, cancelLogout,
+    isLoggingOut, logoutUsername, startLogout, cancelLogout,
     isFeaturePanel, openFeaturePanel, closeFeaturePanel,
     compactMode, isCompactLayout,
   };

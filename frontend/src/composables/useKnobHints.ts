@@ -12,7 +12,7 @@ interface HintState {
 
 function loadState(action: HintAction): HintState {
   try {
-    const raw = localStorage.getItem(`seewhat_knob_hint_${action}`);
+    const raw = localStorage.getItem(`acacia_knob_hint_${action}`);
     if (!raw) return { count: 0, lastAction: 0 };
     return JSON.parse(raw) as HintState;
   } catch {
@@ -22,7 +22,7 @@ function loadState(action: HintAction): HintState {
 
 function saveState(action: HintAction, state: HintState): void {
   try {
-    localStorage.setItem(`seewhat_knob_hint_${action}`, JSON.stringify(state));
+    localStorage.setItem(`acacia_knob_hint_${action}`, JSON.stringify(state));
   } catch {
     // localStorage unavailable (private browsing)
   }

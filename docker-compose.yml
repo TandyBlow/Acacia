@@ -4,9 +4,9 @@ services:
     ports:
       - "7860:7860"
     volumes:
-      - seewhat-data:/data
+      - acacia-data:/data
     environment:
-      - DB_PATH=/data/seewhat.db
+      - DB_PATH=/data/acacia.db
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
 
   frontend:
@@ -21,4 +21,4 @@ services:
       - backend
 
 volumes:
-  seewhat-data:
+  acacia-data:

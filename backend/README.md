@@ -1,5 +1,5 @@
 ---
-title: SeeWhat
+title: Acacia
 emoji: 🏃
 colorFrom: gray
 colorTo: gray
@@ -8,4 +8,4 @@ pinned: false
 app_port: 7860
 ---
 
-SeeWhat Backend API - Tree visualization service
+Acacia Backend API - Tree visualization service
