@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN mkdir -p /data
-ENV DB_PATH=/data/seewhat.db
+ENV DB_PATH=/data/acacia.db
 
 EXPOSE 7860
 
