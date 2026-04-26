@@ -1,0 +1,27 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    - cron: '37 20 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkpoint and download database
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o StrictHostKeyChecking=no root@67.230.171.167 \
+            "sqlite3 /opt/acacia/data/acacia.db 'PRAGMA wal_checkpoint(TRUNCATE)'"
+
+          scp -o StrictHostKeyChecking=no root@67.230.171.167:/opt/acacia/data/acacia.db ./acacia.db
+
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: acacia-db-backup
+          path: ./acacia.db
+          retention-days: 30
