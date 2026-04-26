@@ -1,1 +1,0 @@
-ALTER TABLE nodes ADD COLUMN IF NOT EXISTS domain_tag text DEFAULT '其他';

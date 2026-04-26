@@ -2,7 +2,12 @@
 Style service using SQLite.
 """
 from database import get_db_ctx
-from style_service import STYLE_RULES
+
+STYLE_RULES = [
+    ('日本文化', 0.30, 'sakura'),
+    ('编程技术', 0.40, 'cyberpunk'),
+    ('文学艺术', 0.30, 'ink'),
+]
 
 
 def compute_style_sqlite(owner_id: str) -> dict:

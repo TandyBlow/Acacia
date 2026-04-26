@@ -9,13 +9,6 @@ export interface AdapterPair {
 
 export async function loadAdapters(): Promise<AdapterPair> {
   switch (config.dataMode) {
-    case 'supabase': {
-      const [{ supabaseAdapter }, { supabaseAuth }] = await Promise.all([
-        import('./supabaseAdapter'),
-        import('./supabaseAuth'),
-      ]);
-      return { data: supabaseAdapter, auth: supabaseAuth };
-    }
     case 'backend': {
       const [{ backendAdapter }, { backendAuth }] = await Promise.all([
         import('./backendAdapter'),

@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-supabase
 python-dotenv
 Pillow
 numpy

@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@dgreenheck/ez-tree": "^1.1.0",
-    "@supabase/supabase-js": "^2.90.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/vue-query": "^5.92.8",
     "@tiptap/extension-code-block-lowlight": "^3.20.4",

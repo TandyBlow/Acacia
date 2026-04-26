@@ -107,7 +107,7 @@ async function applyUserData() {
   if (!userId || !manager) return;
   manager.setUserId(userId);
   try {
-    await fetchStats(userId);
+    await fetchStats();
   } catch {
     // Stats endpoint may be unavailable; proceed with default tree
     return;

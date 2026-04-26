@@ -45,6 +45,7 @@ def init_db():
                 content TEXT NOT NULL DEFAULT '',
                 parent_id TEXT,
                 sort_order REAL NOT NULL DEFAULT 0,
+                depth INTEGER NOT NULL DEFAULT 0,
                 domain_tag TEXT,
                 mastery_score REAL NOT NULL DEFAULT 0,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
@@ -75,7 +76,15 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_quiz_records_node_owner ON quiz_records(node_id, owner_id, answered_at DESC);
         """)
 
-        # Migration: add mastery_score column if missing
+        # Migration: add missing columns
         cols = [row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()]
         if "mastery_score" not in cols:
             conn.execute("ALTER TABLE nodes ADD COLUMN mastery_score REAL NOT NULL DEFAULT 0")
+        if "depth" not in cols:
+            conn.execute("ALTER TABLE nodes ADD COLUMN depth INTEGER NOT NULL DEFAULT 0")
+
+        # WAL mode for concurrent reads on low-memory VPS
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-2000")
+        conn.execute("PRAGMA temp_store=MEMORY")
