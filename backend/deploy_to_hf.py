@@ -65,8 +65,8 @@ def deploy_to_hf_spaces():
         print(f"\nSpace URL: https://huggingface.co/spaces/{repo_id}")
         print(f"API URL: https://{username}-{space_name}.hf.space")
         print("\nDon't forget to add Secrets in Space settings:")
-        print("  SUPABASE_URL")
-        print("  SUPABASE_SERVICE_KEY")
+        print("  JWT_SECRET")
+        print("  SILICONFLOW_API_KEY")
     except Exception as e:
         print(f"Error uploading files: {e}")
         sys.exit(1)

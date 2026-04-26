@@ -1,0 +1,19 @@
+[Unit]
+Description=Acacia FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=acacia
+WorkingDirectory=/opt/acacia/backend
+Environment=DB_PATH=/opt/acacia/data/acacia.db
+Environment=JWT_SECRET=CHANGE-ME-IN-PRODUCTION
+Environment=SILICONFLOW_API_KEY=your-key-here
+Environment=SILICONFLOW_MODEL=Qwen/Qwen2.5-7B-Instruct
+Environment=LLM_API_URL=https://api.siliconflow.cn/v1/chat/completions
+ExecStart=/opt/acacia/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 7860 --workers 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

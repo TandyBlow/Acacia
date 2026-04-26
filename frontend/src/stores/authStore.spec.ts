@@ -9,22 +9,6 @@ const mockAdapter = vi.hoisted(() => ({
   signOut: vi.fn(),
 }));
 
-vi.mock('../api/supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-      signUp: vi.fn(),
-      signInWithPassword: vi.fn(),
-      signOut: vi.fn(),
-    },
-  },
-}));
-
-vi.mock('../adapters/supabase/usernameAuth', () => ({
-  usernameToSyntheticEmail: vi.fn(async (username: string) => `${username}@seewhat.local`),
-}));
-
 import { useAuthStore, setAuthAdapter } from './authStore';
 
 describe('useAuthStore', () => {
@@ -73,10 +57,8 @@ describe('useAuthStore', () => {
 
       expect(store.currentUsername).toBe('alice');
 
-      // Get the onAuthStateChange callback registered during initialize()
       const onAuthCallback = mockAdapter.onAuthStateChange.mock.calls[0][0];
 
-      // Simulate auth state change with empty username (e.g., TOKEN_REFRESHED without user_metadata)
       onAuthCallback({ id: 'u1', username: '' });
 
       expect(store.currentUsername).toBe('alice');

@@ -60,13 +60,10 @@ import { computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
-import { useAuthStore } from '../../stores/authStore';
 import { useQuiz } from '../../composables/useQuiz';
 
 const nodeStore = useNodeStore();
-const authStore = useAuthStore();
 const { activeNode } = storeToRefs(nodeStore);
-const { user } = storeToRefs(authStore);
 
 const {
   isBusy, errorMessage, currentQuestion, selectedOption, showResult,
@@ -102,8 +99,8 @@ async function confirmAndSubmit(): Promise<void> {
 }
 
 function retry(): void {
-  if (user.value && activeNode.value) {
-    generateQuestion(user.value.id, activeNode.value.id);
+  if (activeNode.value) {
+    generateQuestion(activeNode.value.id);
   }
 }
 
@@ -113,8 +110,8 @@ function goBack(): void {
 }
 
 onMounted(() => {
-  if (user.value && activeNode.value) {
-    generateQuestion(user.value.id, activeNode.value.id);
+  if (activeNode.value) {
+    generateQuestion(activeNode.value.id);
   }
 });
 </script>

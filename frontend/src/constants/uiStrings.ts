@@ -69,7 +69,6 @@ export const UI = {
     cannotMoveToChild: '不能将节点移动到自身或其子节点下。',
     siblingNameConflict: '同一父节点下已存在同名节点。',
     createNodeFailed: '创建节点失败。',
-    supabaseNotConfigured: 'Supabase 未配置。请设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。',
     usernameEmpty: '用户名不能为空。',
     passwordEmpty: '密码不能为空。',
     usernameTaken: '该用户名已被注册。',
@@ -77,7 +76,6 @@ export const UI = {
     usernamePasswordWrong: '用户名或密码错误。',
     signupSuccessNoUser: '注册成功但无法获取用户信息。',
     loginFailed: '登录失败，请稍后重试。',
-    emailConfirmHint: '当前项目仍开启了邮箱确认。请在 Supabase Authentication 设置中关闭 Confirm email。',
     treeSkeletonRequiresBackend: 'Tree skeleton requires a backend connection.',
   },
 } as const;

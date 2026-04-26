@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { config } from '../config';
+import { apiFetch } from '../utils/api';
 
 export interface StatsNode {
   id: string;
@@ -13,16 +13,11 @@ export function useStats() {
   const errorMessage = ref<string | null>(null);
   const nodes = ref<StatsNode[]>([]);
 
-  async function fetchStats(userId: string): Promise<void> {
+  async function fetchStats(): Promise<void> {
     isBusy.value = true;
     errorMessage.value = null;
     try {
-      const res = await fetch(`${config.backendUrl}/quiz-stats/${userId}`);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `请求失败: ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await apiFetch<{ nodes: StatsNode[] }>('/quiz-stats');
       nodes.value = data.nodes || [];
     } catch (err) {
       errorMessage.value = err instanceof Error ? err.message : '获取统计失败';

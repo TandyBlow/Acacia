@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { config } from '../config';
+import { apiFetch } from '../utils/api';
 
 export interface QuizQuestion {
   question: string;
@@ -16,22 +16,16 @@ export function useQuiz() {
   const selectedOption = ref<number | null>(null);
   const showResult = ref(false);
 
-  async function generateQuestion(userId: string, nodeId: string): Promise<void> {
+  async function generateQuestion(nodeId: string): Promise<void> {
     isBusy.value = true;
     errorMessage.value = null;
     currentQuestion.value = null;
     selectedOption.value = null;
     showResult.value = false;
     try {
-      const res = await fetch(`${config.backendUrl}/ai-generate-question/${userId}/${nodeId}`, {
+      currentQuestion.value = await apiFetch<QuizQuestion>(`/generate-question/${nodeId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `请求失败: ${res.status}`);
-      }
-      currentQuestion.value = await res.json();
     } catch (err) {
       errorMessage.value = err instanceof Error ? err.message : '出题失败';
     } finally {
@@ -41,9 +35,8 @@ export function useQuiz() {
 
   async function submitAnswer(nodeId: string, isCorrect: boolean): Promise<void> {
     try {
-      await fetch(`${config.backendUrl}/submit-answer-supabase/${nodeId}`, {
+      await apiFetch(`/submit-answer/${nodeId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_correct: isCorrect }),
       });
     } catch {

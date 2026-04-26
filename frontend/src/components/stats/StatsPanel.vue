@@ -47,15 +47,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
+
 import GlassWrapper from '../ui/GlassWrapper.vue';
-import { useAuthStore } from '../../stores/authStore';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useStats } from '../../composables/useStats';
 
-const authStore = useAuthStore();
 const nodeStore = useNodeStore();
-const { user } = storeToRefs(authStore);
 
 const { isBusy, errorMessage, nodes, fetchStats } = useStats();
 
@@ -84,9 +81,7 @@ function goBack(): void {
 }
 
 onMounted(() => {
-  if (user.value) {
-    fetchStats(user.value.id);
-  }
+  fetchStats();
 });
 </script>
 

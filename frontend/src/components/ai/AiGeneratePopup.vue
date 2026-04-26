@@ -41,14 +41,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useAuthStore } from '../../stores/authStore';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAiGenerate } from '../../composables/useAiGenerate';
 
-const authStore = useAuthStore();
 const nodeStore = useNodeStore();
-const { user } = storeToRefs(authStore);
 const { isBusy, errorMessage, generate, requestOpen } = useAiGenerate();
 
 const isOpen = ref(false);
@@ -70,8 +66,8 @@ const createdCount = computed(() => {
 });
 
 async function submit() {
-  if (!canSubmit.value || !user.value) return;
-  result.value = await generate(user.value.id, inputText.value.trim());
+  if (!canSubmit.value) return;
+  result.value = await generate(inputText.value.trim());
   if (result.value) {
     nodeStore.refreshTree();
     setTimeout(close, 2000);

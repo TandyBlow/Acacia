@@ -3,25 +3,19 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 import os
 
 from database import get_db_ctx, init_db
 from auth import hash_password, verify_password, create_token, verify_token
-from tree_generator import generate_tree_visualization
-from tree_repository import fetch_user_tree
 from tree_repository_sqlite import fetch_user_tree_sqlite
 from lsystem import generate_lsystem_skeleton
 from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
-from tag_service import tag_all_nodes
 from tag_service_sqlite import tag_all_nodes_sqlite
-from style_service import compute_style
 from style_service_sqlite import compute_style_sqlite
-from ai_generate_service import ai_generate_nodes
-from quiz_service import generate_quiz_question, submit_quiz_answer
+from ai_generate_service_sqlite import ai_generate_nodes_sqlite
 from quiz_service_sqlite import generate_quiz_question_sqlite, submit_quiz_answer_sqlite
-from db import supabase
 
 app = FastAPI()
 
@@ -132,7 +126,6 @@ class MoveRequest(BaseModel):
 
 
 def _build_path(conn, node_id: str) -> list[dict]:
-    """Walk up the parent chain to build an ancestor path."""
     path = []
     visited = set()
     current_id = node_id
@@ -182,7 +175,6 @@ def get_node_context(node_id: str | None = None, user: dict = Depends(get_curren
             (node_id, owner_id),
         ).fetchone()
         if not node:
-            # Return root context if node not found
             children = conn.execute(
                 "SELECT * FROM nodes WHERE owner_id = ? AND parent_id IS NULL AND is_deleted = 0 ORDER BY sort_order",
                 (owner_id,),
@@ -214,7 +206,6 @@ def create_node(payload: NodeCreateRequest, user: dict = Depends(get_current_use
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Node name cannot be empty")
 
     with get_db_ctx() as conn:
-        # Check sibling name uniqueness
         if payload.parent_id:
             existing = conn.execute(
                 "SELECT id FROM nodes WHERE owner_id = ? AND parent_id = ? AND name = ? AND is_deleted = 0",
@@ -223,7 +214,6 @@ def create_node(payload: NodeCreateRequest, user: dict = Depends(get_current_use
             if existing:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sibling with same name already exists")
 
-        # Get next sort order
         max_order = conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) FROM nodes WHERE owner_id = ? AND parent_id IS ? AND is_deleted = 0",
             (owner_id, payload.parent_id),
@@ -235,7 +225,6 @@ def create_node(payload: NodeCreateRequest, user: dict = Depends(get_current_use
             (node_id, owner_id, name, payload.parent_id, max_order + 1),
         )
 
-        # Create edge if parent exists
         if payload.parent_id:
             conn.execute(
                 "INSERT OR IGNORE INTO edges (parent_id, child_id, sort_order) VALUES (?, ?, ?)",
@@ -276,12 +265,10 @@ def delete_node(node_id: str, delete_children: bool = False, user: dict = Depend
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
 
         if delete_children:
-            # Soft-delete entire subtree
             conn.execute("UPDATE nodes SET is_deleted = 1 WHERE id = ?", (node_id,))
             _soft_delete_subtree(conn, node_id, owner_id)
             conn.execute("DELETE FROM edges WHERE parent_id = ? OR child_id = ?", (node_id, node_id))
         else:
-            # Reparent children to node's parent
             children = conn.execute(
                 "SELECT id, sort_order FROM nodes WHERE owner_id = ? AND parent_id = ? AND is_deleted = 0 ORDER BY sort_order",
                 (owner_id, node_id),
@@ -339,7 +326,6 @@ def move_node(node_id: str, payload: MoveRequest, user: dict = Depends(get_curre
         if node["parent_id"] == new_parent_id:
             return {"ok": True}
 
-        # Validate new parent exists and is not a descendant
         if new_parent_id:
             parent = conn.execute(
                 "SELECT id FROM nodes WHERE id = ? AND owner_id = ? AND is_deleted = 0",
@@ -351,7 +337,6 @@ def move_node(node_id: str, payload: MoveRequest, user: dict = Depends(get_curre
             if _is_descendant(conn, node_id, new_parent_id, owner_id):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot move node to its own descendant")
 
-            # Check sibling name uniqueness
             existing = conn.execute(
                 "SELECT id FROM nodes WHERE owner_id = ? AND parent_id = ? AND name = ? AND is_deleted = 0 AND id != ?",
                 (owner_id, new_parent_id, node["name"], node_id),
@@ -359,12 +344,10 @@ def move_node(node_id: str, payload: MoveRequest, user: dict = Depends(get_curre
             if existing:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sibling with same name already exists at destination")
 
-        # Remove old edge
         old_parent_id = node["parent_id"]
         if old_parent_id:
             conn.execute("DELETE FROM edges WHERE parent_id = ? AND child_id = ?", (old_parent_id, node_id))
 
-        # Get next sort order at destination
         next_order = conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) FROM nodes WHERE owner_id = ? AND parent_id IS ? AND is_deleted = 0",
             (owner_id, new_parent_id),
@@ -375,7 +358,6 @@ def move_node(node_id: str, payload: MoveRequest, user: dict = Depends(get_curre
             (new_parent_id, next_order, node_id),
         )
 
-        # Create new edge
         if new_parent_id:
             conn.execute(
                 "INSERT OR IGNORE INTO edges (parent_id, child_id, sort_order) VALUES (?, ?, ?)",
@@ -386,7 +368,6 @@ def move_node(node_id: str, payload: MoveRequest, user: dict = Depends(get_curre
 
 
 def _is_descendant(conn, ancestor_id: str, candidate_id: str, owner_id: str) -> bool:
-    """Check if candidate_id is a descendant of ancestor_id."""
     children = conn.execute(
         "SELECT id FROM nodes WHERE owner_id = ? AND parent_id = ? AND is_deleted = 0",
         (owner_id, ancestor_id),
@@ -419,74 +400,15 @@ def get_tree(user: dict = Depends(get_current_user)):
     return roots
 
 
-# --- Tree visualization (Supabase-backed, existing) ---
-
-@app.post("/generate-tree/{user_id}")
-def generate_tree(user_id: str):
-    try:
-        png_url = generate_tree_visualization(user_id)
-        return {"png_url": png_url}
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
+# --- Tree visualization ---
 
 class CanvasSize(BaseModel):
     canvas_w: int = 512
     canvas_h: int = 512
 
-@app.post("/generate-tree-skeleton/{user_id}")
-def generate_tree_skeleton(user_id: str, body: CanvasSize = CanvasSize()):
-    try:
-        tree_data = fetch_user_tree(user_id)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-    if not tree_data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No tree data found for user {user_id}")
-
-    return _generate_skeleton(tree_data, body.canvas_w, body.canvas_h)
-
-
-@app.post("/tag-nodes/{user_id}")
-def tag_nodes(user_id: str):
-    try:
-        return tag_all_nodes(user_id)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-@app.get("/style/{user_id}")
-def get_style(user_id: str):
-    try:
-        return compute_style(user_id)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-# --- AI node generation (Supabase-backed) ---
-
-class AiGenerateRequest(BaseModel):
-    input: str
-
-
-@app.post("/ai-generate-nodes/{user_id}")
-def ai_generate(user_id: str, payload: AiGenerateRequest):
-    if not payload.input.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Input text is required")
-    try:
-        return ai_generate_nodes(payload.input.strip(), user_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-# --- Tree visualization (SQLite-backed, for local mode) ---
-
-@app.post("/local/generate-tree-skeleton")
-def generate_tree_skeleton_local(user: dict = Depends(get_current_user), body: CanvasSize = CanvasSize()):
+@app.post("/generate-tree-skeleton")
+def generate_tree_skeleton_endpoint(user: dict = Depends(get_current_user), body: CanvasSize = CanvasSize()):
     owner_id = user["sub"]
     try:
         tree_data = fetch_user_tree_sqlite(owner_id)
@@ -499,8 +421,8 @@ def generate_tree_skeleton_local(user: dict = Depends(get_current_user), body: C
     return _generate_skeleton(tree_data, body.canvas_w, body.canvas_h)
 
 
-@app.post("/local/tag-nodes")
-def tag_nodes_local(user: dict = Depends(get_current_user)):
+@app.post("/tag-nodes")
+def tag_nodes_endpoint(user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     try:
         return tag_all_nodes_sqlite(owner_id)
@@ -508,8 +430,8 @@ def tag_nodes_local(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@app.get("/local/style")
-def get_style_local(user: dict = Depends(get_current_user)):
+@app.get("/style")
+def get_style_endpoint(user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     try:
         return compute_style_sqlite(owner_id)
@@ -517,49 +439,34 @@ def get_style_local(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-# --- Quiz (Supabase-backed) ---
+# --- AI node generation ---
+
+class AiGenerateRequest(BaseModel):
+    input: str
+
+
+@app.post("/ai-generate-nodes")
+def ai_generate_endpoint(payload: AiGenerateRequest, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    if not payload.input.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Input text is required")
+    with get_db_ctx() as conn:
+        try:
+            return ai_generate_nodes_sqlite(payload.input.strip(), owner_id, conn)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# --- Quiz ---
 
 class QuizAnswerRequest(BaseModel):
     is_correct: bool
 
 
-@app.post("/ai-generate-question/{user_id}/{node_id}")
-def generate_question_supabase(user_id: str, node_id: str):
-    try:
-        return generate_quiz_question(node_id, user_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-@app.post("/submit-answer-supabase/{user_id}/{node_id}")
-def submit_answer_supabase(user_id: str, node_id: str, payload: QuizAnswerRequest):
-    try:
-        return submit_quiz_answer(node_id, user_id, payload.is_correct)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-@app.get("/quiz-stats/{user_id}")
-def quiz_stats_supabase(user_id: str):
-    try:
-        resp = (
-            supabase.table("nodes")
-            .select("id, name, mastery_score, depth")
-            .eq("owner_id", user_id)
-            .eq("is_deleted", False)
-            .execute()
-        )
-        return {"nodes": resp.data}
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-# --- Quiz (SQLite-backed, local mode) ---
-
 @app.post("/generate-question/{node_id}")
-def generate_question_jwt(node_id: str, user: dict = Depends(get_current_user)):
+def generate_question_endpoint(node_id: str, user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
@@ -571,7 +478,7 @@ def generate_question_jwt(node_id: str, user: dict = Depends(get_current_user)):
 
 
 @app.post("/submit-answer/{node_id}")
-def submit_answer_jwt(node_id: str, payload: QuizAnswerRequest, user: dict = Depends(get_current_user)):
+def submit_answer_endpoint(node_id: str, payload: QuizAnswerRequest, user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
@@ -580,8 +487,8 @@ def submit_answer_jwt(node_id: str, payload: QuizAnswerRequest, user: dict = Dep
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@app.get("/quiz-stats-local")
-def quiz_stats_local(user: dict = Depends(get_current_user)):
+@app.get("/quiz-stats")
+def quiz_stats_endpoint(user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
