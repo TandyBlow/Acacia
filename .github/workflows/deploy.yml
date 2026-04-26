@@ -1,0 +1,33 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 67.230.171.167
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/acacia
+            git pull origin main
+
+            cd /opt/acacia/backend
+            venv/bin/pip install -r requirements.txt --quiet
+
+            cd /opt/acacia/frontend
+            npm ci --production=false
+            VITE_DATA_MODE=backend VITE_BACKEND_URL=/api npm run build
+
+            sudo systemctl restart acacia
+            sudo systemctl reload nginx
+
+            sleep 2
+            curl -sf http://127.0.0.1:7860/health && echo " OK" || echo " FAILED"
