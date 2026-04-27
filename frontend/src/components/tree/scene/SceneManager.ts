@@ -11,7 +11,7 @@ import type { GrowthMetrics } from '../../../types/tree';
 type EzTreeOptions = EzTree['options'];
 import type { StatsNode } from '../../../composables/useStats';
 // import { ground2dVertexShader, ground2dFragmentShader } from '../shaders/ground2d';
-import { sky2dVertexShader, sky2dFragmentShader } from '../shaders/sky2d';
+import { BackgroundRenderer } from './BackgroundRenderer';
 import { crownVertexShader, crownFragmentShader } from '../shaders/crown';
 import { outlineVertexShader, outlineFragmentShader } from '../shaders/outline';
 // import { particleVertexShader, particleFragmentShader } from '../shaders/particle';
@@ -42,8 +42,7 @@ export class SceneManager {
   private outlineGroup!: THREE.Group;
   // private groundMesh: THREE.Mesh | null = null;
   // private groundMaterial: THREE.ShaderMaterial | null = null;
-  private skyMesh: THREE.Mesh | null = null;
-  private skyMaterial: THREE.ShaderMaterial | null = null;
+  private backgroundRenderer: BackgroundRenderer | null = null;
 
   private mainLight!: THREE.DirectionalLight;
   private ambientLight!: THREE.AmbientLight;
@@ -118,7 +117,7 @@ export class SceneManager {
 
     this.scene = new THREE.Scene();
 
-    this.createSky();
+    this.createBackground();
     this.createLights();
 
     this.treeGroup = new THREE.Group();
@@ -204,6 +203,11 @@ export class SceneManager {
     this.camera.bottom = frustum.bottom;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+
+    // Update background resolution
+    if (this.backgroundRenderer) {
+      this.backgroundRenderer.updateSize(w, h);
+    }
 
     // this.updateGroundLineY();
   }
@@ -514,28 +518,29 @@ export class SceneManager {
     return { left: -frustumHalfW, right: frustumHalfW, top: frustumHalfH, bottom: -frustumHalfH };
   }
 
-  // --- Private: Sky ---
+  // --- Private: Background (raymarched SDF) ---
 
-  private createSky() {
-    const params = this.currentParams;
-    const geo = new THREE.PlaneGeometry(2, 2);
+  private createBackground() {
+    const seed = this.hashUserIdToSeed();
+    const styleType = BackgroundRenderer.styleToType(this.currentStyle);
+    this.backgroundRenderer = new BackgroundRenderer(styleType, seed);
 
-    this.skyMaterial = new THREE.ShaderMaterial({
-      vertexShader: sky2dVertexShader,
-      fragmentShader: sky2dFragmentShader,
-      uniforms: {
-        uSkyTopColor: { value: new THREE.Color(...params.skyTopColor) },
-        uSkyBottomColor: { value: new THREE.Color(...params.skyBottomColor) },
-      },
-      depthWrite: false,
-      depthTest: false,
-    });
+    const bgParams = BackgroundRenderer.paramsFromTheme(
+      this.currentParams, styleType, seed,
+    );
+    this.backgroundRenderer.update(bgParams);
 
-    this.skyMesh = new THREE.Mesh(geo, this.skyMaterial);
-    this.skyMesh.name = 'sky';
-    this.skyMesh.renderOrder = -2;
-    this.skyMesh.frustumCulled = false;
-    this.scene.add(this.skyMesh);
+    this.scene.add(this.backgroundRenderer.getMesh());
+  }
+
+  private hashUserIdToSeed(): number {
+    if (!this.userId) return Math.random() * 1000.0;
+    let h = 0;
+    for (let i = 0; i < this.userId.length; i++) {
+      h = ((h << 5) - h) + this.userId.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h % 100000) / 100000.0;
   }
 
   // --- Private: Ground (disabled) ---
@@ -718,6 +723,12 @@ export class SceneManager {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(containerW, containerH);
     this.renderer.setPixelRatio(window.devicePixelRatio);
+
+    // Set initial background resolution
+    if (this.backgroundRenderer) {
+      this.backgroundRenderer.updateSize(containerW, containerH);
+    }
+
     this.container.appendChild(this.renderer.domElement);
   }
 
@@ -758,10 +769,12 @@ export class SceneManager {
     //   this.groundMaterial.uniforms.uUndulation!.value = params.groundUndulation;
     // }
 
-    // Update sky
-    if (this.skyMaterial) {
-      this.skyMaterial.uniforms.uSkyTopColor!.value.set(...params.skyTopColor);
-      this.skyMaterial.uniforms.uSkyBottomColor!.value.set(...params.skyBottomColor);
+    // Update background (raymarched SDF)
+    if (this.backgroundRenderer) {
+      const seed = this.hashUserIdToSeed();
+      const styleType = BackgroundRenderer.styleToType(this.currentStyle);
+      const bgParams = BackgroundRenderer.paramsFromTheme(params, styleType, seed);
+      this.backgroundRenderer.update(bgParams);
     }
 
     // Update lights
@@ -808,6 +821,11 @@ export class SceneManager {
     const transitionParams = this.themeTransition.update(performance.now());
     if (transitionParams) {
       this.applyStyleParams(transitionParams);
+    }
+
+    // Update background time uniform
+    if (this.backgroundRenderer) {
+      this.backgroundRenderer.updateTime(this.elapsedTime);
     }
 
     // Wind sway + time update for custom leaf shader
@@ -971,14 +989,10 @@ export class SceneManager {
     //   this.particleMesh = null;
     // }
 
-    // Dispose sky
-    if (this.skyMesh) {
-      this.skyMesh.geometry.dispose();
-      if (this.skyMaterial) {
-        this.skyMaterial.dispose();
-        this.skyMaterial = null;
-      }
-      this.skyMesh = null;
+    // Dispose background
+    if (this.backgroundRenderer) {
+      this.backgroundRenderer.dispose();
+      this.backgroundRenderer = null;
     }
 
     if (this.renderer) {

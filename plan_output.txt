@@ -1,0 +1,1273 @@
+Good, Three.js 0.184. Now I have all the information I need. Let me compile the full implementation plan.
+
+---
+
+# Detailed Implementation Plan: 6-Step Tree Rendering System Refactoring
+
+## Preamble: Architectural Context
+
+The current `SceneManager.ts` (635 lines) is a monolithic class that handles camera, renderer, lights, tree mesh creation, ground, sky, theme application, animation, and resize logic. The refactoring touches nearly every subsystem. Each step must leave the tree visually functional so that incremental review is meaningful.
+
+The Proctree vendor code (`frontend/src/vendor/proctree.ts`) has a `Branch` class with `head` (endpoint position as `Vec3`), `radius`, `child0`/`child1`, and `length` properties. Terminal branches are those where `child0 === null`. The `Tree` class's `Branch` root is private and not exposed after construction -- this is a critical constraint for Step 2.
+
+Three.js 0.184 provides `THREE.IcosahedronGeometry(radius, detail)` which is the correct class for Step 2 (not "IcosphereGeometry").
+
+---
+
+## STEP 1: Orthographic Camera + 2D Ground
+
+### Goal
+Replace PerspectiveCamera with OrthographicCamera, replace the 3D ground plane with a screen-space horizontal line featuring an SDF-drawn undulating terrain contour above and a dark brown fill below. The entire image must look flat, with no depth or perspective foreshortening.
+
+### Files to Modify
+1. **`frontend/src/components/tree/scene/SceneManager.ts`** -- primary changes
+2. **`frontend/src/components/tree/shaders/`** -- new file for ground SDF shader
+
+### Files to Create
+1. **`frontend/src/components/tree/shaders/ground2d.ts`** -- screen-space ground SDF shader
+
+### Specific Changes
+
+#### A. Camera type change in `SceneManager.ts`
+
+**Line 62**: Change the camera type declaration:
+```
+- private camera!: THREE.PerspectiveCamera;
++ private camera!: THREE.OrthographicCamera;
+```
+
+**Lines 453-467** (`setupCameraAndRenderer`): Replace PerspectiveCamera construction with OrthographicCamera:
+```typescript
+private setupCameraAndRenderer() {
+  const containerW = this.container.clientWidth;
+  const containerH = this.container.clientHeight;
+  this.refContainerW = containerW;
+  this.refContainerH = containerH;
+
+  const frustum = this.computeOrthoFrustum(containerW, containerH);
+  this.camera = new THREE.OrthographicCamera(
+    frustum.left, frustum.right,
+    frustum.top, frustum.bottom,
+    0.1, 200
+  );
+
+  this.refitCamera();
+
+  this.renderer = new THREE.WebGLRenderer({ antialias: true });
+  this.renderer.setSize(containerW, containerH);
+  this.renderer.setPixelRatio(window.devicePixelRatio);
+  this.container.appendChild(this.renderer.domElement);
+}
+```
+
+Add new helper `computeOrthoFrustum`:
+```typescript
+private computeOrthoFrustum(w: number, h: number) {
+  if (!this.treeBounds) {
+    // Default frustum before tree exists
+    const halfH = 4;
+    const halfW = halfH * (w / h);
+    return { left: -halfW, right: halfW, top: halfH, bottom: -halfH };
+  }
+  const size = new THREE.Vector3();
+  this.treeBounds.getSize(size);
+  const padding = 1.3; // 30% padding
+  const halfH = (size.y / 2) * padding;
+  const halfW = (size.x / 2) * padding;
+  const aspect = w / h;
+  // Fit both axes, maintaining aspect ratio
+  const frustumHalfH = Math.max(halfH, halfW / aspect);
+  const frustumHalfW = frustumHalfH * aspect;
+  return { left: -frustumHalfW, right: frustumHalfW, top: frustumHalfH, bottom: -frustumHalfH };
+}
+```
+
+**Lines 305-325** (`refitCamera`): Complete rewrite:
+```typescript
+private refitCamera() {
+  if (!this.treeBounds || !this.camera) return;
+  const w = this.refContainerW || this.container.clientWidth;
+  const h = this.refContainerH || this.container.clientHeight;
+  const frustum = this.computeOrthoFrustum(w, h);
+
+  this.camera.left = frustum.left;
+  this.camera.right = frustum.right;
+  this.camera.top = frustum.top;
+  this.camera.bottom = frustum.bottom;
+  this.camera.updateProjectionMatrix();
+
+  this.camera.position.set(
+    this.treeCenter.x,
+    this.treeCenter.y,
+    this.treeCenter.z + 10  // Fixed Z distance, ortho doesn't care
+  );
+  this.camera.lookAt(this.treeCenter);
+}
+```
+
+**Lines 161-191** (`handleResize`): Replace FOV-based distance scaling with ortho frustum recalculation:
+```typescript
+handleResize() {
+  if (!this.container || !this.camera || !this.renderer) return;
+  const w = this.container.clientWidth;
+  const h = this.container.clientHeight;
+  if (w === 0 || h === 0) return;
+
+  if (!this.isSinking && !this.isRising) {
+    this.isSinking = true;
+    this.sinkAnimProgress = 0;
+    this.sinkTargetY = -this.treeHeight * 0.3;
+    this.callbacks.onResizeStart();
+  }
+
+  if (this.resizeDebounceTimer !== null) {
+    window.clearTimeout(this.resizeDebounceTimer);
+  }
+  this.resizeDebounceTimer = window.setTimeout(() => {
+    this.resizeDebounceTimer = null;
+    this.onResizeDebounced();
+  }, 1000);
+
+  const frustum = this.computeOrthoFrustum(w, h);
+  this.camera.left = frustum.left;
+  this.camera.right = frustum.right;
+  this.camera.top = frustum.top;
+  this.camera.bottom = frustum.bottom;
+  this.camera.updateProjectionMatrix();
+  this.renderer.setSize(w, h);
+
+  // Update ground quad to match new screen size
+  this.updateGroundQuad(w, h);
+}
+```
+
+Remove the old `refCameraDist` usage from resize. The `refCameraDist` field can be repurposed or removed later; keep it for now to avoid breaking the sink/rise animation which references `treeCenter.z`.
+
+#### B. Screen-space ground replacement
+
+**New file `frontend/src/components/tree/shaders/ground2d.ts`**:
+
+```typescript
+export const ground2dVertexShader = /* glsl */ `
+varying vec2 vScreenUV;
+
+void main() {
+  vScreenUV = uv;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+export const ground2dFragmentShader = /* glsl */ `
+uniform vec3 uGroundColor;
+uniform float uGroundLineY;    // normalized 0-1, position of ground line on screen
+uniform float uUndulation;     // amplitude of terrain contour
+uniform float uTime;
+
+varying vec2 vScreenUV;
+
+// Simple 1D noise for contour
+float hash(float n) { return fract(sin(n) * 43758.5453123); }
+float noise1d(float x) {
+  float i = floor(x);
+  float f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(hash(i), hash(i + 1.0), f) * 2.0 - 1.0;
+}
+
+void main() {
+  float y = vScreenUV.y;
+  float groundLine = uGroundLineY;
+
+  // Undulating contour: several octaves of noise offsetting the ground line
+  float contour = groundLine
+    + noise1d(vScreenUV.x * 8.0 + uTime * 0.05) * uUndulation * 0.03
+    + noise1d(vScreenUV.x * 20.0 + 1.7) * uUndulation * 0.01;
+
+  if (y > contour + 0.005) {
+    // Above ground line: transparent (sky shows through)
+    discard;
+  } else if (y > contour - 0.003) {
+    // The line itself: slightly darker contour stroke
+    gl_FragColor = vec4(uGroundColor * 0.6, 1.0);
+  } else {
+    // Below ground line: solid dark brown fill
+    gl_FragColor = vec4(uGroundColor, 1.0);
+  }
+}
+`;
+```
+
+**In `SceneManager.ts`**, replace `createGround()` (lines 398-413) and `groundMesh` handling:
+
+Add new fields:
+```typescript
+private groundMesh: THREE.Mesh | null = null;  // already exists, repurpose
+private groundMaterial: THREE.ShaderMaterial | null = null;
+```
+
+New `createGround()`:
+```typescript
+private createGround() {
+  // Full-screen quad in clip space (NDC), rendered behind everything
+  const geo = new THREE.PlaneGeometry(2, 2);
+  const params = this.currentParams;
+
+  this.groundMaterial = new THREE.ShaderMaterial({
+    vertexShader: ground2dVertexShader,
+    fragmentShader: ground2dFragmentShader,
+    uniforms: {
+      uGroundColor: { value: new THREE.Color(...params.groundColor) },
+      uGroundLineY: { value: 0.25 },  // ~25% up from bottom
+      uUndulation: { value: params.groundUndulation },
+      uTime: { value: 0 },
+    },
+    depthWrite: false,
+    depthTest: false,
+  });
+
+  this.groundMesh = new THREE.Mesh(geo, this.groundMaterial);
+  this.groundMesh.name = 'ground';
+  this.groundMesh.renderOrder = -1;  // Render behind everything
+  this.groundMesh.frustumCulled = false;
+  this.scene.add(this.groundMesh);
+}
+```
+
+Add `updateGroundQuad`:
+```typescript
+private updateGroundQuad(w: number, h: number) {
+  // No geometry update needed since it's a full-screen NDC quad
+  // The uGroundLineY uniform may need adjustment based on tree position
+  if (this.groundMaterial) {
+    // Compute where the tree base sits in screen space
+    // For ortho camera: screenY = (worldY - bottom) / (top - bottom)
+    if (this.treeBounds) {
+      const min = this.treeBounds.min.y;
+      const camBottom = this.camera.bottom;
+      const camTop = this.camera.top;
+      const normalizedY = (min - camBottom) / (camTop - camBottom);
+      this.groundMaterial.uniforms.uGroundLineY.value = Math.max(0.05, normalizedY);
+    }
+  }
+}
+```
+
+Update `animate()` to pass `elapsedTime` to ground shader:
+```typescript
+if (this.groundMaterial) {
+  this.groundMaterial.uniforms.uTime.value = this.elapsedTime;
+}
+```
+
+Update `applyStyleParams()` ground section (lines 496-498):
+```typescript
+// Old:
+// if (this.groundMesh && this.groundMesh.material instanceof THREE.MeshStandardMaterial) {
+//   this.groundMesh.material.color.set(new THREE.Color(...params.groundColor));
+// }
+
+// New:
+if (this.groundMaterial) {
+  this.groundMaterial.uniforms.uGroundColor.value.set(...params.groundColor);
+  this.groundMaterial.uniforms.uUndulation.value = params.groundUndulation;
+}
+```
+
+Update `disposeScene()` to handle the ShaderMaterial:
+```typescript
+// In the ground dispose section, add:
+if (this.groundMaterial) {
+  this.groundMaterial.dispose();
+  this.groundMaterial = null;
+}
+```
+
+### Dependencies
+None -- this is the first step.
+
+### Verification
+- The tree should appear flat with no perspective convergence (parallel branches remain parallel)
+- A horizontal wavy line should appear near the base of the tree
+- Below the line: solid dark brown fill
+- Above the line: sky gradient
+- The ground line should stay in place relative to the tree base when resizing
+- No visible 3D ground plane
+
+### Risks/Ambiguities
+1. **Ground line position**: The spec says "screen-space horizontal line" but the line should logically track the tree base. I chose to compute it from the tree bounding box projected through the ortho camera. If the user literally wants a fixed pixel position, the `uGroundLineY` uniform can be set to a constant like 0.25 instead.
+2. **Sky background interaction**: The sky texture is set as `scene.background`. The ground shader discards fragments above the line, letting the sky background show through. This works only if the ground quad renders before/behind the sky, but `scene.background` is drawn first. Alternative: the ground fragment shader should blend with the sky color, or the sky should be rendered as another quad. For this step, the simplest approach is to have the ground fragment shader output transparent alpha above the contour and use `transparent: true`, or alternatively, sample the sky gradient in the ground shader. The cleanest approach: render sky as a separate full-screen quad at `renderOrder = -2`, ground at `renderOrder = -1`, tree at `renderOrder = 0`, and remove `scene.background`.
+3. **Sink/rise animation**: Currently uses `treeGroup.position.y`. This still works with ortho camera, but the visual effect will be different since there is no perspective scaling. The animation should still work but will look like a simple vertical translation.
+
+---
+
+## STEP 2: Leaf Crown Icosphere Replacement
+
+### Goal
+Remove Proctree's billboard twig leaves, extract terminal branch endpoints, and place `IcosahedronGeometry` spheres at each endpoint. Adjacent icospheres naturally overlap to form the crown.
+
+### Files to Modify
+1. **`frontend/src/vendor/proctree.ts`** -- expose terminal branch data
+2. **`frontend/src/components/tree/scene/SceneManager.ts`** -- replace leaf mesh creation
+3. **`frontend/src/components/tree/scene/ProctreeGeometry.ts`** -- add terminal branch extraction utility
+
+### Files to Create
+None (unless we want a separate utility; but can be a method added to ProctreeGeometry.ts)
+
+### Specific Changes
+
+#### A. Expose terminal branches from Proctree
+
+The `Branch` class and the root `Branch` object are private inside `Tree`. The cleanest approach is **(c) Add a method to Tree that returns terminal branch data**. This avoids modifying the internal structure and keeps the public API clean.
+
+**In `frontend/src/vendor/proctree.ts`**, add a new export interface and method to the `Tree` class:
+
+```typescript
+export interface TerminalBranch {
+  head: Vec3;       // endpoint position
+  radius: number;   // branch radius at endpoint
+  length: number;   // branch segment length
+}
+```
+
+Add a private recursive collector and public accessor to the `Tree` class (after the constructor, around line 321):
+
+```typescript
+private collectTerminalBranches(branch: Branch, result: TerminalBranch[]): void {
+  if (!branch.child0) {
+    // Terminal branch: no children
+    result.push({
+      head: branch.head,
+      radius: branch.radius,
+      length: branch.length,
+    });
+  } else {
+    this.collectTerminalBranches(branch.child0, result);
+    if (branch.child1) {
+      this.collectTerminalBranches(branch.child1!, result);
+    }
+  }
+}
+
+getTerminalBranches(): TerminalBranch[] {
+  // We need the root branch. Currently the root is a local in the constructor.
+  // We must store it as a class field.
+  ...
+}
+```
+
+**Critical problem**: The root `Branch` is a local variable in the `Tree` constructor (line 313: `const root = new Branch(...)`). It is never stored. To expose terminal branches, we must store it:
+
+```typescript
+// Add to Tree class:
+private rootBranch: Branch;
+
+// In constructor, change:
+// const root = new Branch([0, this.properties.trunkLength, 0]);
+// to:
+this.rootBranch = new Branch([0, this.properties.trunkLength, 0]);
+// ...and replace all subsequent `root.` references with `this.rootBranch.`
+```
+
+Then implement:
+```typescript
+getTerminalBranches(): TerminalBranch[] {
+  const result: TerminalBranch[] = [];
+  this.collectTerminalBranches(this.rootBranch, result);
+  return result;
+}
+```
+
+#### B. Build icosphere crown in ProctreeGeometry.ts
+
+Add a new function to `ProctreeGeometry.ts`:
+
+```typescript
+import type { TerminalBranch } from '../../../vendor/proctree';
+
+export interface CrownSphere {
+  geometry: THREE.IcosahedronGeometry;
+  position: THREE.Vector3;
+  radius: number;
+}
+
+export function buildCrownSpheres(
+  terminals: TerminalBranch[],
+  radiusCoefficient = 10
+): CrownSphere[] {
+  const spheres: CrownSphere[] = [];
+  for (const t of terminals) {
+    const sphereRadius = Math.max(0.05, t.radius * radiusCoefficient);
+    const geo = new THREE.IcosahedronGeometry(sphereRadius, 2);
+    spheres.push({
+      geometry: geo,
+      position: new THREE.Vector3(t.head[0], t.head[1], t.head[2]),
+      radius: sphereRadius,
+    });
+  }
+  return spheres;
+}
+```
+
+#### C. Replace leaf mesh creation in SceneManager.ts
+
+**In `buildTreeMeshes()` (lines 240-287)**, replace the leaf section:
+
+```typescript
+// OLD (lines 255-272):
+// if (tree.vertsTwig.length > 0) {
+//   const twigGeo = buildTwigBufferGeometry(tree);
+//   ...
+//   this.leavesGroup.add(twigMesh);
+// }
+
+// NEW:
+const terminals = tree.getTerminalBranches();
+const crownSpheres = buildCrownSpheres(terminals);
+for (const sphere of crownSpheres) {
+  const material = new THREE.MeshToonMaterial({
+    color: new THREE.Color(...params.leafPrimaryColor),
+  });
+  const mesh = new THREE.Mesh(sphere.geometry, material);
+  mesh.position.copy(sphere.position);
+  this.leavesGroup.add(mesh);
+}
+```
+
+**In `applyStyleParams()` (lines 486-493)**, update leaf color application:
+```typescript
+// OLD: iterates leavesGroup children checking for MeshToonMaterial with map/alphaMap
+// NEW: simpler iteration -- all leavesGroup children are MeshToonMaterial without textures
+for (const mesh of this.leavesGroup.children) {
+  if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshToonMaterial) {
+    mesh.material.color.set(new THREE.Color(...params.leafPrimaryColor));
+  }
+}
+```
+
+Remove the `leafTexture` field and `createLeafTexture()` method since they are no longer needed.
+
+**In `disposeScene()` (lines 621-624)**, remove `leafTexture` disposal.
+
+The `buildTwigBufferGeometry` function in ProctreeGeometry.ts becomes unused but can remain for now (remove in cleanup later).
+
+### Dependencies
+- Step 1 (ortho camera) affects how the crown spheres look -- without perspective, the spheres will look like circles, which is actually desirable for the flat aesthetic.
+
+### Verification
+- No billboard quads (the old twig "leaves") should be visible
+- Instead, multiple overlapping smooth spheres should form a crown shape at the branch tips
+- The crown should roughly approximate the shape of the old leaf canopy but as a cluster of 3D spheres
+- The `twigScale` parameter in DebugGUI should have no visible effect
+
+### Risks/Ambiguities
+1. **Terminal branch count**: For a typical tree with `levels=4`, there are 2^4 = 16 terminal branches per branch path. With `treeSteps=6`, the total can be significant. Each terminal gets an icosphere, so there could be 20-50 spheres. This is manageable.
+2. **Radius coefficient**: The spec says "8-12x the branch's end radius." Proctree's `radius` on terminal branches is typically very small (0.01-0.05). With coefficient 10, sphere radii would be 0.1-0.5, which seems reasonable but needs visual tuning.
+3. **Performance**: Multiple icospheres at detail=2 (80 faces each) times ~30 terminals = ~2400 faces for the crown. No concern.
+4. **The `radius` field on terminal branches**: In Proctree, `branch.radius` is set during `createForks()`. For terminal branches (those without children), the `radius` is set to `radius * radiusFalloffRate` iteratively down the tree. At the deepest level, this will be very small. The coefficient of 8-12x should compensate, but may need tuning.
+
+---
+
+## STEP 3: Leaf Crown Custom Shader (CORE)
+
+### Goal
+Replace the icosphere's MeshToonMaterial with a custom ShaderMaterial that adds: (a) Perlin noise vertex displacement, (b) Three-color noise blending, (c) Fresnel edge fragmentation, (d) Toon lighting with warm/cool shifts.
+
+### Files to Modify
+1. **`frontend/src/components/tree/scene/SceneManager.ts`** -- swap material on crown spheres
+2. **`frontend/src/components/tree/scene/ProctreeGeometry.ts`** -- minor adjustments if needed
+
+### Files to Create
+1. **`frontend/src/components/tree/shaders/crown.ts`** -- the crown vertex and fragment shaders
+
+### Specific Changes
+
+#### A. New shader file `frontend/src/components/tree/shaders/crown.ts`
+
+```typescript
+import { SIMPLEX_3D } from './glslNoise';
+
+export const crownVertexShader = SIMPLEX_3D + /* glsl */ `
+uniform float uSphereRadius;
+uniform float uDisplacementAmplitude;  // fraction of radius, ~0.15
+uniform float uNoiseFrequency;         // low freq for displacement
+
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+varying vec3 vOrigNormal;
+
+void main() {
+  vOrigNormal = normalize(normalMatrix * normal);
+
+  // Displacement along normal using 3D Perlin noise
+  float noise = snoise(position * uNoiseFrequency);
+  float displacement = noise * uSphereRadius * uDisplacementAmplitude;
+  vec3 displaced = position + normal * displacement;
+
+  // Approximate normal recalculation via finite differences
+  float eps = 0.01;
+  vec3 tangent1 = normalize(cross(normal, vec3(0.0, 1.0, 0.0)));
+  if (length(tangent1) < 0.001) tangent1 = normalize(cross(normal, vec3(1.0, 0.0, 0.0)));
+  vec3 tangent2 = normalize(cross(normal, tangent1));
+
+  vec3 neighbor1 = position + tangent1 * eps;
+  vec3 neighbor2 = position + tangent2 * eps;
+  float d1 = snoise(neighbor1 * uNoiseFrequency) * uSphereRadius * uDisplacementAmplitude;
+  float d2 = snoise(neighbor2 * uNoiseFrequency) * uSphereRadius * uDisplacementAmplitude;
+  vec3 displaced1 = neighbor1 + normal * d1;
+  vec3 displaced2 = neighbor2 + normal * d2;
+
+  vec3 newNormal = normalize(cross(displaced1 - displaced, displaced2 - displaced));
+  // Ensure normal faces outward
+  if (dot(newNormal, normal) < 0.0) newNormal = -newNormal;
+
+  vNormal = normalize(normalMatrix * newNormal);
+
+  vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
+  vWorldPos = worldPos.xyz;
+
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+}
+`;
+
+export const crownFragmentShader = SIMPLEX_3D + /* glsl */ `
+uniform vec3 uDarkGreen;
+uniform vec3 uMidGreen;
+uniform vec3 uLightGreen;
+uniform float uLowFreqNoiseScale;
+uniform float uHighFreqNoiseScale;
+uniform float uHighFreqColorMix;
+
+uniform float uEdgeFresnelThreshold;
+uniform float uEdgeNoiseFrequency;
+uniform float uEdgeDiscardThreshold;
+
+uniform vec3 uLightDir;
+uniform float uWarmShift;
+uniform float uCoolShift;
+uniform float uWarmBandWidth;
+
+uniform vec3 uCameraPosition;
+
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+varying vec3 vOrigNormal;
+
+void main() {
+  vec3 normal = normalize(vNormal);
+
+  // --- 1. Color blending ---
+  float lowFreqNoise = snoise(vWorldPos * uLowFreqNoiseScale) * 0.5 + 0.5;
+  float highFreqNoise = snoise(vWorldPos * uHighFreqNoiseScale) * 0.5 + 0.5;
+
+  // Low freq controls dark/light zones
+  vec3 baseColor = mix(uDarkGreen, uMidGreen, smoothstep(0.3, 0.5, lowFreqNoise));
+  baseColor = mix(baseColor, uLightGreen, smoothstep(0.55, 0.75, lowFreqNoise));
+
+  // High freq adds fine variation
+  vec3 fineColor = mix(baseColor * 0.85, baseColor * 1.15, highFreqNoise * uHighFreqColorMix);
+
+  // --- 2. Edge leaf fragmentation ---
+  vec3 viewDir = normalize(uCameraPosition - vWorldPos);
+  float fresnel = dot(viewDir, normal);
+
+  if (fresnel < uEdgeFresnelThreshold) {
+    float edgeNoise = snoise(vWorldPos * uEdgeNoiseFrequency) * 0.5 + 0.5;
+    if (edgeNoise < uEdgeDiscardThreshold) {
+      discard;
+    }
+  }
+
+  // --- 3. Toon lighting ---
+  float NdotL = dot(normalize(uLightDir), normal);
+  // 2-step hard cutoffs
+  float toonFactor;
+  if (NdotL < 0.3) {
+    toonFactor = 0.4;
+  } else if (NdotL < 0.7) {
+    toonFactor = 0.75;
+  } else {
+    toonFactor = 1.0;
+  }
+
+  // Warm/cool shift
+  vec3 warmTint = vec3(uWarmShift, uWarmShift * 0.6, 0.0);
+  vec3 coolTint = vec3(0.0, 0.0, uCoolShift);
+
+  vec3 litColor;
+  if (NdotL > 0.65 && NdotL < 0.75) {
+    // Narrow warm transition band at light/shadow boundary
+    litColor = fineColor * toonFactor + warmTint * uWarmBandWidth;
+  } else if (NdotL >= 0.75) {
+    litColor = fineColor * toonFactor + warmTint * 0.5;
+  } else {
+    litColor = fineColor * toonFactor + coolTint;
+  }
+
+  // --- 4. Final output ---
+  gl_FragColor = vec4(litColor, 1.0);
+}
+`;
+```
+
+#### B. Material swap in SceneManager.ts
+
+Add new fields:
+```typescript
+private crownMaterial: THREE.ShaderMaterial | null = null;
+private crownSpheres: CrownSphere[] = [];
+```
+
+Replace the material in `buildTreeMeshes()` (the section added in Step 2):
+```typescript
+const terminals = tree.getTerminalBranches();
+const crownSpheres = buildCrownSpheres(terminals);
+this.crownSpheres = crownSpheres;
+
+this.crownMaterial = new THREE.ShaderMaterial({
+  vertexShader: crownVertexShader,
+  fragmentShader: crownFragmentShader,
+  uniforms: {
+    uSphereRadius: { value: 0.5 },  // will be set per-sphere
+    uDisplacementAmplitude: { value: 0.15 },
+    uNoiseFrequency: { value: 2.0 },
+
+    uDarkGreen: { value: new THREE.Color(0.15, 0.35, 0.08) },
+    uMidGreen: { value: new THREE.Color(0.25, 0.55, 0.15) },
+    uLightGreen: { value: new THREE.Color(0.50, 0.80, 0.30) },
+    uLowFreqNoiseScale: { value: 1.5 },
+    uHighFreqNoiseScale: { value: 6.0 },
+    uHighFreqColorMix: { value: 0.3 },
+
+    uEdgeFresnelThreshold: { value: 0.35 },
+    uEdgeNoiseFrequency: { value: 8.0 },
+    uEdgeDiscardThreshold: { value: 0.4 },
+
+    uLightDir: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
+    uWarmShift: { value: 0.15 },
+    uCoolShift: { value: 0.12 },
+    uWarmBandWidth: { value: 0.08 },
+
+    uCameraPosition: { value: new THREE.Vector3() },
+  },
+});
+
+for (const sphere of crownSpheres) {
+  // Clone material per sphere so uSphereRadius can differ
+  const mat = this.crownMaterial.clone();
+  mat.uniforms.uSphereRadius.value = sphere.radius;
+  const mesh = new THREE.Mesh(sphere.geometry, mat);
+  mesh.position.copy(sphere.position);
+  this.leavesGroup.add(mesh);
+}
+```
+
+Update `animate()` to sync camera position uniform:
+```typescript
+if (this.leavesGroup) {
+  for (const mesh of this.leavesGroup.children) {
+    if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.ShaderMaterial) {
+      mesh.material.uniforms.uCameraPosition.value.copy(this.camera.position);
+    }
+  }
+}
+```
+
+Update `applyStyleParams()` for crown shader uniforms:
+```typescript
+// Crown color uniforms
+if (this.leavesGroup) {
+  for (const mesh of this.leavesGroup.children) {
+    if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.ShaderMaterial) {
+      // Map leafPrimaryColor -> uMidGreen, leafSecondaryColor -> uLightGreen
+      // uDarkGreen computed as leafPrimaryColor * 0.6
+      const dark = [...params.leafPrimaryColor.map(c => c * 0.6)] as [number, number, number];
+      mesh.material.uniforms.uDarkGreen.value.set(...dark);
+      mesh.material.uniforms.uMidGreen.value.set(...params.leafPrimaryColor);
+      mesh.material.uniforms.uLightGreen.value.set(...params.leafSecondaryColor);
+    }
+  }
+}
+```
+
+Update `disposeScene()` to dispose ShaderMaterials.
+
+### Dependencies
+- Step 2 (icosphere crown must exist as the mesh to apply the shader to)
+
+### Verification
+- Crown spheres should have bumpy, organic-looking surfaces instead of smooth spheres
+- The crown should show patches of dark/mid/light green with visible variation
+- Edges of the crown should have irregular broken gaps (discarded fragments) creating a leafy silhouette
+- One side of the crown should appear warmer (yellow-green), the other cooler (blue-green)
+- A subtle warm band should appear at the light/shadow boundary
+- The crown should not look like smooth shaded 3D spheres anymore
+
+### Risks/Ambiguities
+1. **Normal recalculation**: The finite-differences approach in the vertex shader adds 2 extra noise evaluations per vertex. For `IcosahedronGeometry(r, 2)` that is 42 vertices per sphere, so 84 extra noise calls per sphere. With ~30 spheres, that is ~2500 extra noise calls. Simplex 3D noise is not trivial, but this should still be fine on modern GPUs.
+2. **`uCameraPosition` per-sphere vs global**: The camera position is the same for all spheres. We could use a single material instance, but then `uSphereRadius` would be the same for all. The alternative is to encode sphere radius in a vertex attribute. For simplicity, cloning the material per sphere is fine for 30-50 spheres.
+3. **Color mapping to TreeStyleParams**: Currently using `leafPrimaryColor` as `uMidGreen` and `leafSecondaryColor` as `uLightGreen`, with `uDarkGreen` derived as 0.6x primary. This may not produce ideal results for non-green themes (sakura pink, cyberpunk neon). The mapping can be refined in Step 6.
+
+---
+
+## STEP 4: Trunk Material + Global Outline
+
+### Goal
+Apply MeshToonMaterial with a 3-step gradient map for the trunk. Add inverted-hull outline for both trunk and crown, using the existing `shaders/outline.ts`.
+
+### Files to Modify
+1. **`frontend/src/components/tree/scene/SceneManager.ts`** -- add outline meshes, update trunk material
+
+### Files to Create
+None (the outline shader already exists)
+
+### Specific Changes
+
+#### A. Trunk MeshToonMaterial with 3-step gradient map
+
+In `buildTreeMeshes()`, replace the trunk material section:
+
+```typescript
+// Create a 3-step gradient map texture for toon shading
+const gradientMap = this.createTrunkGradientMap();
+
+const trunkMaterial = new THREE.MeshToonMaterial({
+  color: new THREE.Color(...params.trunkMidColor),
+  gradientMap: gradientMap,
+});
+```
+
+Add helper method:
+```typescript
+private createTrunkGradientMap(): THREE.DataTexture {
+  // 3-step gradient: dark / mid / bright
+  const data = new Uint8Array([0, 128, 255]);
+  const texture = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
+  texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = THREE.NearestFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+```
+
+#### B. Inverted hull outline
+
+Add new field:
+```typescript
+private outlineGroup: THREE.Group | null = null;
+```
+
+Add outline creation in `buildTreeMeshes()`:
+
+```typescript
+// Create outline group
+this.outlineGroup = new THREE.Group();
+this.outlineGroup.name = 'outlines';
+this.treeGroup.add(this.outlineGroup);
+
+// --- Trunk outline ---
+const trunkOutlineMat = new THREE.ShaderMaterial({
+  vertexShader: outlineVertexShader,
+  fragmentShader: outlineFragmentShader,
+  uniforms: {
+    uOutlineWidth: { value: 0.04 },   // thicker for trunk
+    uOutlineColor: { value: new THREE.Color(...params.outlineColor) },
+  },
+  side: THREE.BackSide,
+});
+
+const trunkOutlineMesh = new THREE.Mesh(trunkGeo, trunkOutlineMat);
+this.outlineGroup.add(trunkOutlineMesh);
+
+// --- Crown outlines ---
+const crownOutlineMat = new THREE.ShaderMaterial({
+  vertexShader: outlineVertexShader,
+  fragmentShader: outlineFragmentShader,
+  uniforms: {
+    uOutlineWidth: { value: 0.02 },   // thinner for crown
+    uOutlineColor: { value: new THREE.Color(...params.outlineColor) },
+  },
+  side: THREE.BackSide,
+});
+
+for (const sphere of crownSpheres) {
+  const outlineMesh = new THREE.Mesh(sphere.geometry, crownOutlineMat);
+  outlineMesh.position.copy(sphere.position);
+  this.outlineGroup.add(outlineMesh);
+}
+```
+
+**Important**: The outline vertex shader uses `position + normal * uOutlineWidth`. For the crown spheres, the normals in the geometry are the original icosahedron normals (before displacement). The outline should expand from the original geometry, not from the displaced one. This is actually correct because the outline mesh uses the original geometry and a separate material, not the crown shader material. The displacement only applies to the crown material's vertex shader.
+
+Update `applyStyleParams()`:
+```typescript
+// Outline
+if (this.outlineGroup) {
+  for (const mesh of this.outlineGroup.children) {
+    if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.ShaderMaterial) {
+      mesh.material.uniforms.uOutlineColor.value.set(...params.outlineColor);
+    }
+  }
+}
+```
+
+Update `disposeScene()` to clean up outline meshes and materials.
+
+### Dependencies
+- Steps 2 and 3 (crown spheres must exist to create their outlines)
+
+### Verification
+- Trunk should show clear 3-step toon shading (dark/mid/bright bands)
+- Both trunk and crown should have dark outline silhouettes
+- Trunk outline should be visibly thicker than crown outline
+- Outline should follow the shape of both trunk and crown
+- No outline rendering artifacts (e.g., front-face bleeding)
+
+### Risks/Ambiguities
+1. **Existing trunk.ts shader**: The spec says to use MeshToonMaterial for the trunk. The existing `shaders/trunk.ts` has a more sophisticated shader but is explicitly not being used. This is a deliberate choice per the requirements.
+2. **Outline and crown displacement**: The outline mesh uses the un-displaced geometry. If the displacement is large (15% of radius), there could be a gap between the displaced surface and the outline. However, the outline expands outward along normals, which should cover any displacement inward. The outward displacement would not be outlined, but that adds to the organic look. If this is a problem, the outline width for crown spheres can be increased to compensate.
+3. **Outline with alpha-tested edges**: Step 3's edge fragmentation discards fragments at the crown edges. The outline mesh does not discard fragments, so it will create a smooth outline behind the fragmented edge. This is actually desirable -- it provides a dark backing behind the leaf gaps, which looks like shadow/depth behind the leaves.
+
+---
+
+## STEP 5: Data-Driven Parameter Mapping
+
+### Goal
+Write `mapUserDataToTreeParams(nodeCount, maxDepth, widthDepthRatio, maxSubtreeRatio, userUUID)` that computes Proctree `TreeParams` from user data, replacing the static `DEFAULT_PROCTREE_PARAMS`.
+
+### Files to Modify
+1. **`frontend/src/components/tree/scene/UserDataMapper.ts`** -- add the new mapping function
+
+### Files to Create
+None (the function goes in the existing UserDataMapper.ts)
+
+### Specific Changes
+
+#### A. Add mapping function to UserDataMapper.ts
+
+```typescript
+import type { TreeParams } from '../../../vendor/proctree';
+
+function hashUUID(uuid: string): number {
+  let hash = 0;
+  for (let i = 0; i < uuid.length; i++) {
+    const char = uuid.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;  // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * Math.max(0, Math.min(1, t));
+}
+
+function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val));
+}
+
+export function mapUserDataToTreeParams(
+  nodeCount: number,
+  maxDepth: number,
+  widthDepthRatio: number,
+  maxSubtreeRatio: number,
+  userUUID: string,
+): TreeParams {
+  // levels = clamp(floor(log2(nodeCount)), 3, 6)
+  const levels = clamp(Math.floor(Math.log2(Math.max(1, nodeCount))), 3, 6);
+
+  // trunkLength = lerp(1.5, 4, log(nodeCount)/log(500))
+  const trunkT = Math.log(Math.max(1, nodeCount)) / Math.log(500);
+  const trunkLength = lerp(1.5, 4, trunkT);
+
+  // climbRate = lerp(0.2, 0.7, widthDepthRatio < 1 ? 0.8 : 0.3)
+  const climbRate = lerp(0.2, 0.7, widthDepthRatio < 1 ? 0.8 : 0.3);
+
+  // sweepAmount = lerp(-0.3, 0.3, maxSubtreeRatio - 0.5)
+  const sweepAmount = lerp(-0.3, 0.3, maxSubtreeRatio - 0.5);
+
+  // seed from UUID hash
+  const seed = hashUUID(userUUID) % 10000;
+
+  return {
+    levels,
+    trunkLength,
+    climbRate,
+    sweepAmount,
+    seed,
+
+    // Fixed aesthetic safe values
+    branchFactor: 3,
+    initialBranchLength: 0.5,
+    lengthFalloffFactor: 0.85,
+    lengthFalloffPower: 0.5,
+    maxRadius: 0.15,
+    radiusFalloffRate: 0.7,
+    taperRate: 0.9,
+    trunkKink: 0.05,
+    treeSteps: 6,
+    twistRate: 3,
+    segments: 8,
+    trunkForks: 0,
+    clumpMax: 0.5,
+    clumpMin: 0.3,
+    twigScale: 0.4,  // Irrelevant after Step 2, but kept for API compat
+  };
+}
+```
+
+#### B. Compute aggregate stats from existing data
+
+The `UserDataMapper` class already receives `statsNodes` and `branches` in `update()`. Add computation of the aggregate values:
+
+```typescript
+// Add to UserDataMapper class:
+private lastNodeCount = 0;
+private lastMaxDepth = 0;
+private lastWidthDepthRatio = 1;
+private lastMaxSubtreeRatio = 0.5;
+
+update(statsNodes: StatsNode[], branches: Branch[], distribution: Record<string, number>) {
+  // ... existing code ...
+
+  // Compute aggregate stats
+  this.lastNodeCount = statsNodes.length;
+  this.lastMaxDepth = statsNodes.length > 0
+    ? Math.max(...statsNodes.map(n => n.depth))
+    : 0;
+
+  // widthDepthRatio: ratio of max width (nodes at any single depth) to total depth
+  const depthCounts = new Map<number, number>();
+  for (const n of statsNodes) {
+    depthCounts.set(n.depth, (depthCounts.get(n.depth) ?? 0) + 1);
+  }
+  const maxWidth = depthCounts.size > 0
+    ? Math.max(...depthCounts.values())
+    : 1;
+  this.lastWidthDepthRatio = this.lastMaxDepth > 0
+    ? maxWidth / this.lastMaxDepth
+    : 1;
+
+  // maxSubtreeRatio: largest subtree / total nodes
+  const maxDesc = branches.length > 0
+    ? Math.max(...branches.map(b => b.descendants ?? 0))
+    : 0;
+  this.lastMaxSubtreeRatio = statsNodes.length > 0
+    ? maxDesc / statsNodes.length
+    : 0.5;
+}
+
+// Public getters for SceneManager
+getNodeCount() { return this.lastNodeCount; }
+getMaxDepth() { return this.lastMaxDepth; }
+getWidthDepthRatio() { return this.lastWidthDepthRatio; }
+getMaxSubtreeRatio() { return this.lastMaxSubtreeRatio; }
+```
+
+#### C. Wire into SceneManager.ts
+
+Currently `updateUserData` on SceneManager is a no-op (line 159). Update it:
+
+```typescript
+private userDataMapper = new UserDataMapper();
+
+updateUserData(statsNodes: StatsNode[], distribution: Record<string, number>) {
+  if (!this.skeleton) return;
+  this.userDataMapper.update(statsNodes, this.skeleton.branches, distribution);
+
+  const userId = /* need to get userUUID somehow */;
+  // Option: pass userId through the update method, or store it from the constructor
+  // For now, we can compute the params without UUID and use a default seed
+  const newParams = mapUserDataToTreeParams(
+    this.userDataMapper.getNodeCount(),
+    this.userDataMapper.getMaxDepth(),
+    this.userDataMapper.getWidthDepthRatio(),
+    this.userDataMapper.getMaxSubtreeRatio(),
+    this.userUUID,  // need to add this field
+  );
+  this.proctreeParams = { ...DEFAULT_PROCTREE_PARAMS, ...newParams };
+  this.rebuildTreeMeshes();
+}
+```
+
+Add a `userUUID` field to SceneManager, passed in from TreeCanvas.vue through the constructor or a setter.
+
+In `TreeCanvas.vue`, pass the user ID:
+```typescript
+// In loadTree(), after creating the SceneManager:
+if (authStore.user?.id) {
+  manager.setUserId(authStore.user.id);
+}
+```
+
+### Dependencies
+- Steps 1-4 should be complete so that `rebuildTreeMeshes()` correctly rebuilds with the new ortho camera, icosphere crown, custom shader, and outline
+
+### Verification
+- Create a tree with few nodes (e.g., 5): tree should have `levels=3`, short trunk
+- Create a tree with many nodes (e.g., 200): tree should have `levels=6-7` (clamped to 6), longer trunk
+- Two different user UUIDs should produce visually different trees (different seed = different random branching)
+- A wide tree (high widthDepthRatio) should have higher climbRate (more vertical growth)
+- A tree with high maxSubtreeRatio should have more sweep (asymmetric lean)
+- The default tree (without user data) should look the same as before
+
+### Risks/Ambiguities
+1. **UserUUID access**: The `SceneManager` currently does not have access to the user UUID. It needs to be passed in, either through the constructor, a setter method, or through the `updateUserData` parameters. The cleanest approach is adding it as a parameter to `updateUserData()`.
+2. **Rebuilding on data update**: `rebuildTreeMeshes()` disposes and recreates all meshes, which is expensive. If `updateUserData` is called frequently (e.g., on every stats fetch), this could cause flickering. Consider only rebuilding if the params actually changed (compare new vs old).
+3. **`sweepAmount` range**: The formula `lerp(-0.3, 0.3, maxSubtreeRatio - 0.5)` can produce values outside [-0.3, 0.3] if `maxSubtreeRatio` is outside [0, 1]. Clamping `maxSubtreeRatio` or the result is advisable.
+4. **`climbRate` branching**: The formula `widthDepthRatio < 1 ? 0.8 : 0.3` creates a sharp binary split rather than a smooth interpolation. This is what the spec says, but it means trees are either tall-sparse or short-bushy with no middle ground. May want to smooth this with a `smoothstep` around `widthDepthRatio = 1`.
+
+---
+
+## STEP 6: Style Parameter Object
+
+### Goal
+Define the complete `styleParams` object with all visual parameters, update presets to include the new shader uniforms, and wire up theme transitions to lerp all fields and update material uniforms.
+
+### Files to Modify
+1. **`frontend/src/constants/theme.ts`** -- add new fields to `TreeStyleParams` and presets
+2. **`frontend/src/components/tree/scene/SceneManager.ts`** -- update `applyStyleParams()` to set all shader uniforms
+3. **`frontend/src/components/tree/scene/ThemeTransition.ts`** -- add new tuple keys for lerp
+
+### Files to Create
+None
+
+### Specific Changes
+
+#### A. Extend TreeStyleParams in theme.ts
+
+Add new fields to the `TreeStyleParams` interface:
+
+```typescript
+export interface TreeStyleParams {
+  // --- Existing fields (keep all) ---
+
+  // --- NEW: Crown shader parameters ---
+  leafDarkColor: [number, number, number];      // was derived, now explicit
+  leafMidColor: [number, number, number];       // maps to uMidGreen (replaces leafPrimaryColor usage)
+  leafLightColor: [number, number, number];     // maps to uLightGreen (replaces leafSecondaryColor usage)
+  leafDisplacementAmplitude: number;            // uDisplacementAmplitude
+  leafNoiseFrequency: number;                   // uNoiseFrequency
+  leafLowFreqNoiseScale: number;                // uLowFreqNoiseScale
+  leafHighFreqNoiseScale: number;               // uHighFreqNoiseScale
+  leafHighFreqColorMix: number;                 // uHighFreqColorMix
+  leafEdgeFresnelThreshold: number;             // uEdgeFresnelThreshold
+  leafEdgeNoiseFrequency: number;               // uEdgeNoiseFrequency
+  leafEdgeDiscardThreshold: number;             // uEdgeDiscardThreshold
+  leafWarmShift: number;                        // uWarmShift
+  leafCoolShift: number;                        // uCoolShift
+  leafWarmBandWidth: number;                    // uWarmBandWidth
+
+  // --- NEW: Outline parameters per-type ---
+  trunkOutlineWidth: number;                    // thicker outline for trunk
+  crownOutlineWidth: number;                    // thinner outline for crown
+}
+```
+
+Add values to all four presets. Example for DEFAULT:
+
+```typescript
+export const THEME_DEFAULT: TreeStyleParams = {
+  // ... existing fields ...
+
+  // Crown shader
+  leafDarkColor: [0.09, 0.21, 0.05],
+  leafMidColor: [0.25, 0.55, 0.15],        // same as old leafPrimaryColor
+  leafLightColor: [0.50, 0.80, 0.30],       // same as old leafSecondaryColor
+  leafDisplacementAmplitude: 0.15,
+  leafNoiseFrequency: 2.0,
+  leafLowFreqNoiseScale: 1.5,
+  leafHighFreqNoiseScale: 6.0,
+  leafHighFreqColorMix: 0.3,
+  leafEdgeFresnelThreshold: 0.35,
+  leafEdgeNoiseFrequency: 8.0,
+  leafEdgeDiscardThreshold: 0.4,
+  leafWarmShift: 0.15,
+  leafCoolShift: 0.12,
+  leafWarmBandWidth: 0.08,
+
+  // Outline widths
+  trunkOutlineWidth: 0.04,
+  crownOutlineWidth: 0.02,
+};
+```
+
+Similar additions for SAKURA (pink tones for leaf colors), CYBERPUNK (neon cyan/magenta), and INK (muted grey-green).
+
+#### B. Update ThemeTransition.ts TUPLE_KEYS
+
+Add the new tuple key `leafDarkColor` to the `TUPLE_KEYS` set:
+
+```typescript
+const TUPLE_KEYS = new Set<string>([
+  'trunkBaseColor', 'trunkMidColor', 'trunkTipColor',
+  'leafPrimaryColor', 'leafSecondaryColor',
+  'leafDarkColor', 'leafMidColor', 'leafLightColor',  // NEW
+  'skyTopColor', 'skyBottomColor',
+  'groundColor',
+  'particleColor',
+  'mainLightColor', 'ambientLightColor',
+  'outlineColor', 'fresnelColor',
+]);
+```
+
+The `lerpStyleParams` function already handles any tuple key in the set, so no other changes needed there. New scalar keys (like `leafDisplacementAmplitude`) are automatically handled by the `typeof va === 'number'` branch.
+
+#### C. Update SceneManager applyStyleParams()
+
+Rewrite `applyStyleParams()` to set all crown shader uniforms:
+
+```typescript
+private applyStyleParams(params: TreeStyleParams) {
+  this.currentParams = params;
+
+  // --- Trunk ---
+  for (const mesh of this.trunkGroup.children) {
+    if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshToonMaterial) {
+      mesh.material.color.set(new THREE.Color(...params.trunkMidColor));
+    }
+  }
+
+  // --- Crown shader uniforms ---
+  if (this.leavesGroup) {
+    for (const mesh of this.leavesGroup.children) {
+      if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.ShaderMaterial) {
+        const u = mesh.material.uniforms;
+        u.uDarkGreen.value.set(...params.leafDarkColor);
+        u.uMidGreen.value.set(...params.leafMidColor);
+        u.uLightGreen.value.set(...params.leafLightColor);
+        u.uDisplacementAmplitude.value = params.leafDisplacementAmplitude;
+        u.uNoiseFrequency.value = params.leafNoiseFrequency;
+        u.uLowFreqNoiseScale.value = params.leafLowFreqNoiseScale;
+        u.uHighFreqNoiseScale.value = params.leafHighFreqNoiseScale;
+        u.uHighFreqColorMix.value = params.leafHighFreqColorMix;
+        u.uEdgeFresnelThreshold.value = params.leafEdgeFresnelThreshold;
+        u.uEdgeNoiseFrequency.value = params.leafEdgeNoiseFrequency;
+        u.uEdgeDiscardThreshold.value = params.leafEdgeDiscardThreshold;
+        u.uWarmShift.value = params.leafWarmShift;
+        u.uCoolShift.value = params.leafCoolShift;
+        u.uWarmBandWidth.value = params.leafWarmBandWidth;
+      }
+    }
+  }
+
+  // --- Ground ---
+  if (this.groundMaterial) {
+    this.groundMaterial.uniforms.uGroundColor.value.set(...params.groundColor);
+    this.groundMaterial.uniforms.uUndulation.value = params.groundUndulation;
+  }
+
+  // --- Lights ---
+  if (this.mainLight) {
+    this.mainLight.color.set(...params.mainLightColor);
+    this.mainLight.intensity = params.mainLightIntensity;
+    // Update light direction in crown shader
+    this.updateCrownLightDir();
+  }
+  if (this.ambientLight) {
+    this.ambientLight.color.set(...params.ambientLightColor);
+    this.ambientLight.intensity = params.ambientLightIntensity;
+  }
+
+  // --- Outlines ---
+  if (this.outlineGroup) {
+    for (const mesh of this.outlineGroup.children) {
+      if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.ShaderMaterial) {
+        mesh.material.uniforms.uOutlineColor.value.set(...params.outlineColor);
+        // Differentiate trunk vs crown outline width
+        if (mesh.parent === this.outlineGroup) {
+          // Could tag meshes or check geometry type to differentiate
+          // Simpler: store outline materials separately
+        }
+      }
+    }
+  }
+}
+```
+
+For outline width differentiation, store trunk and crown outline materials as fields:
+```typescript
+private trunkOutlineMaterial: THREE.ShaderMaterial | null = null;
+private crownOutlineMaterial: THREE.ShaderMaterial | null = null;
+```
+
+Then in `applyStyleParams()`:
+```typescript
+if (this.trunkOutlineMaterial) {
+  this.trunkOutlineMaterial.uniforms.uOutlineColor.value.set(...params.outlineColor);
+  this.trunkOutlineMaterial.uniforms.uOutlineWidth.value = params.trunkOutlineWidth;
+}
+if (this.crownOutlineMaterial) {
+  this.crownOutlineMaterial.uniforms.uOutlineColor.value.set(...params.outlineColor);
+  this.crownOutlineMaterial.uniforms.uOutlineWidth.value = params.crownOutlineWidth;
+}
+```
+
+### Dependencies
+- All previous steps must be complete so that all shader uniforms and materials exist
+
+### Verification
+- Switch from default to sakura: tree should smoothly transition from green to pink tones in the crown
+- Switch from default to cyberpunk: crown should transition to neon colors, outlines to cyan, ground to dark
+- Switch from default to ink: crown should become muted, outlines thicker and darker
+- All transitions should be smooth (lerped over ~800ms)
+- No visual glitches during transition (no shader compilation errors, no missing uniforms)
+
+### Risks/Ambiguities
+1. **leafPrimaryColor / leafSecondaryColor vs leafMidColor / leafLightColor**: Adding new fields creates redundancy. The old `leafPrimaryColor` and `leafSecondaryColor` fields still exist in the interface. Two options: (a) Keep both and map old->new in `applyStyleParams`, (b) Replace old with new and update all references. Option (b) is cleaner but requires updating all code that references `leafPrimaryColor`/`leafSecondaryColor` (the `buildTreeMeshes` function and `createLeafTexture` which was removed in Step 2, so only `applyStyleParams` references remain). I recommend option (b): rename `leafPrimaryColor` to `leafMidColor` and `leafSecondaryColor` to `leafLightColor`, add `leafDarkColor`.
+2. **Presets need tuning**: Each preset needs carefully chosen values for the 14 new shader parameters. The default values I suggest above are starting points that will need visual tuning.
+3. **BloomManager is not wired in**: The `BloomManager.ts` exists but is never used in `SceneManager`. The `bloomStrength/bloomRadius/bloomThreshold` params exist in `TreeStyleParams` but have no effect. If bloom is desired, it needs to be wired into `SceneManager` as well. This is out of scope for these 6 steps but should be noted.
+
+---
+
+## Cross-Cutting Concerns
+
+### DebugGUI Updates
+After each step, the `DebugGUI.ts` should be updated to expose the new parameters. Specifically:
+- Step 1: Add ortho camera frustum controls (or remove since they are auto-computed)
+- Step 2: Remove `twigScale` control (or mark as no-op), add `radiusCoefficient` control
+- Step 3: Add crown shader uniform controls (displacement, colors, edge params, lighting)
+- Step 4: Add outline width/color controls
+- Step 5: Add "Apply User Data" button or auto-apply toggle
+- Step 6: Add preset selector (if not already present)
+
+### Shader Reuse Pattern
+The pattern established in Step 3 (creating a shader module in `shaders/` that imports from `glslNoise.ts`) should be followed consistently. All custom shaders should:
+- Import `SIMPLEX_3D` from `glslNoise.ts` (not duplicate the code)
+- Be exported as `const` string literals with `/* glsl */` template tag for IDE syntax highlighting
+- Use uniforms prefixed with `u` and varyings prefixed with `v`
+
+### Backward Compatibility
+The `TreeStyleParams` interface changes in Step 6 are the only breaking change to the public API. The `leafPrimaryColor` and `leafSecondaryColor` fields should be kept as deprecated aliases during a transition period, or replaced outright since the only consumers are internal to the tree rendering system.
+
+### Performance Budget
+After all 6 steps:
+- ~30 icosphere meshes with custom ShaderMaterial (each ~42 vertices, 80 faces)
+- ~30 outline meshes with ShaderMaterial (same geometry)
+- 1 trunk mesh with MeshToonMaterial
+- 1 trunk outline mesh
+- 1 ground quad with ShaderMaterial
+- 1 sky background (canvas texture)
+
+Total: ~65 draw calls. This is well within budget for any modern device. The most expensive part is the crown shader with multiple noise evaluations per fragment, but the total fragment count is small (the icospheres are not full-screen).
+
+---
+
+## Implementation Sequence Summary
+
+| Step | Primary File | New File | Risk Level | Estimated Effort |
+|------|-------------|----------|------------|------------------|
+| 1 | SceneManager.ts | shaders/ground2d.ts | Medium | 2-3 hours |
+| 2 | proctree.ts, SceneManager.ts, ProctreeGeometry.ts | -- | Low-Medium | 1-2 hours |
+| 3 | SceneManager.ts | shaders/crown.ts | High | 3-4 hours |
+| 4 | SceneManager.ts | -- | Low | 1-2 hours |
+| 5 | UserDataMapper.ts | -- | Low | 1-2 hours |
+| 6 | theme.ts, SceneManager.ts, ThemeTransition.ts | -- | Low-Medium | 2-3 hours |
+
+Step 3 is the highest risk due to the custom shader complexity. Steps 1 and 3 should receive the most testing attention.
+
+### Critical Files for Implementation
+- `D:/others/SeeWhat/frontend/src/components/tree/scene/SceneManager.ts` -- the monolithic orchestrator that must be modified in every step
+- `D:/others/SeeWhat/frontend/src/vendor/proctree.ts` -- must expose terminal branch data (Step 2), which is foundational for Steps 2-4
+- `D:/others/SeeWhat/frontend/src/constants/theme.ts` -- must be extended with crown shader parameters and updated presets (Step 6)
+- `D:/others/SeeWhat/frontend/src/components/tree/shaders/glslNoise.ts` -- noise library consumed by the new crown shader (Step 3) and ground shader (Step 1)
+- `D:/others/SeeWhat/frontend/src/components/tree/scene/ThemeTransition.ts` -- must be updated to lerp the new style fields (Step 6)
