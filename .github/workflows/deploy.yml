@@ -16,18 +16,39 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -euo pipefail
+            LOG=/tmp/acacia-deploy.log
+            echo "=== Acacia Deploy $(date -u +'%Y-%m-%dT%H:%M:%SZ') ===" | tee "$LOG"
+
+            echo ">>> git pull" | tee -a "$LOG"
             cd /opt/acacia
-            git pull origin main
+            git pull origin main 2>&1 | tee -a "$LOG"
 
+            echo ">>> pip install" | tee -a "$LOG"
             cd /opt/acacia/backend
-            venv/bin/pip install -r requirements.txt --quiet
+            venv/bin/pip install -r requirements.txt --quiet 2>&1 | tee -a "$LOG"
 
+            echo ">>> npm ci" | tee -a "$LOG"
             cd /opt/acacia/frontend
-            npm ci --production=false
-            VITE_DATA_MODE=backend VITE_BACKEND_URL=/api npm run build
+            npm ci --production=false 2>&1 | tee -a "$LOG"
 
-            sudo systemctl restart acacia
-            sudo systemctl reload nginx
+            echo ">>> npm run build" | tee -a "$LOG"
+            VITE_DATA_MODE=backend VITE_BACKEND_URL=/api npm run build 2>&1 | tee -a "$LOG"
 
+            echo ">>> systemctl restart acacia" | tee -a "$LOG"
+            sudo systemctl restart acacia 2>&1 | tee -a "$LOG"
             sleep 2
-            curl -sf http://127.0.0.1:7860/health && echo " OK" || echo " FAILED"
+
+            echo ">>> health check" | tee -a "$LOG"
+            if curl -sf http://127.0.0.1:7860/health; then
+              echo " BACKEND OK" | tee -a "$LOG"
+            else
+              echo " BACKEND FAILED" | tee -a "$LOG"
+              echo "=== Backend journal (last 20 lines) ===" | tee -a "$LOG"
+              sudo journalctl -u acacia --no-pager -n 20 2>&1 | tee -a "$LOG"
+            fi
+
+            echo ">>> systemctl reload nginx" | tee -a "$LOG"
+            sudo systemctl reload nginx 2>&1 | tee -a "$LOG"
+
+            echo "=== Deploy finished $(date -u +'%Y-%m-%dT%H:%M:%SZ') ===" | tee -a "$LOG"

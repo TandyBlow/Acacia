@@ -15,6 +15,7 @@ export interface QuizQuestion {
 
 export interface QuizQuestionListItem {
   id: string;
+  node_id: string;
   question: string;
   options: any;
   explanation: string;
