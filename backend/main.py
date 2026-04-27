@@ -6,6 +6,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from database import get_db_ctx, init_db
 from auth import hash_password, verify_password, create_token, verify_token
@@ -14,8 +17,21 @@ from lsystem import generate_lsystem_skeleton
 from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
-from ai_generate_service_sqlite import ai_generate_nodes_sqlite
-from quiz_service_sqlite import generate_quiz_question_sqlite, submit_quiz_answer_sqlite
+from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
+from quiz_service_sqlite import (
+    generate_quiz_question_sqlite,
+    generate_batch_questions_sqlite,
+    get_questions_by_node_sqlite,
+    get_wrong_questions_sqlite,
+    get_single_question_sqlite,
+    submit_quiz_answer_sqlite,
+    get_quiz_stats_sqlite,
+)
+from review_service_sqlite import (
+    get_due_reviews_sqlite,
+    submit_review_sqlite,
+    get_review_stats_sqlite,
+)
 
 app = FastAPI()
 
@@ -459,20 +475,97 @@ def ai_generate_endpoint(payload: AiGenerateRequest, user: dict = Depends(get_cu
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@app.post("/analyze-node/{node_id}")
+def analyze_node_endpoint(node_id: str, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return analyze_node_content_sqlite(node_id, owner_id, conn)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 # --- Quiz ---
 
 class QuizAnswerRequest(BaseModel):
     is_correct: bool
+    question_id: str | None = None
+
+
+class BatchGenerateRequest(BaseModel):
+    count: int = 5
+    include_children: bool = False
+    question_types: list[str] = ["single_choice"]
+
+
+class ReviewRequest(BaseModel):
+    rating: int  # 1=Again, 2=Hard, 3=Good, 4=Easy
 
 
 @app.post("/generate-question/{node_id}")
-def generate_question_endpoint(node_id: str, user: dict = Depends(get_current_user)):
+def generate_question_endpoint(
+    node_id: str,
+    user: dict = Depends(get_current_user),
+    question_type: str = "single_choice",
+    difficulty: str = "medium",
+):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
-            return generate_quiz_question_sqlite(node_id, owner_id, conn)
+            return generate_quiz_question_sqlite(node_id, owner_id, conn, question_type, difficulty)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/generate-batch/{node_id}")
+def generate_batch_endpoint(node_id: str, payload: BatchGenerateRequest, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return generate_batch_questions_sqlite(
+                node_id, owner_id, conn,
+                count=payload.count,
+                include_children=payload.include_children,
+                question_types=payload.question_types,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/quiz-questions/{node_id}")
+def get_questions_endpoint(node_id: str, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return get_questions_by_node_sqlite(node_id, owner_id, conn)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/quiz-questions/{node_id}/{question_id}")
+def get_single_question_endpoint(node_id: str, question_id: str, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return get_single_question_sqlite(question_id, owner_id, conn)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/wrong-questions")
+def wrong_questions_endpoint(limit: int = 20, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return get_wrong_questions_sqlite(owner_id, conn, limit)
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -482,7 +575,7 @@ def submit_answer_endpoint(node_id: str, payload: QuizAnswerRequest, user: dict 
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
-            return submit_quiz_answer_sqlite(node_id, owner_id, payload.is_correct, conn)
+            return submit_quiz_answer_sqlite(node_id, owner_id, payload.is_correct, conn, payload.question_id)
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -492,10 +585,36 @@ def quiz_stats_endpoint(user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
-            rows = conn.execute(
-                "SELECT id, name, mastery_score, depth FROM nodes WHERE owner_id = ? AND is_deleted = 0",
-                (owner_id,),
-            ).fetchall()
-            return {"nodes": [dict(r) for r in rows]}
+            return get_quiz_stats_sqlite(owner_id, conn)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/due-reviews")
+def due_reviews_endpoint(limit: int = 20, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return get_due_reviews_sqlite(owner_id, conn, limit)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/review/{node_id}")
+def review_endpoint(node_id: str, payload: ReviewRequest, user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return submit_review_sqlite(node_id, owner_id, payload.rating, conn)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/review-stats")
+def review_stats_endpoint(user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return get_review_stats_sqlite(owner_id, conn)
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

@@ -21,7 +21,7 @@ import { useAiGenerate } from '../../composables/useAiGenerate';
 import { useNodeStore } from '../../stores/nodeStore';
 
 const { closeFeaturePanel, startLogout } = useKnobDispatch();
-const { requestOpenPopup } = useAiGenerate();
+const { requestOpenPopup, requestAnalysis } = useAiGenerate();
 const nodeStore = useNodeStore();
 
 interface FeatureItem {
@@ -34,7 +34,10 @@ interface FeatureItem {
 const features = computed<FeatureItem[]>(() => [
   { id: 'logout', icon: '↪', label: '退出登录', action: handleLogout },
   { id: 'ai-generate', icon: '✦', label: '知识点生成', action: handleAiGenerate },
+  { id: 'ai-analyze', icon: '🔍', label: 'AI分析', action: handleAnalyze },
+  { id: 'review', icon: '📅', label: '每日复习', action: handleReview },
   { id: 'quiz', icon: '?', label: '出题', action: handleQuiz },
+  { id: 'quiz-history', icon: '📋', label: '题库', action: handleQuizHistory },
   { id: 'stats', icon: '📊', label: '学习统计', action: handleStats },
 ]);
 
@@ -48,14 +51,29 @@ function handleAiGenerate() {
   requestOpenPopup();
 }
 
+function handleAnalyze() {
+  closeFeaturePanel();
+  requestAnalysis();
+}
+
 function handleQuiz() {
   closeFeaturePanel();
   nodeStore.startQuiz();
 }
 
+function handleQuizHistory() {
+  closeFeaturePanel();
+  nodeStore.startQuizHistory();
+}
+
 function handleStats() {
   closeFeaturePanel();
   nodeStore.startStats();
+}
+
+function handleReview() {
+  closeFeaturePanel();
+  nodeStore.startReview();
 }
 </script>
 
@@ -64,7 +82,7 @@ function handleStats() {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1px;
 }
 
@@ -83,6 +101,9 @@ function handleStats() {
 .feature-card:nth-child(2) { animation-delay: 50ms; }
 .feature-card:nth-child(3) { animation-delay: 100ms; }
 .feature-card:nth-child(4) { animation-delay: 150ms; }
+.feature-card:nth-child(5) { animation-delay: 200ms; }
+.feature-card:nth-child(6) { animation-delay: 250ms; }
+.feature-card:nth-child(7) { animation-delay: 300ms; }
 
 @keyframes feature-card-rise {
   from {

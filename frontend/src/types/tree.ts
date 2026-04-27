@@ -7,6 +7,7 @@ export interface Branch {
   node_id: string;
   depth: number;
   descendants?: number;
+  mastery_score?: number;
 
   // v2: tapered tube geometry
   start_thickness?: number;
@@ -35,6 +36,15 @@ export interface RootBulge {
   radius: number;
 }
 
+export interface GrowthMetrics {
+  avg_stability: number;
+  avg_mastery: number;
+  review_coverage: number;
+  total_nodes: number;
+  reviewed_nodes: number;
+  growth_multiplier: number;
+}
+
 export interface SkeletonData {
   branches: Branch[];
   canvas_size: [number, number];
@@ -47,4 +57,5 @@ export interface SkeletonData {
   fork_points?: ForkPoint[];
   crown_outline?: CrownOutline;
   root_bulges?: RootBulge[];
+  growth?: GrowthMetrics | null;
 }

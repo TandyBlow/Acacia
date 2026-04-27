@@ -5,7 +5,8 @@ import { THEME_PRESETS } from '../../../constants/theme';
 import type { ThemeStyle } from '../../../stores/styleStore';
 import { ThemeTransition } from './ThemeTransition';
 import { Tree as EzTree } from '@dgreenheck/ez-tree';
-import { mapUserDataToEzTreeParams } from './UserDataMapper';
+import { mapUserDataToEzTreeParams, deepMergeOptions } from './UserDataMapper';
+import type { GrowthMetrics } from '../../../types/tree';
 
 type EzTreeOptions = EzTree['options'];
 import type { StatsNode } from '../../../composables/useStats';
@@ -160,19 +161,16 @@ export class SceneManager {
     this.userId = id;
   }
 
-  updateUserData(statsNodes: StatsNode[], _distribution: Record<string, number>) {
+  updateUserData(statsNodes: StatsNode[], _distribution: Record<string, number>, growth?: GrowthMetrics | null) {
     if (!this.ezTree || !this.userId) return;
 
     const nodeCount = statsNodes.length;
     const maxDepth = statsNodes.reduce((m, n) => Math.max(m, n.depth), 0);
     const widthDepthRatio = maxDepth > 0 ? nodeCount / maxDepth : 1;
 
-    const overrides = mapUserDataToEzTreeParams(nodeCount, maxDepth, widthDepthRatio, this.userId);
+    const overrides = mapUserDataToEzTreeParams(nodeCount, maxDepth, widthDepthRatio, this.userId, growth);
     this.lastUserOverrides = overrides;
-
-    // loadFromJson does a recursive deep-copy merge, so pass overrides directly
-    this.ezTree.loadFromJson(overrides as any);
-    this.rebuildTreeGroups();
+    this.applyOverrides(overrides);
   }
 
   handleResize() {
@@ -244,15 +242,12 @@ export class SceneManager {
 
   setEzTreeOptions(options: EzTreeOptions) {
     if (!this.ezTree) return;
-    this.ezTree.loadFromJson(options);
-    this.ezTree.generate();
-    this.rebuildTreeGroups();
+    this.applyOverrides(options as any);
   }
 
   loadEzTreePreset(presetName: string) {
     if (!this.ezTree) return;
     this.ezTree.loadPreset(presetName);
-    this.ezTree.generate();
     this.rebuildTreeGroups();
   }
 
@@ -272,18 +267,58 @@ export class SceneManager {
     this.applyStyleParams(params);
   }
 
+  /** Debug-only: simulate arbitrary user data to preview tree at different scales.
+   *  Does NOT overwrite lastUserOverrides so the "reload real data" button works. */
+  simulateUserData(nodeCount: number, maxDepth: number, growthMultiplier: number) {
+    if (!this.ezTree || !this.userId) return;
+    const widthDepthRatio = maxDepth > 0 ? nodeCount / maxDepth : 1;
+    const fakeGrowth: GrowthMetrics = {
+      avg_stability: 0,
+      avg_mastery: 0,
+      review_coverage: 0,
+      total_nodes: nodeCount,
+      reviewed_nodes: 0,
+      growth_multiplier: growthMultiplier,
+    };
+    const overrides = mapUserDataToEzTreeParams(
+      nodeCount, maxDepth, widthDepthRatio, this.userId, fakeGrowth,
+    );
+    this.applyOverrides(overrides as any);
+  }
+
+  /** Debug-only: re-apply the last REAL user data (undoing simulation). */
+  reloadRealUserData() {
+    if (!this.ezTree || !this.lastUserOverrides) return;
+    this.applyOverrides(this.lastUserOverrides);
+  }
+
   // --- Private: Tree generation ---
+
+  /**
+   * Reload base preset, deep-merge overrides (ADDING new keys that ez-tree's
+   * built-in copy() would skip), then regenerate.  This is the safe replacement
+   * for ezTree.loadFromJson() which internally uses a key-restricted copy().
+   */
+  private applyOverrides(overrides: Record<string, any>) {
+    if (!this.ezTree) return;
+    // Re-hydrate options from the base preset so stale sim keys don't linger
+    this.ezTree.loadPreset('Oak Medium');
+    // Deep-merge our overrides (adds new level keys that preset lacks)
+    deepMergeOptions(this.ezTree.options, overrides);
+    this.ezTree.generate();
+    this.rebuildTreeGroups();
+  }
 
   private buildTreeMeshes() {
     this.ezTree = new EzTree();
     this.ezTree.loadPreset('Oak Medium');
 
-    // Apply saved user overrides (loadFromJson deep-merges, keeping preset values)
+    // Apply saved user overrides (deep-merge adds new level keys that
+    // ez-tree's built-in copy() would skip)
     if (this.lastUserOverrides) {
-      this.ezTree.loadFromJson(this.lastUserOverrides as any);
+      deepMergeOptions(this.ezTree.options, this.lastUserOverrides);
+      this.ezTree.generate();
     }
-
-    this.ezTree.generate();
 
     // Move branch and leaf meshes from ez-tree into our groups
     this.trunkGroup.add(this.ezTree.branchesMesh);
@@ -451,12 +486,15 @@ export class SceneManager {
     this.camera.bottom = frustum.bottom;
     this.camera.updateProjectionMatrix();
 
+    // Position camera so tree bottom sits at canvas bottom
+    const halfH = (frustum.top - frustum.bottom) / 2;
+    const camY = this.treeBounds.min.y + halfH;
     this.camera.position.set(
       this.treeCenter.x,
-      this.treeCenter.y,
+      camY,
       this.treeCenter.z + 10,
     );
-    this.camera.lookAt(this.treeCenter);
+    this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
   }
 
   private computeOrthoFrustum(w: number, h: number) {
@@ -853,12 +891,14 @@ export class SceneManager {
       this.camera.top = frustum.top;
       this.camera.bottom = frustum.bottom;
       this.camera.updateProjectionMatrix();
+      const halfH = (frustum.top - frustum.bottom) / 2;
+      const camY = this.treeBounds.min.y + halfH;
       this.camera.position.set(
         this.treeCenter.x,
-        this.treeCenter.y,
+        camY,
         this.treeCenter.z + 10,
       );
-      this.camera.lookAt(this.treeCenter);
+      this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
     }
 
     // this.updateGroundLineY();

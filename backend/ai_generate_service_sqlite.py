@@ -22,8 +22,19 @@ SYSTEM_PROMPT = (
     '3. 只返回JSON，格式为：{"nodes": [{"name": "...", "content": "...", "suggested_parent": "..."}]}'
 )
 
+ANALYSIS_PROMPT = (
+    "你是一个知识点分析助手。用户会提供一篇学习笔记（Markdown格式），你需要："
+    "1. 仔细阅读笔记内容"
+    "2. 从中提取出2到5个关键的子知识点"
+    "3. 为每个子知识点生成：name（简短名称，不超过20字）、content（用markdown格式写的简明解释，100到200字，包含定义和核心要点）"
+    '4. 只返回JSON，格式为：{"nodes": [{"name": "...", "content": "..."}]}'
+    "注意：提取的是笔记中隐含的概念，不是原文照抄。"
+)
 
-def call_llm(user_input: str) -> str:
+
+def call_llm(user_input: str, system_prompt: str = SYSTEM_PROMPT) -> str:
+    if not SILICONFLOW_API_KEY:
+        raise ValueError("未配置SILICONFLOW_API_KEY环境变量，无法调用AI服务")
     headers = {
         "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
         "Content-Type": "application/json",
@@ -31,7 +42,7 @@ def call_llm(user_input: str) -> str:
     payload = {
         "model": SILICONFLOW_MODEL,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input},
         ],
         "temperature": 0.7,
@@ -128,6 +139,80 @@ def _create_node_with_edge(
 def datetime_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def parse_analysis_json(raw: str) -> list[dict]:
+    """Parse LLM response for node analysis (no suggested_parent)."""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", raw, re.DOTALL)
+        if not match:
+            raise ValueError("LLM response is not valid JSON")
+        parsed = json.loads(match.group(1))
+
+    if not isinstance(parsed, dict) or "nodes" not in parsed:
+        raise ValueError("LLM response missing 'nodes' key")
+
+    nodes = parsed["nodes"]
+    if not isinstance(nodes, list):
+        raise ValueError("'nodes' is not a list")
+
+    for node in nodes:
+        if not all(k in node for k in ("name", "content")):
+            raise ValueError("Each node must have name, content")
+
+    return nodes
+
+
+def analyze_node_content_sqlite(node_id: str, owner_id: str, conn: sqlite3.Connection) -> dict:
+    """Analyze a node's Markdown content and extract sub-knowledge points as children."""
+    row = conn.execute(
+        "SELECT name, content FROM nodes WHERE id = ? AND owner_id = ? AND is_deleted = 0",
+        (node_id, owner_id),
+    ).fetchone()
+    if not row:
+        raise ValueError("Node not found")
+
+    name = row["name"]
+    content = row["content"] or ""
+    if not content.strip():
+        raise ValueError("该知识点暂无笔记内容，无法分析")
+
+    user_input = f"知识点名称：{name}\n笔记内容：\n{content}"
+    raw = call_llm(user_input, system_prompt=ANALYSIS_PROMPT)
+    nodes = parse_analysis_json(raw)
+
+    # Load existing children to avoid name conflicts
+    existing_rows = conn.execute(
+        "SELECT id, name, parent_id FROM nodes WHERE owner_id = ? AND is_deleted = 0",
+        (owner_id,),
+    ).fetchall()
+    existing_nodes = [
+        {"id": r["id"], "name": r["name"], "parent_id": r["parent_id"], "is_deleted": False}
+        for r in existing_rows
+    ]
+
+    created = []
+    for node in nodes:
+        result = _create_node_with_edge(
+            conn, owner_id, node["name"], node["content"], node_id, existing_nodes
+        )
+        created.append(result)
+        if not result.get("skipped"):
+            existing_nodes.append({
+                "id": result["id"],
+                "name": result["name"],
+                "parent_id": node_id,
+                "is_deleted": False,
+            })
+
+    return {
+        "node_id": node_id,
+        "node_name": name,
+        "created": [c for c in created if not c.get("skipped")],
+        "skipped": sum(1 for c in created if c.get("skipped")),
+    }
 
 
 def ai_generate_nodes_sqlite(user_input: str, owner_id: str, conn: sqlite3.Connection) -> dict:

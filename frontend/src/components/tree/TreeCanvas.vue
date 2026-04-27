@@ -82,6 +82,8 @@ async function loadTree() {
         setMainLightPos: (x, y, z) => manager!.setMainLightPos(x, y, z),
         setLeafTexture: (i) => manager!.setLeafTexture(i),
         switchTheme: (style) => manager!.switchTheme(style as ThemeStyle),
+        simulateUserData: (n, d, g) => manager!.simulateUserData(n, d, g),
+        reloadRealUserData: () => manager!.reloadRealUserData(),
       });
     }
 
@@ -113,7 +115,7 @@ async function applyUserData() {
     return;
   }
   if (manager) {
-    manager.updateUserData(statsNodes.value, styleStore.distribution);
+    manager.updateUserData(statsNodes.value, styleStore.distribution, lastSkeleton?.growth);
   }
 }
 
@@ -149,7 +151,7 @@ watch(() => styleStore.style, (newStyle) => {
 
 watch(() => statsNodes.value, () => {
   if (manager) {
-    manager.updateUserData(statsNodes.value, styleStore.distribution);
+    manager.updateUserData(statsNodes.value, styleStore.distribution, lastSkeleton?.growth);
   }
 }, { deep: true });
 

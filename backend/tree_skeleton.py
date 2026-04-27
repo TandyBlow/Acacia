@@ -168,17 +168,31 @@ def _compute_tree_stats(tree_data: List[Dict]):
 
     root_stats: List[Dict] = []
     global_max_depth = 0
+    total_stability = 0.0
+    total_mastery = 0.0
+    reviewed_count = 0
     for root in roots:
         desc = _count_descendants(root["id"], children_map)
         depth = _max_depth(root["id"], children_map)
         global_max_depth = max(global_max_depth, depth)
+        stability = root.get("stability", 0.0)
+        mastery = root.get("mastery_score", 0.0)
+        review_count = root.get("review_count", 0)
+        total_stability += stability
+        total_mastery += mastery
+        if review_count > 0:
+            reviewed_count += 1
         root_stats.append({
             "id": root["id"],
             "name": root["name"],
             "descendants": desc,
             "depth": depth,
             "subtree_size": desc + 1,  # includes self
-            "mastery_score": root.get("mastery_score", 0.0),
+            "mastery_score": mastery,
+            "stability": stability,
+            "difficulty": root.get("difficulty", 0.3),
+            "review_count": review_count,
+            "review_state": root.get("review_state", "new"),
         })
 
     total_nodes = len(tree_data)
@@ -189,10 +203,31 @@ def _compute_tree_stats(tree_data: List[Dict]):
     max_subtree = max(rs["subtree_size"] for rs in root_stats)
     max_subtree_ratio = max_subtree / total_nodes if total_nodes > 0 else 0
 
+    # Aggregate FSRS health metrics
+    avg_stability = round(total_stability / n_roots, 2) if n_roots > 0 else 0.0
+    avg_mastery = round(total_mastery / n_roots, 4) if n_roots > 0 else 0.0
+    review_coverage = round(reviewed_count / n_roots, 4) if n_roots > 0 else 0.0
+
+    # Growth multiplier: uniform scalar applied to all tree dimensions.
+    # Reflects "developmental maturity" independent of structure.
+    # stability_norm 0→0, ~5→0.52, ~30→0.99
+    stability_norm = min(1.0, math.log(1 + avg_stability) / math.log(31)) if avg_stability > 0 else 0.0
+    maturity = 0.3 * review_coverage + 0.7 * stability_norm
+    growth_multiplier = round(0.3 + 2.2 * maturity, 4)  # 0.3 (seedling) → 2.5 (fully mature)
+
+    health = {
+        "avg_stability": avg_stability,
+        "avg_mastery": avg_mastery,
+        "review_coverage": review_coverage,
+        "total_nodes": total_nodes,
+        "reviewed_nodes": reviewed_count,
+        "growth_multiplier": growth_multiplier,
+    }
+
     return (
         children_map, parent_map, root_stats,
         total_nodes, global_max_depth,
-        width_depth_ratio, max_subtree_ratio,
+        width_depth_ratio, max_subtree_ratio, health,
     )
 
 
@@ -207,6 +242,7 @@ def _generate_crown_outline(
     max_subtree_ratio: float,
     trunk_top: Tuple[float, float],
     seed: int,
+    growth_multiplier: float = 1.0,
 ) -> CrownOutline:
     rng = random.Random(seed)
 
@@ -235,6 +271,10 @@ def _generate_crown_outline(
     area_factor = math.pi
     semi_axis_y = math.sqrt(target_area / (area_factor * aspect))
     semi_axis_x = semi_axis_y * aspect
+
+    # Apply growth multiplier — scales crown linearly, keeps proportions
+    semi_axis_x *= growth_multiplier
+    semi_axis_y *= growth_multiplier
 
     # Clamp to canvas
     semi_axis_x = min(semi_axis_x, canvas_w * 0.42)
@@ -272,16 +312,17 @@ def _distribute_attractors(
     root_stats: List[Dict],
     total_nodes: int,
     seed: int,
+    growth_multiplier: float = 1.0,
 ) -> List[Sector]:
     rng = random.Random(seed)
 
     if not root_stats:
         return []
 
-    # Weighted by subtree_size * (1 + mastery_score * 0.5)
+    # Weighted by subtree_size only — uniform, no spatial mastery bias
     weights = []
     for rs in root_stats:
-        w = rs["subtree_size"] * (1 + rs.get("mastery_score", 0) * 0.5)
+        w = float(rs["subtree_size"])
         weights.append(w)
     total_weight = sum(weights)
 
@@ -295,8 +336,9 @@ def _distribute_attractors(
         angle_end = current_angle + span
         angle_center = (angle_start + angle_end) / 2
 
-        # Sector attractor count proportional to weight
-        total_attractors = min(500, 50 + 3 * total_nodes)
+        # Sector attractor count proportional to weight, scaled by growth
+        total_attractors = int((50 + 3 * total_nodes) * growth_multiplier)
+        total_attractors = min(500, total_attractors)
         sector_count = max(3, int(total_attractors * weights[i] / total_weight))
 
         # Generate attractor points via reject sampling inside superellipse
@@ -370,6 +412,7 @@ def _generate_trunk(
     total_nodes: int,
     n_roots: int,
     user_uuid_seed: int,
+    growth_multiplier: float = 1.0,
 ) -> Tuple[List[Dict], Tuple[float, float], Tuple[float, float], float, float]:
     """Returns (trunk_branches, trunk_base, trunk_top, trunk_base_thickness, trunk_top_thickness)"""
 
@@ -379,6 +422,7 @@ def _generate_trunk(
     depth_factor = min(1.0, 0.4 + math.log2(max(total_nodes, 2)) * 0.08)
     node_factor = min(1.0, 0.5 + math.log2(max(total_nodes, 2)) * 0.07)
     trunk_height = canvas_h * 0.20 * depth_factor * node_factor + canvas_h * 0.15
+    trunk_height *= growth_multiplier
 
     trunk_base = (canvas_w / 2, ground_y)
     trunk_top = (canvas_w / 2, ground_y - trunk_height)
@@ -768,8 +812,10 @@ def _compute_thicknesses(
 def _nodes_to_bezier_branches(
     all_nodes: List[BranchNode],
     seed: int,
+    mastery_by_root: Dict[str, float] | None = None,
 ) -> List[Dict]:
     branches: List[Dict] = []
+    mastery_lookup = mastery_by_root or {}
 
     for i, node in enumerate(all_nodes):
         if node.parent_index is None:
@@ -808,6 +854,7 @@ def _nodes_to_bezier_branches(
         end_thickness = max(end_thickness, start_thickness * 0.3)
 
         is_terminal = len(node.children_indices) == 0
+        mastery = mastery_lookup.get(node.root_id, 0.0)
 
         branches.append({
             "start": list(start),
@@ -821,6 +868,7 @@ def _nodes_to_bezier_branches(
             "end_thickness": end_thickness,
             "is_terminal": is_terminal,
             "descendants": 0,  # will be filled later
+            "mastery_score": round(mastery, 4),
         })
 
     # Fill descendants: count terminal branches with same root_id
@@ -993,6 +1041,7 @@ def generate_tree_skeleton(
             "roots": [],
             "crown_layers": [],
             "version": 2,
+            "growth": None,
         }
 
     stats = _compute_tree_stats(tree_data)
@@ -1005,31 +1054,33 @@ def generate_tree_skeleton(
             "roots": [],
             "crown_layers": [],
             "version": 2,
+            "growth": None,
         }
 
     (children_map, parent_map, root_stats,
      total_nodes, global_max_depth,
-     width_depth_ratio, max_subtree_ratio) = stats
+     width_depth_ratio, max_subtree_ratio, health) = stats
 
     n_roots = len(root_stats)
     seed = _uuid_seed([rs["id"] for rs in root_stats])
+    growth_multiplier = health["growth_multiplier"]
 
     # --- Layout constants ---
     ground_y = canvas_h * 0.88
 
     # --- Step 1: Trunk ---
-    trunk_result = _generate_trunk(canvas_w, canvas_h, ground_y, total_nodes, n_roots, seed)
+    trunk_result = _generate_trunk(canvas_w, canvas_h, ground_y, total_nodes, n_roots, seed, growth_multiplier)
     trunk_branches, trunk_base, trunk_top, trunk_base_thickness, trunk_top_thickness = trunk_result
 
     # --- Step 2: Crown outline ---
     crown = _generate_crown_outline(
         canvas_w, canvas_h, total_nodes,
         width_depth_ratio, max_subtree_ratio,
-        trunk_top, seed + 1,
+        trunk_top, seed + 1, growth_multiplier,
     )
 
     # --- Step 3: Attractors ---
-    sectors = _distribute_attractors(crown, root_stats, total_nodes, seed + 2)
+    sectors = _distribute_attractors(crown, root_stats, total_nodes, seed + 2, growth_multiplier)
 
     # --- Step 4: Primary branches ---
     primary_result = _generate_primary_branches(
@@ -1048,8 +1099,11 @@ def generate_tree_skeleton(
     # --- Step 6: da Vinci thickness ---
     _compute_thicknesses(sc_nodes, trunk_base_thickness, trunk_top_thickness)
 
+    # Build mastery lookup by root id
+    mastery_by_root = {rs["id"]: rs["mastery_score"] for rs in root_stats}
+
     # --- Step 7: Convert to Bezier branches ---
-    sc_branches = _nodes_to_bezier_branches(sc_nodes, seed + 5)
+    sc_branches = _nodes_to_bezier_branches(sc_nodes, seed + 5, mastery_by_root)
 
     # --- Trunk leader ---
     leader_branches = _generate_trunk_leader(trunk_top, trunk_top_thickness, trunk_base[1] - trunk_top[1], canvas_w, seed + 6)
@@ -1074,7 +1128,8 @@ def generate_tree_skeleton(
 
     print(f"[generate_tree_skeleton] roots={n_roots}, total_nodes={total_nodes}, "
           f"sc_nodes={len(sc_nodes)}, branches={len(all_branches)}, "
-          f"crown=({crown.semi_axis_x:.0f}x{crown.semi_axis_y:.0f} n={crown.superellipse_n:.1f})")
+          f"crown=({crown.semi_axis_x:.0f}x{crown.semi_axis_y:.0f} n={crown.superellipse_n:.1f})"
+          f" health={health}")
 
     return {
         "branches": all_branches,
@@ -1097,4 +1152,5 @@ def generate_tree_skeleton(
             "points": [list(p) for p in crown.points],
         },
         "root_bulges": root_bulges,
+        "growth": health,
     }

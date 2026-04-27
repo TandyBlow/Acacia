@@ -24,17 +24,17 @@
         </section>
 
         <section class="content-area">
-          <template v-if="!isFeaturePanel">
-            <div class="inset-shell static-shell content-shell">
-              <GlassWrapper class="content-surface">
+          <div class="inset-shell static-shell content-shell">
+            <GlassWrapper class="content-surface">
+              <template v-if="!isFeaturePanel">
                 <div v-show="showTree" class="content-host"><TreeCanvas :visible="showTree" /></div>
                 <Transition v-if="!showTree" name="content-rise" mode="out-in">
                   <component :is="nonTreeContent" :key="contentKey" class="content-host" />
                 </Transition>
-              </GlassWrapper>
-            </div>
-          </template>
-          <FeaturePanel v-else class="feature-host" />
+              </template>
+              <FeaturePanel v-else class="feature-host" />
+            </GlassWrapper>
+          </div>
         </section>
       </div>
     </section>
@@ -63,7 +63,9 @@ import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
 import AiGeneratePopup from '../components/ai/AiGeneratePopup.vue';
 import QuizPanel from '../components/quiz/QuizPanel.vue';
+import QuizHistoryPanel from '../components/quiz/QuizHistoryPanel.vue';
 import StatsPanel from '../components/stats/StatsPanel.vue';
+import ReviewPanel from '../components/review/ReviewPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
@@ -135,7 +137,7 @@ const layoutClasses = computed(() => ({
 }));
 
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value && !isFeaturePanel.value && !nodeStore.isQuizState && !nodeStore.isStatsState;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value && !isFeaturePanel.value && !nodeStore.isQuizState && !nodeStore.isQuizHistoryState && !nodeStore.isStatsState && !nodeStore.isReviewState;
 });
 
 const nonTreeContent = computed(() => {
@@ -151,8 +153,14 @@ const nonTreeContent = computed(() => {
   if (nodeStore.isQuizState) {
     return QuizPanel;
   }
+  if (nodeStore.isQuizHistoryState) {
+    return QuizHistoryPanel;
+  }
   if (nodeStore.isStatsState) {
     return StatsPanel;
+  }
+  if (nodeStore.isReviewState) {
+    return ReviewPanel;
   }
   return MarkdownEditor;
 });
@@ -171,11 +179,21 @@ let transitionTimer: number | null = null;
 
 function triggerTransition(): void {
   if (transitionTimer !== null) window.clearTimeout(transitionTimer);
-  isTransitioning.value = true;
-  transitionTimer = window.setTimeout(() => {
-    isTransitioning.value = false;
-    transitionTimer = null;
-  }, 300);
+  if (document.startViewTransition) {
+    document.startViewTransition(() => {
+      isTransitioning.value = true;
+      transitionTimer = window.setTimeout(() => {
+        isTransitioning.value = false;
+        transitionTimer = null;
+      }, 300);
+    });
+  } else {
+    isTransitioning.value = true;
+    transitionTimer = window.setTimeout(() => {
+      isTransitioning.value = false;
+      transitionTimer = null;
+    }, 300);
+  }
 }
 
 watch(contentKey, triggerTransition);
@@ -189,7 +207,7 @@ let risingTimer: number | null = null;
 watch(contentKey, () => {
   const goingHome = isAuthenticated.value && !activeNode.value
     && !nodeStore.isConfirmState && !isFeaturePanel.value
-    && !nodeStore.isQuizState && !nodeStore.isStatsState;
+    && !nodeStore.isQuizState && !nodeStore.isQuizHistoryState && !nodeStore.isStatsState && !nodeStore.isReviewState;
 
   if (goingHome) {
     if (risingTimer !== null) window.clearTimeout(risingTimer);
@@ -382,12 +400,6 @@ watch(contentKey, () => {
   z-index: 5;
 }
 
-.is-loading .navigation-shell,
-.is-loading .content-shell {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
 
 @keyframes load-pulse {
   0%, 100% { opacity: 0.3; }
@@ -570,5 +582,14 @@ watch(contentKey, () => {
     justify-self: center;
     width: min(100%, 260px);
   }
+}
+</style>
+
+<style>
+/* View Transition API — 全站交叉渐变（不能 scoped，作用在 ::view-transition 伪元素上） */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 250ms;
+  animation-timing-function: ease;
 }
 </style>

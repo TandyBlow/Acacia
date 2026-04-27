@@ -5,7 +5,12 @@ export interface StatsNode {
   id: string;
   name: string;
   mastery_score: number;
+  stability: number;
+  difficulty: number;
+  review_count: number;
+  review_state: string;
   depth: number;
+  question_count: number;
 }
 
 export function useStats() {

@@ -64,7 +64,9 @@ export const useNodeStore = defineStore('node', () => {
 
   const isTreeState = computed(() => viewState.value === ViewStates.TREE);
   const isQuizState = computed(() => viewState.value === ViewStates.QUIZ);
+  const isQuizHistoryState = computed(() => viewState.value === ViewStates.QUIZ_HISTORY);
   const isStatsState = computed(() => viewState.value === ViewStates.STATS);
+  const isReviewState = computed(() => viewState.value === ViewStates.REVIEW);
   const isConfirmState = computed(() => isEditState.value);
 
   const canConfirm = computed(() => {
@@ -212,9 +214,21 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
   }
 
+  function startQuizHistory(): void {
+    errorMessage.value = null;
+    viewState.value = ViewStates.QUIZ_HISTORY;
+    clearTransientState();
+  }
+
   function startStats(): void {
     errorMessage.value = null;
     viewState.value = ViewStates.STATS;
+    clearTransientState();
+  }
+
+  function startReview(): void {
+    errorMessage.value = null;
+    viewState.value = ViewStates.REVIEW;
     clearTransientState();
   }
 
@@ -249,7 +263,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function onKnobClick(): Promise<void> {
-    if (viewState.value === ViewStates.QUIZ || viewState.value === ViewStates.STATS) {
+    if (viewState.value === ViewStates.QUIZ || viewState.value === ViewStates.QUIZ_HISTORY || viewState.value === ViewStates.STATS || viewState.value === ViewStates.REVIEW) {
       viewState.value = ViewStates.DISPLAY;
       return;
     }
@@ -320,7 +334,9 @@ export const useNodeStore = defineStore('node', () => {
     isEditState,
     isTreeState,
     isQuizState,
+    isQuizHistoryState,
     isStatsState,
+    isReviewState,
     isConfirmState,
     canConfirm,
     currentNodeId,
@@ -330,7 +346,9 @@ export const useNodeStore = defineStore('node', () => {
     startDelete,
     startMove,
     startQuiz,
+    startQuizHistory,
     startStats,
+    startReview,
     setMoveTargetParent,
     cancelOperation,
     saveActiveNodeContent,

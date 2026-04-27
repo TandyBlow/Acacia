@@ -7,7 +7,7 @@ from database import get_db_ctx
 def fetch_user_tree_sqlite(owner_id: str) -> list[dict]:
     with get_db_ctx() as conn:
         nodes = conn.execute(
-            "SELECT id, name, content, parent_id, mastery_score FROM nodes WHERE owner_id = ? AND is_deleted = 0",
+            "SELECT id, name, content, parent_id, mastery_score, stability, difficulty, review_count, review_state FROM nodes WHERE owner_id = ? AND is_deleted = 0",
             (owner_id,),
         ).fetchall()
 
@@ -48,6 +48,10 @@ def fetch_user_tree_sqlite(owner_id: str) -> list[dict]:
             "parent_id": node["parent_id"],
             "child_count": child_count.get(node["id"], 0),
             "mastery_score": node["mastery_score"] or 0.0,
+            "stability": node["stability"] or 0.0,
+            "difficulty": node["difficulty"] or 0.3,
+            "review_count": node["review_count"] or 0,
+            "review_state": node["review_state"] or "new",
         })
 
     return tree_data
