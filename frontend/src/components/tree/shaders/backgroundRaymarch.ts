@@ -21,6 +21,7 @@ uniform vec3 uGroundColor;
 uniform float uFogDistance;
 uniform float uBuildingDensity;
 uniform float uBuildingHeight;
+uniform float uGroundY;
 uniform float uSeed;
 uniform float uTime;
 uniform float uStyleType;
@@ -32,7 +33,7 @@ varying vec2 vScreenUV;
 
 // Default style: hills + scattered trees
 float mapDefault(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), 0.5);
+  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
 
   // Rolling hills in the distance
   float hill1 = sdHill(
@@ -60,7 +61,7 @@ float mapDefault(vec3 p) {
 
 // Sakura style: Japanese town with torii gate + pagoda
 float mapSakura(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), 0.5);
+  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
 
   // Distant hills
   float hill = sdHill(
@@ -79,7 +80,7 @@ float mapSakura(vec3 p) {
 
   // Machiya row — midground, repeated
   float townD = 1e10;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 20; i++) {
     float fi = float(i);
     float x = -8.0 + fi * 3.5 + hash11(uSeed + 10.0 + fi) * 2.0;
     float z = 35.0 + hash11(uSeed + 20.0 + fi) * 10.0;
@@ -99,11 +100,11 @@ float mapSakura(vec3 p) {
 
 // Cyberpunk style: skyscraper city
 float mapCyberpunk(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), 0.5);
+  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
 
   // Ground-level city blocks
   float cityD = 1e10;
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < 25; i++) {
     float fi = float(i);
     float x = -20.0 + fi * 3.8 + hash11(uSeed + 40.0 + fi) * 2.5;
     float z = 25.0 + hash11(uSeed + 50.0 + fi) * 40.0;
@@ -116,7 +117,7 @@ float mapCyberpunk(vec3 p) {
   }
 
   // Background towers (taller, further)
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 20; i++) {
     float fi = float(i);
     float x = -15.0 + fi * 4.5 + hash11(uSeed + 90.0 + fi) * 3.0;
     float z = 55.0 + hash11(uSeed + 100.0 + fi) * 20.0;
@@ -135,7 +136,7 @@ float mapCyberpunk(vec3 p) {
 
 // Ink style: minimal distant mountains
 float mapInk(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), 0.5);
+  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
 
   // Distant layered mountain silhouettes
   float mtn1 = sdHill(
