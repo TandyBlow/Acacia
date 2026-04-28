@@ -104,9 +104,9 @@ export class BackgroundRenderer {
       skyBottomColor: theme.skyBottomColor,
       groundColor: theme.groundColor,
       fogColor,
-      fogDistance: 60.0,
-      buildingDensity: 0.5,
-      buildingHeight: 4.0,
+      fogDistance: theme.bgFogDistance,
+      buildingDensity: theme.bgBuildingDensity,
+      buildingHeight: theme.bgBuildingHeight,
       styleType,
       seed,
     };
