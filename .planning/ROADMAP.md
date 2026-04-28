@@ -44,10 +44,10 @@
 4. Move the mouse slowly from left edge to right edge of the screen -- the distant vista layer (hills/buildings) shifts horizontally by a small but visible amount (up to 3%), while the foreground platform area remains completely stationary
 5. Inspect the shader source tree -- each vista map function (mapDefault, mapSakura, mapCyberpunk, mapInk) is in its own .glsl file under `frontend/src/components/tree/shaders/vistas/`, and the final shader compiles without errors
 
-**Plans**: 2 plans (Wave 1 -- parallel)
+**Plans**: 2 plans (Wave 1: Plan 01; Wave 2: Plan 02)
 
 Plans:
-- [ ] 01-01-PLAN.md -- Shader Camera Reform: extract vista map functions to .glsl files (ARCH-01), replace hardcoded camera with uniform-driven 4-parameter model (CAM-01), fix pitch direction for downward look (CAM-02)
-- [ ] 01-02-PLAN.md -- SdfParamRegistry Integration + Mouse Parallax: refactor BackgroundRenderer to use registry (CAM-03), wire bgCam* data flow from theme to shader (CAM-04), add mouse-driven parallax with security guards (CAM-05)
+- [ ] 01-01-PLAN.md -- Shader Camera Reform + Parallax GLSL: extract vista map functions to .glsl files (ARCH-01), replace hardcoded camera with uniform-driven 4-parameter model (CAM-01), fix pitch direction for downward look (CAM-02), add shader-side parallax GLSL code reading uMouseUV for vista-layer horizontal offset (CAM-05 GLSL side)
+- [ ] 01-02-PLAN.md -- SdfParamRegistry Integration + Mouse Parallax JS: refactor BackgroundRenderer to use registry (CAM-03), wire bgCam* data flow from theme to shader (CAM-04), add mouse-driven parallax JS-side uniform writer with security guards (CAM-05 JS side)
 
 ---

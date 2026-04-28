@@ -1,14 +1,14 @@
 # Project State: Acacia -- SDF 背景风格视觉引擎
 
 **Last updated:** 2026-04-28
-**Current phase:** 0 (roadmap created, planning not yet started)
-**Overall status:** Planning
+**Current phase:** 1 (planned, ready to execute)
+**Overall status:** Ready to execute
 
 ## Phase Status
 
 | # | Phase | Status | Started | Completed |
 |---|-------|--------|---------|-----------|
-| 1 | Camera System & Shader Foundation | Pending | -- | -- |
+| 1 | Camera System & Shader Foundation | Ready to execute | 2026-04-28 | -- |
 | 2 | Foreground Platform SDF | Pending | -- | -- |
 | 3 | Style Template System | Pending | -- | -- |
 | 4 | Style Transition Engine | Pending | -- | -- |
@@ -20,7 +20,7 @@
 ## Progress
 
 ```
-Phase 1 [··········] 0/6 reqs  Pending
+Phase 1 [██████████] 0/6 reqs  Ready to execute (2 plans, 2 waves)
 Phase 2 [··········] 0/5 reqs  Pending
 Phase 3 [··········] 0/6 reqs  Pending
 Phase 4 [··········] 0/7 reqs  Pending
@@ -34,9 +34,9 @@ Overall: 0/47 requirements complete
 
 ## Current Position
 
-**Phase:** Not yet started (roadmap approved, plan-phase not yet executed)
-**Plan:** N/A
-**Status:** Awaiting first `/gsd-plan-phase 1`
+**Phase:** 1 — Camera System & Shader Foundation (planned)
+**Plans:** 2 (01-01, 01-02) in 2 waves
+**Status:** Ready to execute — `/gsd-execute-phase 1`
 
 ## Accumulated Context
 
