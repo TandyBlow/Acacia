@@ -18,10 +18,6 @@ void main() {
 export const backgroundFragmentShader = /* glsl */ `
 ${SDF_PRIMITIVES}
 ${SDF_ARCHITECTURE}
-${mapDefault}
-${mapSakura}
-${mapCyberpunk}
-${mapInk}
 ${generateGlslUniforms()}
 uniform vec3 uFogColor;
 uniform float uTime;
@@ -31,6 +27,11 @@ uniform vec2 uResolution;
 uniform vec2 uMouseUV;
 
 varying vec2 vScreenUV;
+
+${mapDefault}
+${mapSakura}
+${mapCyberpunk}
+${mapInk}
 
 // --- Main scene map (dispatches to style-specific map) ---
 float map(vec3 p) {
