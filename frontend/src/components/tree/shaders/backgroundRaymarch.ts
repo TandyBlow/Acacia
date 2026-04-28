@@ -1,5 +1,10 @@
 import { SDF_PRIMITIVES } from './sdfPrimitives';
 import { SDF_ARCHITECTURE } from './sdfArchitecture';
+import mapDefault from './vista/mapDefault.glsl?raw';
+import mapSakura from './vista/mapSakura.glsl?raw';
+import mapCyberpunk from './vista/mapCyberpunk.glsl?raw';
+import mapInk from './vista/mapInk.glsl?raw';
+import { generateGlslUniforms } from '../scene/SdfParamRegistry';
 
 export const backgroundVertexShader = /* glsl */ `
 varying vec2 vScreenUV;
@@ -13,154 +18,19 @@ void main() {
 export const backgroundFragmentShader = /* glsl */ `
 ${SDF_PRIMITIVES}
 ${SDF_ARCHITECTURE}
-
-uniform vec3 uSkyTopColor;
-uniform vec3 uSkyBottomColor;
+${mapDefault}
+${mapSakura}
+${mapCyberpunk}
+${mapInk}
+${generateGlslUniforms()}
 uniform vec3 uFogColor;
-uniform vec3 uGroundColor;
-uniform float uFogDistance;
-uniform float uBuildingDensity;
-uniform float uBuildingHeight;
-uniform float uGroundY;
-uniform float uSeed;
 uniform float uTime;
+uniform float uSeed;
 uniform float uStyleType;
 uniform vec2 uResolution;
+uniform vec2 uMouseUV;
 
 varying vec2 vScreenUV;
-
-// --- Scene composition (style-dependent map function) ---
-
-// Default style: hills + scattered trees
-float mapDefault(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
-
-  // Rolling hills in the distance
-  float hill1 = sdHill(
-    p - vec3(-10.0, -5.5, 40.0),
-    6.0 + hash11(uSeed + 1.0) * 4.0,
-    18.0 + hash11(uSeed + 2.0) * 5.0
-  );
-  float hill2 = sdHill(
-    p - vec3(15.0, -5.0, 50.0),
-    4.5 + hash11(uSeed + 3.0) * 3.0,
-    15.0 + hash11(uSeed + 4.0) * 4.0
-  );
-  float hill3 = sdHill(
-    p - vec3(0.0, -4.5, 60.0),
-    3.0 + hash11(uSeed + 5.0) * 2.5,
-    20.0 + hash11(uSeed + 6.0) * 6.0
-  );
-
-  float d = ground;
-  d = opS(d, hill1, 2.0);
-  d = opS(d, hill2, 2.0);
-  d = opS(d, hill3, 2.5);
-  return d;
-}
-
-// Sakura style: Japanese town with torii gate + pagoda
-float mapSakura(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
-
-  // Distant hills
-  float hill = sdHill(
-    p - vec3(0.0, -4.0, 55.0),
-    4.0,
-    22.0
-  );
-
-  // Torii gate — midground right
-  vec3 toriiP = p - vec3(18.0, 0.0, 45.0);
-  toriiP = pR(toriiP, -0.3);
-  float torii = sdTorii(toriiP);
-
-  // Pagoda — background left
-  float pagoda = sdPagoda(p - vec3(-22.0, 0.0, 62.0), 5);
-
-  // Machiya row — midground, repeated
-  float townD = 1e10;
-  for (int i = 0; i < 20; i++) {
-    float fi = float(i);
-    float x = -8.0 + fi * 3.5 + hash11(uSeed + 10.0 + fi) * 2.0;
-    float z = 35.0 + hash11(uSeed + 20.0 + fi) * 10.0;
-    float h = 2.0 + hash11(uSeed + 30.0 + fi) * 1.5;
-    vec3 q = p - vec3(x, 0.0, z);
-    float house = sdMachiya(q, h);
-    townD = min(townD, house);
-  }
-
-  float d = ground;
-  d = opS(d, hill, 2.0);
-  d = min(d, torii);
-  d = min(d, pagoda);
-  d = min(d, townD);
-  return d;
-}
-
-// Cyberpunk style: skyscraper city
-float mapCyberpunk(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
-
-  // Ground-level city blocks
-  float cityD = 1e10;
-  for (int i = 0; i < 25; i++) {
-    float fi = float(i);
-    float x = -20.0 + fi * 3.8 + hash11(uSeed + 40.0 + fi) * 2.5;
-    float z = 25.0 + hash11(uSeed + 50.0 + fi) * 40.0;
-    float h = uBuildingHeight * (0.5 + hash11(uSeed + 60.0 + fi) * 0.5);
-    float w = 0.8 + hash11(uSeed + 70.0 + fi) * 0.6;
-    float ant = hash11(uSeed + 80.0 + fi) > 0.6 ? 1.0 : 0.0;
-    vec3 q = p - vec3(x, 0.0, z);
-    float bldg = sdSkyscraper(q, h * 7.0, w, ant);
-    cityD = min(cityD, bldg);
-  }
-
-  // Background towers (taller, further)
-  for (int i = 0; i < 20; i++) {
-    float fi = float(i);
-    float x = -15.0 + fi * 4.5 + hash11(uSeed + 90.0 + fi) * 3.0;
-    float z = 55.0 + hash11(uSeed + 100.0 + fi) * 20.0;
-    float h = uBuildingHeight * (0.4 + hash11(uSeed + 110.0 + fi) * 0.6);
-    float w = 0.6 + hash11(uSeed + 120.0 + fi) * 0.5;
-    float ant = hash11(uSeed + 130.0 + fi) > 0.4 ? 1.0 : 0.0;
-    vec3 q = p - vec3(x, 0.0, z);
-    float bldg = sdSkyscraper(q, h * 9.0, w, ant);
-    cityD = min(cityD, bldg);
-  }
-
-  float d = ground;
-  d = min(d, cityD);
-  return d;
-}
-
-// Ink style: minimal distant mountains
-float mapInk(vec3 p) {
-  float ground = sdPlane(p, vec3(0.0, 1.0, 0.0), uGroundY);
-
-  // Distant layered mountain silhouettes
-  float mtn1 = sdHill(
-    p - vec3(-5.0, -6.0, 40.0),
-    7.0 + hash11(uSeed + 140.0) * 3.0,
-    25.0 + hash11(uSeed + 141.0) * 5.0
-  );
-  float mtn2 = sdHill(
-    p - vec3(8.0, -5.0, 48.0),
-    5.0 + hash11(uSeed + 142.0) * 2.0,
-    20.0 + hash11(uSeed + 143.0) * 4.0
-  );
-  float mtn3 = sdHill(
-    p - vec3(-12.0, -5.5, 55.0),
-    4.5 + hash11(uSeed + 144.0) * 2.5,
-    18.0 + hash11(uSeed + 145.0) * 3.0
-  );
-
-  float d = ground;
-  d = opS(d, mtn1, 1.5);
-  d = opS(d, mtn2, 1.5);
-  d = opS(d, mtn3, 2.0);
-  return d;
-}
 
 // --- Main scene map (dispatches to style-specific map) ---
 float map(vec3 p) {
@@ -216,11 +86,14 @@ float softShadow(vec3 ro, vec3 rd, float maxDist) {
 
 // --- Main ---
 void main() {
-  // Virtual camera — elevated view looking forward
-  vec3 ro = vec3(0.0, 2.8, -6.0);
-  vec3 lookAt = vec3(0.0, 3.5, 30.0);
+  // Camera position from uniforms
+  vec3 ro = vec3(0.0, uCamY, uCamZ);
 
-  vec3 forward = normalize(lookAt - ro);
+  // Forward direction from pitch (yaw fixed at 0)
+  // uCamPitch < 0 → sin(uCamPitch) < 0 → forward.y < 0 → looking downward (CAM-02)
+  vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
+
+  // Camera basis vectors
   vec3 worldUp = vec3(0.0, 1.0, 0.0);
   vec3 right = normalize(cross(forward, worldUp));
   vec3 up = cross(right, forward);
@@ -229,8 +102,8 @@ void main() {
   vec2 uv = vScreenUV * 2.0 - 1.0;
   uv.x *= aspect;
 
-  float zoom = 1.8;
-  vec3 rd = normalize(forward + right * uv.x * zoom + up * uv.y * zoom);
+  // Ray direction with FOV zoom
+  vec3 rd = normalize(forward + right * uv.x * uFovZoom + up * uv.y * uFovZoom);
 
   // Raymarch
   float t = 0.0;
@@ -256,6 +129,21 @@ void main() {
     if (t > tMax) break;
   }
 
+  // CAM-05: Mouse parallax — horizontal offset for vista layer (max 3%)
+  // Near objects (platform layer, t < PARALLAX_THRESHOLD) receive zero offset.
+  // Vista layer (t > PARALLAX_THRESHOLD) receives increasing offset via smoothstep.
+  // Sky (no hit, t == tMax) receives full parallax offset.
+  #define PARALLAX_THRESHOLD 20.0
+  #define PARALLAX_MAX_OFFSET 0.03
+
+  float parallaxFactor = smoothstep(PARALLAX_THRESHOLD, PARALLAX_THRESHOLD + 20.0, t);
+  float parallaxOffsetX = (uMouseUV.x - 0.5) * PARALLAX_MAX_OFFSET * 2.0 * parallaxFactor;
+
+  if (!hit) {
+    // Sky: full parallax (vista layer extends to infinity)
+    parallaxOffsetX = (uMouseUV.x - 0.5) * PARALLAX_MAX_OFFSET * 2.0;
+  }
+
   if (hit) {
     // Determine material color based on hit position and normal
     vec3 baseColor = uGroundColor;
@@ -279,8 +167,9 @@ void main() {
     float shadow = softShadow(hitPos + hitNormal * 0.02, shadowRd, 10.0);
     col *= shadow;
   } else {
-    // Sky — vertical gradient
-    col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
+    // Sky — vertical gradient with CAM-05 parallax horizontal offset
+    float skyUV = vScreenUV.y + parallaxOffsetX * 0.3;
+    col = mix(uSkyBottomColor, uSkyTopColor, clamp(skyUV, 0.0, 1.0));
   }
 
   // Exponential fog
