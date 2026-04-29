@@ -89,12 +89,14 @@ export class SceneManager {
   private mouseUV = { x: 0.5, y: 0.5 };
 
   private onMouseMove = (event: MouseEvent): void => {
-    const el = this.renderer?.domElement;
-    if (!el || !this.backgroundRenderer) return;
+    if (!this.backgroundRenderer) return;
+    const el = this.container;
     const rect = el.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width;
     const y = 1.0 - (event.clientY - rect.top) / rect.height;
     this.mouseUV = { x, y };
+    // DEBUG: verify mouse events reach the canvas
+    console.log('[CAM-05] mouseUV:', x.toFixed(3), y.toFixed(3), 'canvas:', rect.width, 'x', rect.height);
     this.backgroundRenderer.updateMouseUV(this.mouseUV);
   };
 
@@ -744,7 +746,7 @@ export class SceneManager {
     this.container.appendChild(this.renderer.domElement);
 
     // CAM-05: Listen for mouse movement to update parallax offset
-    this.renderer.domElement.addEventListener('mousemove', this.onMouseMove);
+    document.addEventListener('mousemove', this.onMouseMove);
   }
 
   // --- Private: Style application ---
@@ -958,8 +960,9 @@ export class SceneManager {
       this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
       this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
       this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
-      this.renderer.domElement.removeEventListener('mousemove', this.onMouseMove);
     }
+
+    document.removeEventListener('mousemove', this.onMouseMove);
 
     // Dispose leaf shader material (we own it)
     if (this.ezTree?.leavesMesh.material instanceof THREE.ShaderMaterial) {
