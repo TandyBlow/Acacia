@@ -103,6 +103,17 @@ export class BackgroundRenderer {
     this.material.uniforms.uMouseUV!.value.set(x, y);
   }
 
+  /** Debug: directly set platform type uniform (0-4) without going through params. */
+  setPlatformType(type: number): void {
+    const t = Math.round(Math.max(0, Math.min(4, type)));
+    this.material.uniforms.uPlatformType!.value = t;
+  }
+
+  /** Debug: directly set platform Z distance uniform (2-5). */
+  setPlatformZ(z: number): void {
+    this.material.uniforms.uPlatformZ!.value = Math.max(2, Math.min(5, z));
+  }
+
   /** Update time uniform for animated elements */
   updateTime(time: number): void {
     this.material.uniforms.uTime!.value = time;
