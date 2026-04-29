@@ -150,7 +150,7 @@ void main() {
   if (hit) {
     // Compute platform origin (same as map()) to detect platform hits
     vec3 platformOrigin = ro + forward * uPlatformZ;
-    float platformDist = sdPlatform(hitPos - platformOrigin, int(uPlatformType + 0.5));
+    float platformDist = sdPlatform(hitPos - platformOrigin, uPlatformType);
     bool isPlatform = platformDist < 0.05;
 
     vec3 baseColor;
