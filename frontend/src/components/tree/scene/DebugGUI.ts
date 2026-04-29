@@ -36,7 +36,7 @@ export class DebugGUI {
   private texObj = { texture: 0 };
   private themeObj = { style: 'default' };
   private simObj = { nodeCount: 50, maxDepth: 4, growth: 0.8 };
-  private platformObj = { type: 0, z: 3.0 };
+  private platformObj = { type: 0, z: 8.0 };
 
   constructor(sceneManager: SceneManagerDebugAPI) {
     this.sm = sceneManager;
@@ -127,7 +127,7 @@ export class DebugGUI {
     f.add(this.platformObj, 'type', PLATFORM_LABELS).name('平台类型').onChange((v: number) => {
       this.sm.setPlatformType(v);
     });
-    f.add(this.platformObj, 'z', 2.0, 5.0, 0.1).name('平台距离').onChange((v: number) => {
+    f.add(this.platformObj, 'z', 3.0, 15.0, 0.5).name('平台距离').onChange((v: number) => {
       this.sm.setPlatformZ(v);
     });
   }
