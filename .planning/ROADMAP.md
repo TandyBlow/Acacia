@@ -51,3 +51,32 @@ Plans:
 - [ ] 01-02-PLAN.md -- SdfParamRegistry Integration + Mouse Parallax JS: refactor BackgroundRenderer to use registry (CAM-03), wire bgCam* data flow from theme to shader (CAM-04), add mouse-driven parallax JS-side uniform writer with security guards (CAM-05 JS side)
 
 ---
+
+### Phase 2: Foreground Platform SDF
+**Goal**: A solid foreground platform renders at screen bottom with distinct visual identity per platform type, anchoring the 3-layer depth composition (platform foreground / vista midground / sky background). The platform SDF evaluates alongside the vista SDF via `min()` in the main `map()` function.
+
+**Depends on**: Phase 1 (Camera System & Shader Foundation) -- uses uCamY/uCamPitch/uCamZ uniforms for camera-relative platform placement
+
+**Requirements**:
+- PLAT-01: Add sdCliff(p, width, height, edgeRound) SDF primitive -- round box + FBM noise on top edge
+- PLAT-02: Add sdPlatform(p, type) dispatch function -- routes to 5 platform SDFs by int type
+- PLAT-03: Platform placed at camera-relative z≈2-5, occupies screen bottom ~5%
+- PLAT-04: 5 platform types: cliff (山崖), viewing-deck (观景台), rooftop (天台), temple-base (寺庙台基), megalith (巨石)
+- PLAT-05: 2-3 detail SDFs per platform type placed by hash11 grid-cell hashing
+
+**Success Criteria**:
+1. Open the app in a browser -- the default view shows a solid platform (cliff) occupying approximately 5% of the screen bottom, visually distinct from the vista midground
+2. Each theme preset shows its mapped platform type (default→cliff, sakura→temple-base, cyberpunk→rooftop, ink→megalith) with visually distinct shapes
+3. Detail SDFs (gravel, railings, AC units, stone lanterns, moss patches, etc.) are visible on the platform surface without flickering as the camera moves
+4. No visible gap between the platform foreground and the vista background ground -- the 3-layer depth composition reads as continuous
+5. Production build (`npm run build`) completes without errors, full test suite passes
+
+**Plans**: 4 plans in 3 waves (Wave 1: Plan 01; Wave 2: Plan 02; Wave 3: Plans 03 + 04 parallel)
+
+Plans:
+- [ ] 02-01-PLAN.md -- sdCliff SDF Primitive + Test Foundation: add sdCliff GLSL function to SDF_PRIMITIVES (sdRoundBox + FBM noise displacement), create sdfPrimitives.spec.ts test file (PLAT-01)
+- [ ] 02-02-PLAN.md -- Platform SDF Types + Dispatch: create sdfPlatforms.ts with sdPlatform dispatch + 5 platform type SDFs (cliff/viewing-deck/rooftop/temple-base/megalith), create sdfPlatforms.spec.ts test file (PLAT-02, PLAT-04)
+- [ ] 02-03-PLAN.md -- Detail SDFs: add 11 detail SDF primitives with hash11 grid-cell placement to sdfPlatforms.ts, extend tests for deterministic placement (PLAT-05)
+- [ ] 02-04-PLAN.md -- Map Integration + Uniforms + Visual Checkpoint: import SDF_PLATFORMS into backgroundRaymarch.ts, composite platform into map() via min(vistaD, platformD), register uPlatformType/uPlatformZ in SdfParamRegistry, extend TreeStyleParams + theme presets, human-verify checkpoint for visual verification (PLAT-03)
+
+---
