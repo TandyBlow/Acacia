@@ -52,7 +52,7 @@ float map(vec3 p) {
   vec3 ro = vec3(0.0, uCamY, uCamZ);
   vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
   vec3 platformOrigin = ro + forward * uPlatformZ;
-  float platformD = sdPlatform(p - platformOrigin, int(uPlatformType + 0.5));
+  float platformD = sdPlatform(p - platformOrigin, uPlatformType);
 
   return min(vistaD, platformD);
 }
