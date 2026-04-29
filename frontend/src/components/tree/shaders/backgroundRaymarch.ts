@@ -48,7 +48,7 @@ float map(vec3 p) {
 
   // Platform SDF (PLAT-03) — only for points well below the camera
   float platformD = 1e10;
-  if (p.y < uCamY - 1.5) {
+  if (p.y < uCamY - 0.5) {
     vec3 ro = vec3(0.0, uCamY, uCamZ);
     vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
     vec3 platformOrigin = ro + forward * uPlatformZ;
