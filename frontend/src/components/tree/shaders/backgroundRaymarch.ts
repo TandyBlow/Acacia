@@ -1,5 +1,6 @@
 import { SDF_PRIMITIVES } from './sdfPrimitives';
 import { SDF_ARCHITECTURE } from './sdfArchitecture';
+import { SDF_PLATFORMS } from './sdfPlatforms';
 import mapDefault from './vista/mapDefault.glsl?raw';
 import mapSakura from './vista/mapSakura.glsl?raw';
 import mapCyberpunk from './vista/mapCyberpunk.glsl?raw';
@@ -18,6 +19,7 @@ void main() {
 export const backgroundFragmentShader = /* glsl */ `
 ${SDF_PRIMITIVES}
 ${SDF_ARCHITECTURE}
+${SDF_PLATFORMS}
 ${generateGlslUniforms()}
 uniform vec3 uFogColor;
 uniform float uTime;
@@ -33,14 +35,26 @@ ${mapSakura}
 ${mapCyberpunk}
 ${mapInk}
 
-// --- Main scene map (dispatches to style-specific map) ---
+// --- Main scene map (dispatches to style-specific map + platform SDF) ---
 float map(vec3 p) {
   int style = int(uStyleType + 0.5);
 
-  if (style == 1) return mapSakura(p);
-  if (style == 2) return mapCyberpunk(p);
-  if (style == 3) return mapInk(p);
-  return mapDefault(p);
+  // Vista SDF dispatch (existing Phase 1 behavior)
+  float vistaD;
+  if (style == 1) vistaD = mapSakura(p);
+  else if (style == 2) vistaD = mapCyberpunk(p);
+  else if (style == 3) vistaD = mapInk(p);
+  else vistaD = mapDefault(p);
+
+  // Platform SDF (PLAT-03) — camera-relative placement
+  // Platform origin: uPlatformZ units ahead of camera along forward vector
+  // Uses same camera model as main(): ro = (0, uCamY, uCamZ), forward = (0, sin(pitch), cos(pitch))
+  vec3 ro = vec3(0.0, uCamY, uCamZ);
+  vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
+  vec3 platformOrigin = ro + forward * uPlatformZ;
+  float platformD = sdPlatform(p - platformOrigin, int(uPlatformType + 0.5));
+
+  return min(vistaD, platformD);
 }
 
 // --- Normal computation from SDF gradient ---

@@ -7,7 +7,7 @@ import {
   applyParamsToUniforms,
 } from '../scene/SdfParamRegistry';
 import type { SdfParamEntry } from '../scene/SdfParamRegistry';
-import { THEME_DEFAULT } from '../../../constants/theme';
+import { THEME_DEFAULT, THEME_SAKURA, THEME_CYBERPUNK, THEME_INK } from '../../../constants/theme';
 import type { TreeStyleParams } from '../../../constants/theme';
 
 describe('SdfParamRegistry', () => {
@@ -34,7 +34,7 @@ describe('SdfParamRegistry', () => {
     }
     expect(categories.color).toBe(3);
     expect(categories.camera).toBe(4);
-    expect(categories.geometry).toBe(7);
+    expect(categories.geometry).toBe(9);
     expect(categories.fog).toBe(1);
   });
 
@@ -130,5 +130,68 @@ describe('applyParamsToUniforms', () => {
 
     expect(uniforms.uCamY.value).toBe(3.5);
     expect(uniforms.uFogDistance.value).toBe(100.0);
+  });
+});
+
+describe('platform uniforms (PLAT-03)', () => {
+  it('SDF_PARAM_REGISTRY contains uPlatformType entry with int type', () => {
+    const platformType = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformType');
+    expect(platformType).toBeDefined();
+    expect(platformType!.glslType).toBe('int');
+    expect(platformType!.defaultValue).toBe(0);
+    expect(platformType!.min).toBe(0);
+    expect(platformType!.max).toBe(4);
+    expect(platformType!.tsKey).toBe('bgPlatformType');
+  });
+
+  it('SDF_PARAM_REGISTRY contains uPlatformZ entry with float type', () => {
+    const platformZ = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformZ');
+    expect(platformZ).toBeDefined();
+    expect(platformZ!.glslType).toBe('float');
+    expect(platformZ!.defaultValue).toBe(3.0);
+    expect(platformZ!.min).toBe(2);
+    expect(platformZ!.max).toBe(5);
+    expect(platformZ!.tsKey).toBe('bgPlatformZ');
+  });
+
+  it('generateGlslUniforms() includes platform uniform declarations', () => {
+    const result = generateGlslUniforms();
+    expect(result).toContain('uniform int uPlatformType;');
+    expect(result).toContain('uniform float uPlatformZ;');
+  });
+
+  it('createUniforms() creates platform uniforms with correct defaults', () => {
+    const uniforms = createUniforms();
+    expect(uniforms.uPlatformType.value).toBe(0);
+    expect(uniforms.uPlatformZ.value).toBe(3.0);
+  });
+
+  it('applyParamsToUniforms() writes bgPlatformType as rounded int', () => {
+    const uniforms = createUniforms();
+    const params = { ...THEME_DEFAULT, bgPlatformType: 2.7, bgPlatformZ: 4.0 };
+    applyParamsToUniforms(uniforms, params);
+    expect(uniforms.uPlatformType.value).toBe(3);
+    expect(uniforms.uPlatformZ.value).toBe(4.0);
+  });
+
+  it('all platform tsKey values exist in THEME_DEFAULT', () => {
+    const platformEntries = SDF_PARAM_REGISTRY.filter(e =>
+      e.name === 'uPlatformType' || e.name === 'uPlatformZ'
+    );
+    for (const entry of platformEntries) {
+      expect(entry.tsKey in THEME_DEFAULT).toBe(true);
+    }
+  });
+
+  it('platform tsKey values exist in all 4 theme presets', () => {
+    const presets = [THEME_DEFAULT, THEME_SAKURA, THEME_CYBERPUNK, THEME_INK];
+    for (const preset of presets) {
+      expect(typeof preset.bgPlatformType).toBe('number');
+      expect(typeof preset.bgPlatformZ).toBe('number');
+      expect(preset.bgPlatformType).toBeGreaterThanOrEqual(0);
+      expect(preset.bgPlatformType).toBeLessThanOrEqual(4);
+      expect(preset.bgPlatformZ).toBeGreaterThanOrEqual(2);
+      expect(preset.bgPlatformZ).toBeLessThanOrEqual(5);
+    }
   });
 });
