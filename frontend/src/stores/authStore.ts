@@ -96,17 +96,13 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const currentUser = await authAdapter.initialize();
-      console.warn('[authStore] initialize() result:', JSON.stringify(currentUser));
       assignUser(currentUser);
-      console.warn('[authStore] after assignUser, currentUsername:', currentUsername.value, 'user:', JSON.stringify(user.value));
     } catch (error) {
       errorMessage.value = formatAuthError(error);
     }
 
     authAdapter.onAuthStateChange((nextUser) => {
-      console.warn('[authStore] onAuthStateChange:', JSON.stringify(nextUser), 'current user:', JSON.stringify(user.value));
       assignUser(nextUser);
-      console.warn('[authStore] after onAuthStateChange assignUser, currentUsername:', currentUsername.value);
       if (nextUser) {
         errorMessage.value = null;
       }
