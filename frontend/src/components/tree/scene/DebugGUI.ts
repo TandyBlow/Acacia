@@ -13,9 +13,20 @@ interface SceneManagerDebugAPI {
   switchTheme: (style: string) => void;
   simulateUserData: (nodeCount: number, maxDepth: number, growthMultiplier: number) => void;
   reloadRealUserData: () => void;
+  setPlatformType: (type: number) => void;
+  setPlatformZ: (z: number) => void;
+  getCurrentPlatformType: () => number;
+  getCurrentPlatformZ: () => number;
 }
 
 const THEME_STYLES = ['default', 'sakura', 'cyberpunk', 'ink'] as const;
+const PLATFORM_LABELS: Record<number, string> = {
+  0: '0: 山崖 Cliff',
+  1: '1: 观景台 ViewingDeck',
+  2: '2: 天台 Rooftop',
+  3: '3: 寺庙台基 TempleBase',
+  4: '4: 巨石 Megalith',
+};
 
 export class DebugGUI {
   private gui: GUI;
@@ -25,16 +36,22 @@ export class DebugGUI {
   private texObj = { texture: 0 };
   private themeObj = { style: 'default' };
   private simObj = { nodeCount: 50, maxDepth: 4, growth: 0.8 };
+  private platformObj = { type: 0, z: 3.0 };
 
   constructor(sceneManager: SceneManagerDebugAPI) {
     this.sm = sceneManager;
     this.gui = new GUI({ title: 'Tree Debug' });
+
+    // Sync initial values from SceneManager
+    this.platformObj.type = this.sm.getCurrentPlatformType();
+    this.platformObj.z = this.sm.getCurrentPlatformZ();
 
     this.buildSimFolder();
     this.buildTreeFolder();
     this.buildLeafFolder();
     this.buildLightFolder();
     this.buildThemeFolder();
+    this.buildPlatformFolder();
   }
 
   private applySim() {
@@ -102,6 +119,16 @@ export class DebugGUI {
     for (const s of THEME_STYLES) options[s] = s;
     f.add(this.themeObj, 'style', options).name('主题').onChange((v: string) => {
       this.sm.switchTheme(v);
+    });
+  }
+
+  private buildPlatformFolder() {
+    const f = this.gui.addFolder('前景平台 (Platform)');
+    f.add(this.platformObj, 'type', PLATFORM_LABELS).name('平台类型').onChange((v: number) => {
+      this.sm.setPlatformType(v);
+    });
+    f.add(this.platformObj, 'z', 2.0, 5.0, 0.1).name('平台距离').onChange((v: number) => {
+      this.sm.setPlatformZ(v);
     });
   }
 

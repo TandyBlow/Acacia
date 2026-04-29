@@ -84,6 +84,10 @@ async function loadTree() {
         switchTheme: (style) => manager!.switchTheme(style as ThemeStyle),
         simulateUserData: (n, d, g) => manager!.simulateUserData(n, d, g),
         reloadRealUserData: () => manager!.reloadRealUserData(),
+        setPlatformType: (type) => manager!.setPlatformType(type),
+        setPlatformZ: (z) => manager!.setPlatformZ(z),
+        getCurrentPlatformType: () => manager!.getCurrentPlatformType(),
+        getCurrentPlatformZ: () => manager!.getCurrentPlatformZ(),
       });
     }
 

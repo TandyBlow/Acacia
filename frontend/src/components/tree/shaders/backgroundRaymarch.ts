@@ -148,16 +148,22 @@ void main() {
   }
 
   if (hit) {
-    // Determine material color based on hit position and normal
-    vec3 baseColor = uGroundColor;
-    vec3 shadowColor = uFogColor;
+    // Compute platform origin (same as map()) to detect platform hits
+    vec3 platformOrigin = ro + forward * uPlatformZ;
+    float platformDist = sdPlatform(hitPos - platformOrigin, int(uPlatformType + 0.5));
+    bool isPlatform = platformDist < 0.05;
 
-    // Ground gets ground color
-    if (abs(hitNormal.y) > 0.6) {
+    vec3 baseColor;
+    vec3 shadowColor;
+
+    if (isPlatform) {
+      // DEBUG: Bright magenta for platform visibility
+      baseColor = vec3(0.9, 0.15, 0.7);
+      shadowColor = vec3(0.5, 0.05, 0.35);
+    } else if (abs(hitNormal.y) > 0.6) {
       baseColor = uGroundColor;
       shadowColor = uFogColor * 0.7;
     } else {
-      // Vertical surfaces get slightly different treatment
       baseColor = uGroundColor * 0.9;
       shadowColor = uFogColor * 0.6;
     }
