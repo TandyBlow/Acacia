@@ -32,9 +32,13 @@ from review_service_sqlite import (
     submit_review_sqlite,
     get_review_stats_sqlite,
 )
+from middleware.logging_middleware import LoggingMiddleware
+from middleware.rate_limit_middleware import RateLimitMiddleware
 
 app = FastAPI()
 
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

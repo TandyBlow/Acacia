@@ -604,22 +604,13 @@ logger.info("method=%s path=%s status=%s duration_ms=%s user=%s",
 | A3 | `python3 db_migrate.py` or inline migration in `init_db()` is the correct entry point | Architecture Patterns | Low: This is the standard pattern for migration runners. The exact module structure (separate file vs. inline) is a minor implementation detail. |
 | A4 | Existing `init_db()` CREATE TABLE IF NOT EXISTS statements remain unchanged as version 1 baseline | Migration Runner | Low: The CONTEXT.md explicitly states "Version 1 = current schema state (all existing CREATE TABLE IF NOT EXISTS)." The risk is if tables have diverged on different developer machines, but `IF NOT EXISTS` makes this idempotent. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should the migration runner be a separate `db_migrate.py` module or inline in `init_db()`?**
-   - What we know: Both approaches work. Separate module is testable independently; inline is simpler.
-   - What's unclear: Whether the project prefers many small modules (current pattern: flat files with specific responsibilities) or consolidated entry points.
-   - Recommendation: Separate `db_migrate.py` module for testability. `init_db()` calls `run_migrations()` before its existing CREATE TABLE statements.
+1. **Migration runner module** — RESOLVED: Separate `db_migrate.py` module for testability. `init_db()` calls `run_migrations()` before its existing CREATE TABLE statements. (Plan 01-01 implements)
 
-2. **Should the rate limit cleanup (DELETE expired rows) run on every request or periodically?**
-   - What we know: Running cleanup on every request adds DB overhead. Running it too infrequently allows table bloat.
-   - What's unclear: Expected traffic volume. Low-traffic app (single user) = negligible overhead either way. Higher traffic = periodic is better.
-   - Recommendation: Run cleanup on every 100th request (track with a simple counter in the middleware). This gives O(1) amortized cleanup cost.
+2. **Rate limit cleanup frequency** — RESOLVED: Run cleanup on every 100th request (track with a simple counter in the middleware). This gives O(1) amortized cleanup cost. (Plan 01-02 implements)
 
-3. **Should `verify_token()` be called synchronously from within async middleware?**
-   - What we know: `verify_token()` is synchronous (pure CPU, no I/O). In FastAPI's single-threaded async model, calling sync functions from async code does NOT block the event loop (no await needed). The project already calls sync `get_db_ctx()` from async endpoint handlers without issue.
-   - What's unclear: Whether calling `jwt.decode()` in middleware is worth the CPU cost for every request.
-   - Recommendation: Parse the JWT heuristically (check if Bearer token is present, decode the payload without cryptographic verification) for logging purposes. Logging middleware doesn't need cryptographically verified user IDs — just best-effort identification. If the token is invalid, fall back to "anonymous."
+3. **verify_token() in async middleware** — RESOLVED: Parse the JWT heuristically for logging purposes — best-effort user identification via base64 decode of payload without cryptographic verification. If the token is invalid, fall back to "anonymous." (Plan 01-03 implements)
 
 ## Environment Availability
 

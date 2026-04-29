@@ -4,6 +4,7 @@ SQLite persistence layer for local deployment.
 import sqlite3
 import os
 from contextlib import contextmanager
+from db_migrate import run_migrations
 
 DB_PATH = os.getenv("DB_PATH", "acacia.db")
 
@@ -30,6 +31,8 @@ def get_db_ctx():
 
 def init_db():
     with get_db_ctx() as conn:
+        run_migrations(conn)
+
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,

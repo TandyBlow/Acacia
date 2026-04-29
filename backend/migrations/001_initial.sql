@@ -1,0 +1,5 @@
+-- Migration 001: Initial schema (baseline)
+-- This is a no-op marker. The existing schema (users, nodes, edges,
+-- quiz_questions, quiz_records tables) was created by init_db() before
+-- the migration system existed. Version 1 represents that baseline state.
+-- No SQL is executed here -- the marker exists for version tracking only.
