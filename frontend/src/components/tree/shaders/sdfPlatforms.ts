@@ -10,6 +10,9 @@ export const SDF_PLATFORMS = /* glsl */ `
 
 // Platform type 0: Cliff (山崖)
 // Natural rock formation with irregular top edge and boulders at base
+// Forward declaration: detail placement system (defined below after detail SDFs)
+float placeDetailsOnGrid(vec3 p, int platformType, float seed, float cellSize);
+
 float sdCliffPlatform(vec3 p) {
   // Main cliff formation using sdCliff primitive (PLAT-01)
   float cliff = sdCliff(p, 12.0, 3.5, 0.15);
