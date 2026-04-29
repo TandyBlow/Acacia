@@ -1,14 +1,14 @@
 # Project State: Acacia -- SDF 背景风格视觉引擎
 
-**Last updated:** 2026-04-28
-**Current phase:** 1 (planned, ready to execute)
-**Overall status:** Ready to execute
+**Last updated:** 2026-04-29
+**Current phase:** 1 (completed, QA passed)
+**Overall status:** Phase 1 complete, ready for Phase 2
 
 ## Phase Status
 
 | # | Phase | Status | Started | Completed |
 |---|-------|--------|---------|-----------|
-| 1 | Camera System & Shader Foundation | Ready to execute | 2026-04-28 | -- |
+| 1 | Camera System & Shader Foundation | Complete | 2026-04-28 | 2026-04-29 |
 | 2 | Foreground Platform SDF | Pending | -- | -- |
 | 3 | Style Template System | Pending | -- | -- |
 | 4 | Style Transition Engine | Pending | -- | -- |
@@ -20,7 +20,7 @@
 ## Progress
 
 ```
-Phase 1 [██████████] 0/6 reqs  Ready to execute (2 plans, 2 waves)
+Phase 1 [██████████] 6/6 reqs  Complete (2 plans, 2 waves)
 Phase 2 [··········] 0/5 reqs  Pending
 Phase 3 [··········] 0/6 reqs  Pending
 Phase 4 [··········] 0/7 reqs  Pending
@@ -29,14 +29,15 @@ Phase 6 [··········] 0/6 reqs  Pending
 Phase 7 [··········] 0/4 reqs  Pending
 Phase 8 [··········] 0/6 reqs  Pending
 
-Overall: 0/47 requirements complete
+Overall: 6/47 requirements complete
 ```
 
 ## Current Position
 
-**Phase:** 1 — Camera System & Shader Foundation (planned)
-**Plans:** 2 (01-01, 01-02) in 2 waves
-**Status:** Ready to execute — `/gsd-execute-phase 1`
+**Phase:** 1 — Camera System & Shader Foundation (completed, QA passed)
+**Plans:** 2 (01-01, 01-02) in 2 waves — all tasks complete
+**QA:** Health score 99/100, 2 LOW cosmetic findings deferred
+**Status:** Ready for Phase 2 — `/gsd-plan-phase 2`
 
 ## Accumulated Context
 
@@ -50,15 +51,12 @@ Overall: 0/47 requirements complete
 - ThemeTransition and shader transition run in parallel on different param domains
 
 ### Current Codebase State
+- BackgroundRenderer integrated with SdfParamRegistry (createUniforms + applyParamsToUniforms)
+- SceneManager handles mouse parallax via updateMouseUV with clamp+isFinite guards
+- 4 .glsl vista map files extracted, shader camera math uses uniform-driven 4-parameter model
+- CAM-05 GLSL parallax code (PARALLAX_THRESHOLD + smoothstep) in fragment shader
+- 8 test files, 59 tests passing, production build clean
 - 4 prototype styles (default/sakura/cyberpunk/ink) with working raymarch pipeline
-- BackgroundRenderer.ts functional but uses hardcoded camera values (QA ISSUE-001 through 004 pending fix)
-- SdfParamRegistry.ts defined but camera params not yet connected to shader uniforms
-- ThemeTransition.ts manages tree parameter interpolation (800ms duration)
-- Particle system (particle.ts) exists but is commented out in SceneManager.ts
-- SDF primitives (sdfPrimitives.ts) and architecture SDFs (sdfArchitecture.ts) exist with torii/pagoda/machiya/skyscraper/hill
-- Debug GUI (lil-gui) functional in dev mode
-- SceneManager.ts is monolithic (1030 lines) with ~260 lines commented-out ground/particle code
-- No automated tests for any scene/background code
 
 ### TODOs / Open Items
 - Verify fog masking effectiveness for near-field platform (z=2-5) -- may need linear fog instead of exponential
@@ -72,9 +70,9 @@ Overall: 0/47 requirements complete
 
 ## Session Continuity
 
-**Last command:** `/gsd-roadmap` (roadmap creation)
-**Next command:** User approves roadmap, then `/gsd-plan-phase 1`
-**Unfinished work:** None -- roadmap creation is the current task
+**Last command:** `/qa` (QA restarted and completed)
+**Next command:** `/gsd-plan-phase 2` (Foreground Platform SDF)
+**Unfinished work:** None — Phase 1 complete
 
 ---
 

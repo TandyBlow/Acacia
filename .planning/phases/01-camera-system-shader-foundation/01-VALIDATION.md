@@ -1,10 +1,11 @@
 ---
 phase: 01
 slug: camera-system-shader-foundation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-04-28
+completed: 2026-04-29
 ---
 
 # Phase 01 — Validation Strategy
@@ -38,15 +39,15 @@ created: 2026-04-28
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 01-01-01 | 01 | 1 | CAM-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/sdfParamRegistry.spec.ts` | ✅ | ⬜ pending |
-| 01-01-02 | 01 | 1 | CAM-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/backgroundLayers.spec.ts` | ✅ 需扩展 | ⬜ pending |
-| 01-01-03 | 01 | 1 | CAM-02 | — | N/A | unit | `npx vitest run src/constants/__tests__/theme.spec.ts` | ✅ 需扩展 | ⬜ pending |
-| 01-01-04 | 01 | 1 | CAM-03 | T-1-01 | uMouseUV clamped to [0,1], Number.isFinite guard | unit | `npx vitest run src/components/tree/__tests__/sdfParamRegistry.spec.ts` | ✅ | ⬜ pending |
-| 01-02-01 | 01 | 2 | CAM-03 | T-1-01 | uMouseUV clamped to [0,1], Number.isFinite guard | unit | `npx vitest run src/components/tree/__tests__/backgroundRenderer.spec.ts` | ❌ W0 | ⬜ pending |
-| 01-02-02 | 01 | 2 | CAM-04 | — | N/A | unit | `npx vitest run src/constants/__tests__/theme.spec.ts` | ✅ | ⬜ pending |
-| 01-03-01 | 01 | 2 | CAM-05 | T-1-01 | uMouseUV clamped to [0,1], Number.isFinite guard | unit | `npx vitest run src/components/tree/__tests__/backgroundRenderer.spec.ts` | ❌ W0 | ⬜ pending |
-| 01-04-01 | 01 | 3 | ARCH-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/vistaMaps.spec.ts` | ❌ W0 | ⬜ pending |
-| 01-04-02 | 01 | 3 | ARCH-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/backgroundLayers.spec.ts` | ✅ 需更新 | ⬜ pending |
+| 01-01-01 | 01 | 1 | CAM-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/sdfParamRegistry.spec.ts` | ✅ | ✅ green |
+| 01-01-02 | 01 | 1 | CAM-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/backgroundLayers.spec.ts` | ✅ | ✅ green |
+| 01-01-03 | 01 | 1 | CAM-02 | — | N/A | unit | `npx vitest run src/constants/__tests__/theme.spec.ts` | ✅ | ✅ green |
+| 01-01-04 | 01 | 1 | CAM-03 | T-1-01 | uMouseUV clamped to [0,1], Number.isFinite guard | unit | `npx vitest run src/components/tree/__tests__/sdfParamRegistry.spec.ts` | ✅ | ✅ green |
+| 01-02-01 | 01 | 2 | CAM-03 | T-1-01 | uMouseUV clamped to [0,1], Number.isFinite guard | unit | `npx vitest run src/components/tree/__tests__/backgroundRenderer.spec.ts` | ✅ | ✅ green |
+| 01-02-02 | 01 | 2 | CAM-04 | — | N/A | unit | `npx vitest run src/constants/__tests__/theme.spec.ts` | ✅ | ✅ green |
+| 01-03-01 | 01 | 2 | CAM-05 | T-1-01 | uMouseUV clamped to [0,1], Number.isFinite guard | unit | `npx vitest run src/components/tree/__tests__/backgroundRenderer.spec.ts` | ✅ | ✅ green |
+| 01-04-01 | 01 | 3 | ARCH-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/vistaMaps.spec.ts` | ✅ | ✅ green |
+| 01-04-02 | 01 | 3 | ARCH-01 | — | N/A | unit | `npx vitest run src/components/tree/__tests__/backgroundLayers.spec.ts` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -54,11 +55,11 @@ created: 2026-04-28
 
 ## Wave 0 Requirements
 
-- [ ] `frontend/src/components/tree/__tests__/backgroundRenderer.spec.ts` — 覆盖 CAM-03、CAM-05（BackgroundRenderer 集成测试）
-- [ ] `frontend/src/components/tree/__tests__/vistaMaps.spec.ts` — 覆盖 ARCH-01（.glsl 文件可导入 + 内容验证）
-- [ ] 扩展 `backgroundLayers.spec.ts` — 添加 CAM-01 断言（无硬编码 ro/lookAt/zoom）
-- [ ] 扩展 `theme.spec.ts` — 添加 CAM-02 断言（bgCamPitch 必须为负）
-- [ ] 无需框架安装 — Vitest 已配置
+- [x] `frontend/src/components/tree/__tests__/backgroundRenderer.spec.ts` — 覆盖 CAM-03、CAM-05（BackgroundRenderer 集成测试）
+- [x] `frontend/src/components/tree/__tests__/vistaMaps.spec.ts` — 覆盖 ARCH-01（.glsl 文件可导入 + 内容验证）
+- [x] 扩展 `backgroundLayers.spec.ts` — 添加 CAM-01 断言（无硬编码 ro/lookAt/zoom）
+- [x] 扩展 `theme.spec.ts` — 添加 CAM-02 断言（bgCamPitch 必须为负）
+- [x] 无需框架安装 — Vitest 已配置
 
 ---
 
@@ -74,11 +75,11 @@ created: 2026-04-28
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 2s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 2s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved — 2026-04-29 (QA passed, 59/59 tests green, production build clean)
