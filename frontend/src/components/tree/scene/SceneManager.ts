@@ -95,8 +95,6 @@ export class SceneManager {
     const x = (event.clientX - rect.left) / rect.width;
     const y = 1.0 - (event.clientY - rect.top) / rect.height;
     this.mouseUV = { x, y };
-    // DEBUG: verify mouse events reach the canvas
-    console.log('[CAM-05] mouseUV:', x.toFixed(3), y.toFixed(3), 'canvas:', rect.width, 'x', rect.height);
     this.backgroundRenderer.updateMouseUV(this.mouseUV);
   };
 
