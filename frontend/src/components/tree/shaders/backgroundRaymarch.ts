@@ -52,6 +52,8 @@ float map(vec3 p) {
   vec3 ro = vec3(0.0, uCamY, uCamZ);
   vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
   vec3 platformOrigin = ro + forward * uPlatformZ;
+  // Push platform below camera so it sits at screen bottom
+  platformOrigin.y -= uCamY + 1.5;
   float platformD = sdPlatform(p - platformOrigin, uPlatformType);
 
   return min(vistaD, platformD);
@@ -150,6 +152,7 @@ void main() {
   if (hit) {
     // Compute platform origin (same as map()) to detect platform hits
     vec3 platformOrigin = ro + forward * uPlatformZ;
+    platformOrigin.y -= uCamY + 1.5;
     float platformDist = sdPlatform(hitPos - platformOrigin, uPlatformType);
     bool isPlatform = platformDist < 0.05;
 
