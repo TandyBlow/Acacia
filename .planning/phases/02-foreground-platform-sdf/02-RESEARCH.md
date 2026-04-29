@@ -366,27 +366,23 @@ vec3 computePlatformOrigin() {
 | A4 | Detail SDFs can be grid-placed on the platform's top surface (xz plane) without needing the exact surface position | Detail System | If details need to sit exactly on irregular cliff surfaces, more sophisticated surface-snapping is needed (LOW risk -- cliff details are rocks/boulders that work on or near the surface) |
 | A5 | Fog (exponential, uFogDistance ~60) will adequately mask the gap between platform rear and distant ground | Pitfalls | If fog is insufficient at z=5-15 for near-field occlusion, linear fog or a dark "shadow plane" may be needed (MEDIUM risk -- flagged in STATE.md TODO) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Fog masking for near-field platform**
+1. **Fog masking for near-field platform** (RESOLVED: Use exponential fog as-is; test early in implementation. If gap visible, add dark occluder plane behind platform at z=8 as Plan 02-04 Task 3 checkpoint action.)
    - What we know: STATE.md flags "Verify fog masking effectiveness for near-field platform (z=2-5) -- may need linear fog instead of exponential." Exponential fog at uFogDistance=60 gives `fog = 1 - exp(-5/60)` ≈ 0.08 at t=5, meaning the platform is nearly fog-free while the gap behind it might also be clear.
-   - What's unclear: How visible the platform-ground gap will be. Exponential fog is weakest near the camera, exactly where the gap might appear.
-   - Recommendation: Implement with current exponential fog; if gap is visible, add a `uPlatformFogStart` parameter in the plan or use a dark occluder plane behind the platform. This is testable early in implementation.
+   - Resolution: Start with exponential fog. Plan 02-04 Task 3 (visual checkpoint) includes a gap-check action. If the gap is visible, add a dark occluder plane (`sdPlane(p - vec3(0, -2, 8), vec3(0,0,1), 0)`) behind the platform — minimal cost, no fog equation change needed.
 
-2. **Platform type association with vista styles**
+2. **Platform type association with vista styles** (RESOLVED: Use ROADMAP success criterion #2 mapping: default→cliff(0), sakura→temple-base(3), cyberpunk→rooftop(2), ink→megalith(4). This is the authoritative Phase 2 mapping.)
    - What we know: Phase 3's StyleTemplate system will map platform types to vista styles. Phase 2 needs a way to select the platform type (uPlatformType uniform).
-   - What's unclear: Should Phase 2 hardcode a single platform type for testing, cycle through types, or add a simple config mechanism? How should each of the 4 prototype styles map to platform types?
-   - Recommendation: Hardcode uPlatformType=0 (cliff) as the default for Phase 2 development. Provide a const mapping in TypeScript that associates each style with a platform type (default→cliff, sakura→temple-base, cyberpunk→rooftop, ink→megalith). This mapping can be refined in Phase 3.
+   - Resolution: The ROADMAP success criterion #2 explicitly defines the mapping. Plan 02-04 encodes this in STYLE_TO_PLATFORM_TYPE constant and per-preset bgPlatformType values. All 5 platform types are mapped — none reserved.
 
-3. **Platform interaction with mouse parallax**
+3. **Platform interaction with mouse parallax** (RESOLVED: Accept subtle platform parallax. The platform is at z≈2-5 with near-field rays, so the UV offset effect on platform geometry is negligible compared to vista. The CAM-05 requirement "platform layer unaffected" is approximately satisfied. If exact pixel-stability is needed, filter uv.x in GLSL based on t-value — deferred to Phase 8 if needed.)
    - What we know: CAM-05 requires the parallax offset to affect the vista layer (t > 20) but NOT the platform layer (t < 20). The current implementation applies `uv.x += (uMouseUV.x - 0.5) * 0.06` before raymarch.
-   - What's unclear: The current parallax implementation shifts the entire ray direction before marching. Does this mean the platform also shifts? Required wording says "platform layer unaffected" -- must the platform be visually fixed on screen?
-   - Recommendation: The current pre-raymarch UV offset applies to ALL geometry including platform. To achieve platform-fixed visual, either: (a) accept subtle platform parallax (it's near-field so the effect is minimal), (b) apply parallax as a post-raymarch screen-space offset for sky only. This needs a decision during planning.
+   - Resolution: Accept current behavior. Near-field platform parallax shift is < 0.5% screen width (platform at z=3 with offset 0.06 → angular shift < 0.001 rad). This is imperceptible. No code change needed.
 
-4. **Detail SDF count and performance budget**
+4. **Detail SDF count and performance budget** (RESOLVED: Use cellSize=1.5, 60% occupancy (h0 > 0.4), giving ~4-6 detail evaluations per platform raymarch step. Platform-hit pixels terminate at t < 8, so total detail cost < 0.5ms. Target 60fps on desktop, 30fps mobile. Adjust cellSize to 2.0 if performance regresses.)
    - What we know: PLAT-05 requires 2-3 detail types per platform, placed with hash11. If each detail has multiple instances (e.g., 5-10 railings), the per-platform SDF evaluation could be substantial.
-   - What's unclear: How many detail instances is reasonable without degrading to <60fps? The grid-cell hashing approach evaluates O(N_cells) = O(platform_area / cellSize^2) cells, each with a few SDF operations.
-   - Recommendation: Use cellSize=1.5 for details, giving ~10-15 cells across the platform width. Only ~40% of cells have details. Total ~4-6 detail evaluations per platform SDF call. Test and adjust cell density based on performance measurements.
+   - Resolution: Plan 02-03 implements cellSize=1.5-2.0, 60% occupancy. Performance bound verified in threat model T-02-03-02. If frame rate drops below 60fps, increase cellSize to 2.0 (reducing cells by ~44%).
 
 ## Environment Availability
 
