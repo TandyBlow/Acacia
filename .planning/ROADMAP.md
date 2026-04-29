@@ -97,9 +97,22 @@ Plans:
 ### Phase N2: Error Fixes
 **Goal**: Fix silent failures in quiz submission, review error handling, and stats API failures.
 **Depends on**: Phase N1 (requires request logging for debugging)
-**Requirements**: TBD
-**Plans**: TBD
+**Requirements**: NF-12 through NF-17 (derived from CEO Plan N2 scope)
+**Plans**: 3 plans
 **UI hint**: no
+
+**Success Criteria** (what must be TRUE):
+  1. When submitAnswer API fails, user sees error toast "提交答案失败，请检查网络连接" (not silent failure)
+  2. Short-answer quiz questions use case-insensitive substring matching against stored keyword list
+  3. Quiz question difficulty adjusts based on node's recent 3-answer accuracy (all correct -> hard, all wrong -> easy, mixed -> medium)
+  4. When fetchReviewStats fails, error message is visible in StatsPanel (not silent null)
+  5. Review card progress shows "第 X/Y 张卡片" format
+  6. No console.warn debug output from authStore.ts or useLogoutFlow.ts
+
+Plans:
+- [ ] 02-01-PLAN.md — Quiz fixes: submitAnswer error toast, short-answer keyword matching, adaptive difficulty
+- [ ] 02-02-PLAN.md — Review fixes: fetchReviewStats error visibility, progress bar "第 X/Y 张卡片"
+- [ ] 02-03-PLAN.md — Debug cleanup: verify authStore.ts clean, remove console.warn from useLogoutFlow.ts
 
 ### Phase N3: UI Polish
 **Goal**: Markdown editor enhancements (tables, mermaid, task lists, export), UI accessibility (ARIA labels, keyboard nav), Stats dashboard (trend charts, domain heatmap), Review heatmap.
@@ -142,7 +155,7 @@ CEO Plan phases execute in numeric order: N1 -> N2 -> N3 -> N4 -> N5 -> N6
 | 3. Quiz Feedback Loop | TBD | Not started | - |
 | 4. Integration & Onboarding | TBD | Not started | - |
 | N1. Non-Tree Foundations | 0 of 5 | Planning complete | - |
-| N2. Non-Tree Optimization: Error Fixes | TBD | Not started | - |
+| N2. Non-Tree Optimization: Error Fixes | 0 of 3 | Planning complete | - |
 | N3. Non-Tree Optimization: UI Polish | TBD | Not started | - |
 | N4. Non-Tree Optimization: AI Streaming | TBD | Not started | - |
 | N5. Non-Tree Optimization: Notifications | TBD | Not started | - |
