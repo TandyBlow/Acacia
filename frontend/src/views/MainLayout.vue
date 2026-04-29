@@ -493,7 +493,7 @@ watch(contentKey, () => {
 
 @media (max-width: 600px) {
   .layout {
-    position: fixed;
+    position: absolute;
     inset: 0;
     padding: 8px;
     grid-template-columns: 1fr;
