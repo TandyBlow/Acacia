@@ -177,6 +177,30 @@ export const SDF_PARAM_REGISTRY: SdfParamEntry[] = [
     step: 0.5,
     uiLabel: '雾距离',
   },
+
+  // --- platform (2 entries) ---
+  {
+    name: 'uPlatformType',
+    glslType: 'int',
+    tsKey: 'bgPlatformType',
+    defaultValue: 0,
+    category: 'geometry',
+    min: 0,
+    max: 4,
+    step: 1,
+    uiLabel: '平台类型',
+  },
+  {
+    name: 'uPlatformZ',
+    glslType: 'float',
+    tsKey: 'bgPlatformZ',
+    defaultValue: 3.0,
+    category: 'geometry',
+    min: 2,
+    max: 5,
+    step: 0.1,
+    uiLabel: '平台距离',
+  },
 ];
 
 /** Generate GLSL uniform declarations from the registry. */
@@ -194,6 +218,8 @@ export function createUniforms(): Record<string, THREE.IUniform> {
     if (entry.glslType === 'vec3') {
       const color = entry.defaultValue as [number, number, number];
       uniforms[entry.name] = { value: new THREE.Color(color[0], color[1], color[2]) };
+    } else if (entry.glslType === 'int') {
+      uniforms[entry.name] = { value: entry.defaultValue as number };
     } else {
       uniforms[entry.name] = { value: entry.defaultValue as number };
     }
@@ -211,6 +237,8 @@ export function applyParamsToUniforms(
     if (entry.glslType === 'vec3') {
       const color = val as [number, number, number];
       (uniforms[entry.name]!.value as THREE.Color).set(color[0], color[1], color[2]);
+    } else if (entry.glslType === 'int') {
+      uniforms[entry.name]!.value = Math.round(val as number);
     } else {
       uniforms[entry.name]!.value = val as number;
     }

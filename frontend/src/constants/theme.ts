@@ -66,6 +66,8 @@ export interface TreeStyleParams {
   bgBuildingDensity: number;
   bgBuildingHeight: number;
   bgFogDistance: number;
+  bgPlatformType: number;
+  bgPlatformZ: number;
 }
 
 export const THEME_DEFAULT: TreeStyleParams = {
@@ -124,6 +126,8 @@ export const THEME_DEFAULT: TreeStyleParams = {
   bgBuildingDensity: 0.5,
   bgBuildingHeight: 4.0,
   bgFogDistance: 60.0,
+  bgPlatformType: 0,
+  bgPlatformZ: 3.0,
 };
 
 export const THEME_SAKURA: TreeStyleParams = {
@@ -182,6 +186,8 @@ export const THEME_SAKURA: TreeStyleParams = {
   bgBuildingDensity: 0.4,
   bgBuildingHeight: 3.0,
   bgFogDistance: 55.0,
+  bgPlatformType: 3,
+  bgPlatformZ: 4.0,
 };
 
 export const THEME_CYBERPUNK: TreeStyleParams = {
@@ -240,6 +246,8 @@ export const THEME_CYBERPUNK: TreeStyleParams = {
   bgBuildingDensity: 0.8,
   bgBuildingHeight: 12.0,
   bgFogDistance: 40.0,
+  bgPlatformType: 2,
+  bgPlatformZ: 2.5,
 };
 
 export const THEME_INK: TreeStyleParams = {
@@ -298,6 +306,8 @@ export const THEME_INK: TreeStyleParams = {
   bgBuildingDensity: 0.2,
   bgBuildingHeight: 2.0,
   bgFogDistance: 80.0,
+  bgPlatformType: 4,
+  bgPlatformZ: 3.5,
 };
 
 export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {
@@ -305,4 +315,14 @@ export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {
   sakura: THEME_SAKURA,
   cyberpunk: THEME_CYBERPUNK,
   ink: THEME_INK,
+};
+
+/** Phase 2 default platform-type-to-vista-style mapping.
+ *  Matches ROADMAP success criterion #2.
+ *  Refined in Phase 3 StyleTemplate system. */
+export const STYLE_TO_PLATFORM_TYPE: Record<ThemeStyle, number> = {
+  default: 0,   // cliff
+  sakura: 3,    // temple-base
+  cyberpunk: 2, // rooftop
+  ink: 4,       // megalith
 };

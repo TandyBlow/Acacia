@@ -115,4 +115,32 @@ float fbm(vec2 p) {
   }
   return value;
 }
+
+// --- sdCliff: organic cliff face primitive (composite: sdRoundBox + FBM displacement) ---
+// Designed for PLAT-01: no canonical IQ primitive exists; synthesized from IQ techniques.
+// width: total cliff width (x-axis extent)
+// height: vertical extent from base to top edge
+// edgeRound: corner rounding radius (higher = more weathered look)
+float sdCliff(vec3 p, float width, float height, float edgeRound) {
+  // Rounded box base — the cliff mass
+  // z-extent fixed at 0.6 to give the cliff substantial forward depth
+  vec3 b = vec3(width * 0.5, height * 0.5, 0.6);
+  float d = sdRoundBox(p, b, edgeRound);
+
+  // FBM displacement on top edge for organic irregularity
+  // Uses xz plane for horizontal variation, with subtle y dependency
+  // Multiplied by height*0.35 to make taller cliffs more irregular
+  float noise = fbm(p.xz * 2.5 + p.y * 0.3) * height * 0.35;
+  // topMask isolates displacement to the top portion of the cliff
+  // smoothstep from just-below-top (p.y ~ -0.1*midY) to above-top (p.y ~ 0.4*midY)
+  float topMask = smoothstep(-0.1, 0.4, p.y / (height * 0.5 + 0.01));
+  d += noise * topMask;
+
+  // Subtle face variation — horizontal+vertical noise on the cliff face
+  // Only applies below the top edge (1.0 - topMask)
+  float faceNoise = fbm(p.xy * 1.8) * 0.12;
+  d += faceNoise * (1.0 - topMask);
+
+  return d;
+}
 `;
