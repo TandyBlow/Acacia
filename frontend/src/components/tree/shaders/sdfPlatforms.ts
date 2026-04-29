@@ -174,7 +174,7 @@ float sdGravel(vec3 p) {
 float sdSmallRock(vec3 p) {
   // Medium-sized irregular rock
   float d = sdRoundBox(p, vec3(0.15, 0.10, 0.10), 0.06);
-  float rough = fbm(p.xyz * 3.0) * 0.04;
+  float rough = fbm(p.xz * 3.0) * 0.04;
   return d + rough;
 }
 
