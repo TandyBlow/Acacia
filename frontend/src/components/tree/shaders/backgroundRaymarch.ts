@@ -19,7 +19,6 @@ void main() {
 export const backgroundFragmentShader = /* glsl */ `
 ${SDF_PRIMITIVES}
 ${SDF_ARCHITECTURE}
-${SDF_PLATFORMS}
 ${generateGlslUniforms()}
 uniform vec3 uFogColor;
 uniform float uTime;
@@ -27,6 +26,7 @@ uniform float uSeed;
 uniform float uStyleType;
 uniform vec2 uResolution;
 uniform vec2 uMouseUV;
+${SDF_PLATFORMS}
 
 varying vec2 vScreenUV;
 
