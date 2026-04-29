@@ -103,6 +103,9 @@ void main() {
   vec2 uv = vScreenUV * 2.0 - 1.0;
   uv.x *= aspect;
 
+  // CAM-05: Mouse parallax — horizontal view shift for background
+  uv.x += (uMouseUV.x - 0.5) * 0.06;
+
   // Ray direction with FOV zoom
   vec3 rd = normalize(forward + right * uv.x * uFovZoom + up * uv.y * uFovZoom);
 
@@ -130,21 +133,6 @@ void main() {
     if (t > tMax) break;
   }
 
-  // CAM-05: Mouse parallax — horizontal offset for vista layer (max 3%)
-  // Near objects (platform layer, t < PARALLAX_THRESHOLD) receive zero offset.
-  // Vista layer (t > PARALLAX_THRESHOLD) receives increasing offset via smoothstep.
-  // Sky (no hit, t == tMax) receives full parallax offset.
-  #define PARALLAX_THRESHOLD 20.0
-  #define PARALLAX_MAX_OFFSET 0.03
-
-  float parallaxFactor = smoothstep(PARALLAX_THRESHOLD, PARALLAX_THRESHOLD + 20.0, t);
-  float parallaxOffsetX = (uMouseUV.x - 0.5) * PARALLAX_MAX_OFFSET * 2.0 * parallaxFactor;
-
-  if (!hit) {
-    // Sky: full parallax (vista layer extends to infinity)
-    parallaxOffsetX = (uMouseUV.x - 0.5) * PARALLAX_MAX_OFFSET * 2.0;
-  }
-
   if (hit) {
     // Determine material color based on hit position and normal
     vec3 baseColor = uGroundColor;
@@ -168,9 +156,8 @@ void main() {
     float shadow = softShadow(hitPos + hitNormal * 0.02, shadowRd, 10.0);
     col *= shadow;
   } else {
-    // Sky — vertical gradient with CAM-05 parallax horizontal offset
-    float skyUV = vScreenUV.y + parallaxOffsetX * 0.3;
-    col = mix(uSkyBottomColor, uSkyTopColor, clamp(skyUV, 0.0, 1.0));
+    // Sky — vertical gradient
+    col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
   }
 
   // Exponential fog
