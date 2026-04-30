@@ -728,27 +728,27 @@ export function useMermaid() {
 | A7 | ARIA labels and keyboard shortcuts don't require a third-party accessibility library beyond Radix Vue's built-in support. | Architecture Patterns / Accessibility | Low: The app has a limited set of interactive components. Radix Vue covers dialog, popover, and toggle accessibility. The remaining components (Knob, MarkdownEditor, QuizPanel) need targeted `aria-label` attributes and keyboard handlers -- no framework needed. |
 | A8 | The `@tiptap/markdown` extension (already installed at 3.20.4) handles table, task list, and code block serialization correctly in its bundled Markdown parser/serializer. | Standard Stack / Editor | Medium: Task lists use the `- [ ]` syntax in Markdown. Tables use pipe syntax. Mermaid uses fenced code blocks with `mermaid` language. All are standard Markdown constructs. If @tiptap/markdown has incomplete table serialization, the `tiptap-markdown-3` community package provides a fallback. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Export toolbar placement**
    - What we know: The editor currently has no toolbar. The `Knob` provides context-sensitive actions. `EditorToolbar.vue` is a new proposed component.
    - What's unclear: Whether export buttons should be in a floating toolbar above the editor, integrated into the Knob long-press menu, or added to a sidebar.
-   - Recommendation: Add a minimal floating toolbar (positioned above the editor content area) with three icon buttons: Download Markdown, Download HTML, Download PDF. Keeps Knob responsibilities unchanged.
+   - [RESOLVED] Recommendation: Add a minimal floating toolbar (positioned above the editor content area) with three icon buttons: Download Markdown, Download HTML, Download PDF. Keeps Knob responsibilities unchanged.
 
 2. **Domain heatmap design**
    - What we know: `domain_tag` is set by `tag_service_sqlite.py` via keyword matching. Domain accuracy can be computed by `JOIN quiz_records ON quiz_questions.node_id = nodes.id GROUP BY nodes.domain_tag`.
    - What's unclear: How many domains exist per user, what visual layout works for 0-15 domains, whether the heatmap should be a grid (domains x metrics) or a horizontal bar chart.
-   - Recommendation: Start with a horizontal stacked bar chart per domain showing correct/wrong/total counts, colored by a green-to-red gradient. This handles 1-20 domains gracefully. The grid heatmap format is a stretch goal.
+   - [RESOLVED] Recommendation: Start with a horizontal stacked bar chart per domain showing correct/wrong/total counts, colored by a green-to-red gradient. This handles 1-20 domains gracefully. The grid heatmap format is a stretch goal.
 
 3. **Mermaid integration approach**
    - What we know: The existing `CodeBlockWithUi` custom extension renders code blocks with syntax highlighting and a copy button. Mermaid diagrams could be rendered within the same code block UI when language = `mermaid`.
    - What's unclear: Whether users expect a live-preview side panel (code on left, diagram on right) or inline rendering (code block transforms to diagram on blur).
-   - Recommendation: Inline rendering on blur/click -- code block shows mermaid source with a "Preview" toggle button. When previewed, the SVG replaces the highlighted code. User can click "Edit" to return to source. This avoids layout complexity and reuses the existing `CodeBlockWithUi` architecture.
+   - [RESOLVED] Recommendation: Inline rendering on blur/click -- code block shows mermaid source with a "Preview" toggle button. When previewed, the SVG replaces the highlighted code. User can click "Edit" to return to source. This avoids layout complexity and reuses the existing `CodeBlockWithUi` architecture.
 
 4. **Heatmap data retention period**
    - What we know: `quiz_records.answered_at` is stored with full datetime precision. Backend can query any date range.
    - What's unclear: Whether to show the last 3 months, 6 months, or 1 year of review data in the heatmap. The GitHub contribution graph shows 1 year.
-   - Recommendation: Show 1 year (52 weeks) by default, matching the GitHub contribution graph convention. Add a dropdown to switch to "All time" if the user has less than 1 year of data.
+   - [RESOLVED] Recommendation: Show 1 year (52 weeks) by default, matching the GitHub contribution graph convention. Add a dropdown to switch to "All time" if the user has less than 1 year of data.
 
 ## Environment Availability
 
