@@ -231,6 +231,32 @@ def _collect_node_content(conn: sqlite3.Connection, node_id: str, owner_id: str)
 
 # ── Public API ────────────────────────────────────────────────────
 
+def compute_adaptive_difficulty(conn: sqlite3.Connection, node_id: str, owner_id: str) -> str:
+    """Compute adaptive quiz difficulty from the node's last 3 answer results.
+
+    Rules (per CEO Plan N2 scope):
+      - Last 3 answers all correct (is_correct=1) -> "hard"
+      - Last 3 answers all wrong   (is_correct=0) -> "easy"
+      - Mixed results or fewer than 3 records  -> "medium"
+    """
+    rows = conn.execute(
+        "SELECT is_correct FROM quiz_records WHERE node_id = ? AND owner_id = ? "
+        "ORDER BY answered_at DESC LIMIT 3",
+        (node_id, owner_id),
+    ).fetchall()
+
+    if len(rows) < 3:
+        return "medium"
+
+    results = [r["is_correct"] for r in rows]
+    if all(r == 1 for r in results):
+        return "hard"
+    elif all(r == 0 for r in results):
+        return "easy"
+    else:
+        return "medium"
+
+
 def generate_quiz_question_sqlite(
     node_id: str,
     owner_id: str,

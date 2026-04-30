@@ -19,13 +19,14 @@ from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
 from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
 from quiz_service_sqlite import (
-    generate_quiz_question_sqlite,
+    compute_adaptive_difficulty,
     generate_batch_questions_sqlite,
+    generate_quiz_question_sqlite,
     get_questions_by_node_sqlite,
-    get_wrong_questions_sqlite,
-    get_single_question_sqlite,
-    submit_quiz_answer_sqlite,
     get_quiz_stats_sqlite,
+    get_single_question_sqlite,
+    get_wrong_questions_sqlite,
+    submit_quiz_answer_sqlite,
 )
 from review_service_sqlite import (
     get_due_reviews_sqlite,
@@ -513,12 +514,12 @@ def generate_question_endpoint(
     node_id: str,
     user: dict = Depends(get_current_user),
     question_type: str = "single_choice",
-    difficulty: str = "medium",
 ):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         try:
-            return generate_quiz_question_sqlite(node_id, owner_id, conn, question_type, difficulty)
+            computed_difficulty = compute_adaptive_difficulty(conn, node_id, owner_id)
+            return generate_quiz_question_sqlite(node_id, owner_id, conn, question_type, computed_difficulty)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         except Exception as e:
