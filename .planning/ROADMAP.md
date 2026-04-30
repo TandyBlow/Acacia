@@ -117,9 +117,15 @@ Plans:
 ### Phase N3: UI Polish
 **Goal**: Markdown editor enhancements (tables, mermaid, task lists, export), UI accessibility (ARIA labels, keyboard nav), Stats dashboard (trend charts, domain heatmap), Review heatmap.
 **Depends on**: Phase N1 (foundations), Phase N2 (error fixes)
-**Requirements**: TBD
-**Plans**: TBD
+**Requirements**: UP-01 through UP-15 (derived in RESEARCH.md)
+**Plans**: 4 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 03-01-PLAN.md — TipTap editor: version upgrade to 3.22.5, TableKit, TaskList/TaskItem, mermaid rendering, MD/HTML/PDF export, EditorToolbar
+- [ ] 03-02-PLAN.md — Backend: /quiz-trends and /review-heatmap endpoints with parameterized SQL, JWT auth
+- [ ] 03-03-PLAN.md — Stats dashboard: TrendChart (uPlot), DomainHeatmap, ReviewHeatmap + useTrends/useHeatmap composables
+- [ ] 03-04-PLAN.md — Accessibility: ARIA labels on custom components, useKeyboard composable (Escape/Ctrl+N), MainLayout integration
 
 ### Phase N4: AI Streaming
 **Goal**: SSE streaming for AI generate/analyze endpoints, LLM response caching, timeout improvements, raw response visibility.
@@ -156,7 +162,7 @@ CEO Plan phases execute in numeric order: N1 -> N2 -> N3 -> N4 -> N5 -> N6
 | 4. Integration & Onboarding | TBD | Not started | - |
 | N1. Non-Tree Foundations | 0 of 5 | Planning complete | - |
 | N2. Non-Tree Optimization: Error Fixes | 0 of 3 | Planning complete | - |
-| N3. Non-Tree Optimization: UI Polish | TBD | Not started | - |
+| N3. Non-Tree Optimization: UI Polish | 0 of 4 | Planning complete | - |
 | N4. Non-Tree Optimization: AI Streaming | TBD | Not started | - |
 | N5. Non-Tree Optimization: Notifications | TBD | Not started | - |
 | N6. Non-Tree Optimization: Deploy | TBD | Not started | - |
