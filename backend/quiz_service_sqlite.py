@@ -266,6 +266,7 @@ def generate_quiz_question_sqlite(
     )
     quiz["id"] = qid
     quiz["node_id"] = node_id
+    quiz["difficulty"] = difficulty
 
     # Convert options back to list for API response
     if isinstance(quiz["options"], str):
@@ -335,6 +336,7 @@ def generate_batch_questions_sqlite(
             "correct_index": q["correct_index"],
             "explanation": q["explanation"],
             "question_type": qtype,
+            "difficulty": q.get("difficulty", "medium"),
             "type_label": TYPE_LABELS.get(qtype, "单选题"),
         }
         results.append(result)
