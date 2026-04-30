@@ -11,7 +11,6 @@ export function useLogoutFlow() {
   const nodeStore = useNodeStore();
 
   function startLogout(): void {
-    console.warn('[useLogoutFlow] startLogout, authStore.currentUsername:', authStore.currentUsername, 'authStore.user:', JSON.stringify(authStore.user));
     logoutUsername.value = authStore.currentUsername;
     isLoggingOut.value = true;
   }
