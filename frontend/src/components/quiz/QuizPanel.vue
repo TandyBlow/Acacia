@@ -152,7 +152,13 @@ const typeLabel = computed(() => {
 const isCorrect = computed(() => {
   if (!currentQuestion.value) return false;
   if (currentQuestion.value.question_type === 'short_answer') {
-    return true; // Short answer is self-graded or LLM-graded
+    const options = currentQuestion.value.options as unknown as { keywords?: string[] } | null;
+    if (options && Array.isArray(options.keywords) && options.keywords.length > 0) {
+      const userLower = shortAnswerText.value.toLowerCase().trim();
+      if (userLower.length === 0) return false;
+      return options.keywords.some((kw: string) => userLower.includes(kw.toLowerCase()));
+    }
+    return false;
   }
   if (selectedOption.value === null) return false;
   return selectedOption.value === currentQuestion.value.correct_index;
@@ -161,7 +167,7 @@ const isCorrect = computed(() => {
 const resultText = computed(() => {
   if (!currentQuestion.value) return '';
   if (currentQuestion.value.question_type === 'short_answer') {
-    return '简答题——请对照参考答案自行评估';
+    return isCorrect.value ? '回答正确！关键词匹配成功' : '回答不准确，请查看参考答案';
   }
   return isCorrect.value ? '回答正确！' : '回答错误';
 });
@@ -199,7 +205,7 @@ async function confirmAndSubmit(): Promise<void> {
   confirmSelection();
   if (currentQuestion.value) {
     const correct = currentQuestion.value.question_type === 'short_answer'
-      ? true // Self-graded
+      ? isCorrect.value
       : selectedOption.value === currentQuestion.value.correct_index;
     await submitAnswer(
       currentQuestion.value.node_id,
