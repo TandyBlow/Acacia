@@ -76,6 +76,7 @@ export function useReview() {
       reviewStats.value = data;
       return data;
     } catch (err) {
+      errorMessage.value = err instanceof Error ? err.message : '获取复习统计失败';
       return null;
     }
   }

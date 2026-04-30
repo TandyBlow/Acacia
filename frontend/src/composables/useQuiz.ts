@@ -134,7 +134,7 @@ export function useQuiz() {
         body: JSON.stringify({ is_correct: isCorrect, question_id: questionId }),
       });
     } catch {
-      // Silent fail for answer recording
+      errorMessage.value = '提交答案失败，请检查网络连接';
     }
   }
 
