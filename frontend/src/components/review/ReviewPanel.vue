@@ -25,7 +25,7 @@
       <!-- Current card -->
       <div v-if="currentItem" class="review-card">
         <div class="review-card-header">
-          <span class="review-card-index">{{ reviewedCount + 1 }} / {{ totalCount }}</span>
+          <span class="review-card-index">第 {{ reviewedCount + 1 }}/{{ totalCount }} 张卡片</span>
           <span v-if="currentItem.review_state === 'new'" class="review-tag review-tag-new">新</span>
           <span v-else-if="currentItem.review_state === 'relearning'" class="review-tag review-tag-relearn">重学</span>
           <span v-else class="review-tag review-tag-review">复习</span>

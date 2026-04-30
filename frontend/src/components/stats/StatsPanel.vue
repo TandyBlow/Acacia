@@ -60,6 +60,7 @@
           <div class="stats-label">平均稳定性</div>
         </div>
       </div>
+      <div v-if="reviewErrorMessage && !reviewStats" class="stats-error">{{ reviewErrorMessage }}</div>
 
       <!-- Weak nodes -->
       <div v-if="weakNodes.length > 0" class="stats-section">
@@ -99,7 +100,7 @@ import { useReview } from '../../composables/useReview';
 const nodeStore = useNodeStore();
 
 const { isBusy, errorMessage, nodes, fetchStats } = useStats();
-const { reviewStats, fetchReviewStats } = useReview();
+const { reviewStats, fetchReviewStats, errorMessage: reviewErrorMessage } = useReview();
 
 const totalNodes = computed(() => nodes.value.length);
 
