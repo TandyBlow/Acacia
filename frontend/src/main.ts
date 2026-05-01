@@ -68,7 +68,7 @@ window.visualViewport?.addEventListener('resize', () => {
 
 // VirtualKeyboard API (Chrome/Edge) — tell browser to overlay
 if ('virtualKeyboard' in navigator) {
-  navigator.virtualKeyboard.overlaysContent = true;
+  (navigator as { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard!.overlaysContent = true;
 }
 
 // ── App bootstrap ────────────────────────────────────────────────────
