@@ -149,7 +149,14 @@ class MoveRequest(BaseModel):
 def _build_path(conn, node_id: str) -> list[dict]:
     path = []
     visited = set()
-    current_id = node_id
+    # Start from parent to exclude the node itself from path
+    node_row = conn.execute(
+        "SELECT parent_id FROM nodes WHERE id = ?",
+        (node_id,),
+    ).fetchone()
+    if not node_row or not node_row["parent_id"]:
+        return []
+    current_id = node_row["parent_id"]
     while current_id:
         if current_id in visited:
             break
