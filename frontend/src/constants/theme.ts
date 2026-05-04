@@ -127,7 +127,7 @@ export const THEME_DEFAULT: TreeStyleParams = {
   bgBuildingHeight: 4.0,
   bgFogDistance: 60.0,
   bgPlatformType: 0,
-  bgPlatformZ: 8.0,
+  bgPlatformZ: 3.0,
 };
 
 export const THEME_SAKURA: TreeStyleParams = {
@@ -187,7 +187,7 @@ export const THEME_SAKURA: TreeStyleParams = {
   bgBuildingHeight: 3.0,
   bgFogDistance: 55.0,
   bgPlatformType: 3,
-  bgPlatformZ: 9.0,
+  bgPlatformZ: 3.5,
 };
 
 export const THEME_CYBERPUNK: TreeStyleParams = {
@@ -247,7 +247,7 @@ export const THEME_CYBERPUNK: TreeStyleParams = {
   bgBuildingHeight: 12.0,
   bgFogDistance: 40.0,
   bgPlatformType: 2,
-  bgPlatformZ: 6.0,
+  bgPlatformZ: 2.5,
 };
 
 export const THEME_INK: TreeStyleParams = {
@@ -307,7 +307,7 @@ export const THEME_INK: TreeStyleParams = {
   bgBuildingHeight: 2.0,
   bgFogDistance: 80.0,
   bgPlatformType: 4,
-  bgPlatformZ: 10.0,
+  bgPlatformZ: 4.0,
 };
 
 export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {
