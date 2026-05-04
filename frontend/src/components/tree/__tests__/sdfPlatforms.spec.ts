@@ -11,19 +11,19 @@ describe('SDF_PLATFORMS export', () => {
     expect(SDF_PLATFORMS.length).toBeGreaterThan(500);
   });
 
-  it('contains sdPlatform dispatch function with int type parameter', () => {
+  it('contains sdPlatform dispatch function with float type parameter', () => {
     expect(SDF_PLATFORMS).toMatch(
-      /float sdPlatform\s*\(\s*vec3\s+p\s*,\s*int\s+type\s*\)/
+      /float sdPlatform\s*\(\s*vec3\s+p\s*,\s*float\s+type\s*\)/
     );
   });
 
   it('sdPlatform dispatches to all 5 platform types', () => {
     const glsl = SDF_PLATFORMS;
-    expect(glsl).toMatch(/type\s*==\s*0/);
-    expect(glsl).toMatch(/type\s*==\s*1/);
-    expect(glsl).toMatch(/type\s*==\s*2/);
-    expect(glsl).toMatch(/type\s*==\s*3/);
-    expect(glsl).toMatch(/type\s*==\s*4/);
+    expect(glsl).toMatch(/t\s*==\s*0/);
+    expect(glsl).toMatch(/t\s*==\s*1/);
+    expect(glsl).toMatch(/t\s*==\s*2/);
+    expect(glsl).toMatch(/t\s*==\s*3/);
+    expect(glsl).toMatch(/t\s*==\s*4/);
   });
 
   it('sdPlatform returns 1e10 for unknown type (miss fallback)', () => {

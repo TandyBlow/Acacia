@@ -134,10 +134,10 @@ describe('applyParamsToUniforms', () => {
 });
 
 describe('platform uniforms (PLAT-03)', () => {
-  it('SDF_PARAM_REGISTRY contains uPlatformType entry with int type', () => {
+  it('SDF_PARAM_REGISTRY contains uPlatformType entry with float type', () => {
     const platformType = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformType');
     expect(platformType).toBeDefined();
-    expect(platformType!.glslType).toBe('int');
+    expect(platformType!.glslType).toBe('float');
     expect(platformType!.defaultValue).toBe(0);
     expect(platformType!.min).toBe(0);
     expect(platformType!.max).toBe(4);
@@ -148,30 +148,30 @@ describe('platform uniforms (PLAT-03)', () => {
     const platformZ = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformZ');
     expect(platformZ).toBeDefined();
     expect(platformZ!.glslType).toBe('float');
-    expect(platformZ!.defaultValue).toBe(3.0);
-    expect(platformZ!.min).toBe(2);
-    expect(platformZ!.max).toBe(5);
+    expect(platformZ!.defaultValue).toBe(8.0);
+    expect(platformZ!.min).toBe(3);
+    expect(platformZ!.max).toBe(15);
     expect(platformZ!.tsKey).toBe('bgPlatformZ');
   });
 
   it('generateGlslUniforms() includes platform uniform declarations', () => {
     const result = generateGlslUniforms();
-    expect(result).toContain('uniform int uPlatformType;');
+    expect(result).toContain('uniform float uPlatformType;');
     expect(result).toContain('uniform float uPlatformZ;');
   });
 
   it('createUniforms() creates platform uniforms with correct defaults', () => {
     const uniforms = createUniforms();
     expect(uniforms.uPlatformType.value).toBe(0);
-    expect(uniforms.uPlatformZ.value).toBe(3.0);
+    expect(uniforms.uPlatformZ.value).toBe(8.0);
   });
 
-  it('applyParamsToUniforms() writes bgPlatformType as rounded int', () => {
+  it('applyParamsToUniforms() writes bgPlatformType and bgPlatformZ as floats', () => {
     const uniforms = createUniforms();
-    const params = { ...THEME_DEFAULT, bgPlatformType: 2.7, bgPlatformZ: 4.0 };
+    const params = { ...THEME_DEFAULT, bgPlatformType: 2, bgPlatformZ: 9.5 };
     applyParamsToUniforms(uniforms, params);
-    expect(uniforms.uPlatformType.value).toBe(3);
-    expect(uniforms.uPlatformZ.value).toBe(4.0);
+    expect(uniforms.uPlatformType.value).toBe(2);
+    expect(uniforms.uPlatformZ.value).toBe(9.5);
   });
 
   it('all platform tsKey values exist in THEME_DEFAULT', () => {
@@ -190,8 +190,8 @@ describe('platform uniforms (PLAT-03)', () => {
       expect(typeof preset.bgPlatformZ).toBe('number');
       expect(preset.bgPlatformType).toBeGreaterThanOrEqual(0);
       expect(preset.bgPlatformType).toBeLessThanOrEqual(4);
-      expect(preset.bgPlatformZ).toBeGreaterThanOrEqual(2);
-      expect(preset.bgPlatformZ).toBeLessThanOrEqual(5);
+      expect(preset.bgPlatformZ).toBeGreaterThanOrEqual(3);
+      expect(preset.bgPlatformZ).toBeLessThanOrEqual(15);
     }
   });
 });

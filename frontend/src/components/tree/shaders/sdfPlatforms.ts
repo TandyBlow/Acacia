@@ -315,19 +315,20 @@ float placeDetailsOnGrid(vec3 p, int platformType, float seed, float cellSize) {
 }
 
 // --- Platform dispatch ---
-// Routes to the correct platform SDF based on integer type.
+// Routes to the correct platform SDF based on float type (converted to int).
 // type 0 = cliff (山崖)
 // type 1 = viewing-deck (观景台)
 // type 2 = rooftop (天台)
 // type 3 = temple-base (寺庙台基)
 // type 4 = megalith (巨石)
 // unknown type → 1e10 (effectively infinite distance = miss, no platform rendered)
-float sdPlatform(vec3 p, int type) {
-  if (type == 0) return sdCliffPlatform(p);
-  if (type == 1) return sdViewingDeck(p);
-  if (type == 2) return sdRooftop(p);
-  if (type == 3) return sdTempleBase(p);
-  if (type == 4) return sdMegalith(p);
+float sdPlatform(vec3 p, float type) {
+  int t = int(type + 0.5);
+  if (t == 0) return sdCliffPlatform(p);
+  if (t == 1) return sdViewingDeck(p);
+  if (t == 2) return sdRooftop(p);
+  if (t == 3) return sdTempleBase(p);
+  if (t == 4) return sdMegalith(p);
   return 1e10;
 }
 `;
