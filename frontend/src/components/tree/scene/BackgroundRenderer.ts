@@ -109,9 +109,9 @@ export class BackgroundRenderer {
     this.material.uniforms.uPlatformType!.value = t;
   }
 
-  /** Debug: directly set platform Z distance uniform (2-5). */
+  /** Debug: directly set platform Z distance uniform (2-15). */
   setPlatformZ(z: number): void {
-    this.material.uniforms.uPlatformZ!.value = Math.max(2, Math.min(5, z));
+    this.material.uniforms.uPlatformZ!.value = Math.max(2, Math.min(15, z));
   }
 
   /** Update time uniform for animated elements */

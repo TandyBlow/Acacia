@@ -181,7 +181,7 @@ export const SDF_PARAM_REGISTRY: SdfParamEntry[] = [
   // --- platform (2 entries) ---
   {
     name: 'uPlatformType',
-    glslType: 'int',
+    glslType: 'float',
     tsKey: 'bgPlatformType',
     defaultValue: 0,
     category: 'geometry',

@@ -36,14 +36,14 @@ export class DebugGUI {
   private texObj = { texture: 0 };
   private themeObj = { style: 'default' };
   private simObj = { nodeCount: 50, maxDepth: 4, growth: 0.8 };
-  private platformObj = { type: 0, z: 8.0 };
+  private platformObj = { type: '0', z: 8.0 };
 
   constructor(sceneManager: SceneManagerDebugAPI) {
     this.sm = sceneManager;
     this.gui = new GUI({ title: 'Tree Debug' });
 
     // Sync initial values from SceneManager
-    this.platformObj.type = this.sm.getCurrentPlatformType();
+    this.platformObj.type = String(this.sm.getCurrentPlatformType());
     this.platformObj.z = this.sm.getCurrentPlatformZ();
 
     this.buildSimFolder();
@@ -124,8 +124,8 @@ export class DebugGUI {
 
   private buildPlatformFolder() {
     const f = this.gui.addFolder('前景平台 (Platform)');
-    f.add(this.platformObj, 'type', PLATFORM_LABELS).name('平台类型').onChange((v: number) => {
-      this.sm.setPlatformType(v);
+    f.add(this.platformObj, 'type', PLATFORM_LABELS).name('平台类型').onChange((v: string) => {
+      this.sm.setPlatformType(parseInt(v, 10));
     });
     f.add(this.platformObj, 'z', 3.0, 15.0, 0.5).name('平台距离').onChange((v: number) => {
       this.sm.setPlatformZ(v);
