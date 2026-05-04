@@ -160,9 +160,15 @@ void main() {
     vec3 shadowColor;
 
     if (isPlatform) {
-      // DEBUG: Bright magenta for platform visibility
-      baseColor = vec3(0.9, 0.15, 0.7);
-      shadowColor = vec3(0.5, 0.05, 0.35);
+      float pt = uPlatformType;
+      vec3 platformTint = uGroundColor * (1.0 + pt * 0.06);
+      if (abs(hitNormal.y) > 0.6) {
+        baseColor = platformTint;
+        shadowColor = uFogColor * 0.7;
+      } else {
+        baseColor = platformTint * 0.55;
+        shadowColor = uFogColor * 0.45;
+      }
     } else if (abs(hitNormal.y) > 0.6) {
       baseColor = uGroundColor;
       shadowColor = uFogColor * 0.7;
