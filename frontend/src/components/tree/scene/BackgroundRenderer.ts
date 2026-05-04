@@ -1,7 +1,14 @@
 import * as THREE from 'three';
 import { backgroundVertexShader, backgroundFragmentShader } from '../shaders/backgroundRaymarch';
-import { createUniforms, applyParamsToUniforms } from './SdfParamRegistry';
+import { createUniforms, applyParamsToUniforms, generateGlslUniforms } from './SdfParamRegistry';
 import type { TreeStyleParams } from '../../../constants/theme';
+import { SDF_PRIMITIVES } from '../shaders/sdfPrimitives';
+import { SDF_ARCHITECTURE } from '../shaders/sdfArchitecture';
+import { SDF_PLATFORMS } from '../shaders/sdfPlatforms';
+import mapDefaultSrc from '../shaders/vista/mapDefault.glsl?raw';
+import mapSakuraSrc from '../shaders/vista/mapSakura.glsl?raw';
+import mapCyberpunkSrc from '../shaders/vista/mapCyberpunk.glsl?raw';
+import mapInkSrc from '../shaders/vista/mapInk.glsl?raw';
 
 /**
  * Full-screen quad with raymarched SDF background.
@@ -28,6 +35,84 @@ export class BackgroundRenderer {
 
     // CAM-03: Use SdfParamRegistry to create all registered uniforms
     const registryUniforms = createUniforms();
+
+    // TEMP: Debug raymarching - show hit/miss in red/blue
+    const testFragmentShader = /* glsl */ `
+      ${generateGlslUniforms()}
+      uniform float uTime;
+      uniform float uSeed;
+      uniform float uStyleType;
+      uniform vec2 uResolution;
+      uniform vec2 uMouseUV;
+      ${SDF_PRIMITIVES}
+      ${SDF_ARCHITECTURE}
+      ${mapDefaultSrc}
+      ${mapSakuraSrc}
+      ${mapCyberpunkSrc}
+      ${mapInkSrc}
+      ${SDF_PLATFORMS}
+
+      varying vec2 vScreenUV;
+
+      float mapVista(vec3 p) {
+        int style = int(uStyleType + 0.5);
+        if (style == 1) return mapSakura(p);
+        else if (style == 2) return mapCyberpunk(p);
+        else if (style == 3) return mapInk(p);
+        else return mapDefault(p);
+      }
+
+      float mapPlatform(vec3 p) {
+        vec3 ro = vec3(0.0, uCamY, uCamZ);
+        vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
+        vec3 platformOrigin = ro + forward * uPlatformZ;
+        platformOrigin.y -= 2.0;  // Drop platform 2.0 units below camera
+        return sdPlatform(p - platformOrigin, uPlatformType);
+      }
+
+      float map(vec3 p) {
+        return min(mapVista(p), mapPlatform(p));
+      }
+
+      void main() {
+        vec3 ro = vec3(0.0, uCamY, uCamZ);
+        vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
+        vec3 worldUp = vec3(0.0, 1.0, 0.0);
+        vec3 right = normalize(cross(forward, worldUp));
+        vec3 up = cross(right, forward);
+
+        float aspect = uResolution.x / uResolution.y;
+        vec2 uv = vScreenUV * 2.0 - 1.0;
+        uv.x *= aspect;
+        vec3 rd = normalize(forward + right * uv.x * uFovZoom + up * uv.y * uFovZoom);
+
+        // Early sky check: if ray points significantly upward, treat as sky
+        if (rd.y > 0.3) {
+          gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);  // Blue = sky
+          return;
+        }
+
+        float t = 0.0;
+        float tMax = uFogDistance + 10.0;
+        bool hit = false;
+
+        for (int i = 0; i < 80; i++) {
+          vec3 p = ro + rd * t;
+          float d = map(p);
+
+          if (d < 0.001) {
+            hit = true;
+            break;
+          }
+          t += max(d * 0.8, 0.02);
+          if (t > tMax) break;
+        }
+
+        // Simple: red if hit anything, blue if miss (sky)
+        vec3 col = hit ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
 
     this.material = new THREE.ShaderMaterial({
       vertexShader: backgroundVertexShader,

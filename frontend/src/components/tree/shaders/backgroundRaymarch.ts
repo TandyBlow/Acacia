@@ -47,11 +47,11 @@ float map(vec3 p) {
   else vistaD = mapDefault(p);
 
   // Platform SDF (PLAT-03) — foreground platform at screen bottom ~5%
-  // Place below the vista ground line so only the top edge peeks above
+  // Place well below camera to ensure it only appears at screen bottom
   vec3 ro = vec3(0.0, uCamY, uCamZ);
   vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
   vec3 platformOrigin = ro + forward * uPlatformZ;
-  platformOrigin.y -= 1.0;
+  platformOrigin.y -= 2.0;  // Drop platform 2.0 units below camera forward point
   float platformD = sdPlatform(p - platformOrigin, uPlatformType);
 
   return min(vistaD, platformD);
@@ -123,6 +123,14 @@ void main() {
   // Ray direction with FOV zoom
   vec3 rd = normalize(forward + right * uv.x * uFovZoom + up * uv.y * uFovZoom);
 
+  // Early sky check: if ray points significantly upward, skip raymarch and show sky
+  // This prevents upward rays from eventually hitting distant geometry or ground plane
+  if (rd.y > 0.25) {
+    vec3 col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
   // Raymarch
   float t = 0.0;
   float tMax = uFogDistance + 10.0;
@@ -150,7 +158,7 @@ void main() {
   if (hit) {
     // Compute platform origin (same as map()) to detect platform hits
     vec3 platformOrigin = ro + forward * uPlatformZ;
-    platformOrigin.y -= 1.0;
+    platformOrigin.y -= 2.0;
     float platformDist = sdPlatform(hitPos - platformOrigin, uPlatformType);
     bool isPlatform = platformDist < 0.05;
 
@@ -182,14 +190,14 @@ void main() {
     vec3 shadowRd = normalize(vec3(0.6, 0.8, 0.4));
     float shadow = softShadow(hitPos + hitNormal * 0.02, shadowRd, 10.0);
     col *= shadow;
+
+    // Apply exponential fog only to geometry hits
+    float fog = 1.0 - exp(-t / uFogDistance);
+    col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
   } else {
-    // Sky — vertical gradient
+    // Sky — vertical gradient, no fog
     col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
   }
-
-  // Exponential fog
-  float fog = 1.0 - exp(-t / uFogDistance);
-  col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
 
   gl_FragColor = vec4(col, 1.0);
 }
