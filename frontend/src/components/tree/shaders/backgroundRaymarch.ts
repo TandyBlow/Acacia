@@ -46,10 +46,12 @@ float map(vec3 p) {
   else if (style == 3) vistaD = mapInk(p);
   else vistaD = mapDefault(p);
 
-  // Platform SDF (PLAT-03) — camera-relative foreground platform
+  // Platform SDF (PLAT-03) — foreground platform at screen bottom ~5%
+  // Place below the vista ground line so only the top edge peeks above
   vec3 ro = vec3(0.0, uCamY, uCamZ);
   vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
   vec3 platformOrigin = ro + forward * uPlatformZ;
+  platformOrigin.y -= 1.0;
   float platformD = sdPlatform(p - platformOrigin, uPlatformType);
 
   return min(vistaD, platformD);
@@ -148,6 +150,7 @@ void main() {
   if (hit) {
     // Compute platform origin (same as map()) to detect platform hits
     vec3 platformOrigin = ro + forward * uPlatformZ;
+    platformOrigin.y -= 1.0;
     float platformDist = sdPlatform(hitPos - platformOrigin, uPlatformType);
     bool isPlatform = platformDist < 0.05;
 
