@@ -570,7 +570,11 @@ export class SceneManager {
     // This replaces paramsFromTheme() + update(BackgroundUniformParams)
     this.backgroundRenderer.updateParams(this.currentParams);
 
-    this.scene.add(this.backgroundRenderer.getMesh());
+    const bgMesh = this.backgroundRenderer.getMesh();
+    console.log('[BG-DEBUG] Adding background mesh to scene:', bgMesh.name, 'renderOrder:', bgMesh.renderOrder, 'visible:', bgMesh.visible, 'material.type:', bgMesh.material.type);
+    this.scene.add(bgMesh);
+    console.log('[BG-DEBUG] Scene children count after adding background:', this.scene.children.length);
+    console.log('[BG-DEBUG] Scene children:', this.scene.children.map(c => `${c.name || c.type}(${c.type})`));
   }
 
   private hashUserIdToSeed(): number {
@@ -760,7 +764,7 @@ export class SceneManager {
     );
     this.refitCamera();
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(containerW, containerH);
     this.renderer.setPixelRatio(window.devicePixelRatio);
 

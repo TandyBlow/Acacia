@@ -115,7 +115,7 @@ export const THEME_DEFAULT: TreeStyleParams = {
   outlineWidth: 0.3,
 
   bgCamY: 2.8,
-  bgCamPitch: -0.15,
+  bgCamPitch: 0.0,  // 0.0 = horizontal view, allows top rays to point upward to sky
   bgCamZ: -6.0,
   bgFovZoom: 1.8,
   bgGroundY: 0.5,
