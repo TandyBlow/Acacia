@@ -148,9 +148,9 @@ describe('platform uniforms (PLAT-03)', () => {
     const platformZ = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformZ');
     expect(platformZ).toBeDefined();
     expect(platformZ!.glslType).toBe('float');
-    expect(platformZ!.defaultValue).toBe(8.0);
-    expect(platformZ!.min).toBe(3);
-    expect(platformZ!.max).toBe(15);
+    expect(platformZ!.defaultValue).toBe(3.0);
+    expect(platformZ!.min).toBe(2);
+    expect(platformZ!.max).toBe(5);
     expect(platformZ!.tsKey).toBe('bgPlatformZ');
   });
 
@@ -163,15 +163,15 @@ describe('platform uniforms (PLAT-03)', () => {
   it('createUniforms() creates platform uniforms with correct defaults', () => {
     const uniforms = createUniforms();
     expect(uniforms.uPlatformType.value).toBe(0);
-    expect(uniforms.uPlatformZ.value).toBe(8.0);
+    expect(uniforms.uPlatformZ.value).toBe(3.0);
   });
 
   it('applyParamsToUniforms() writes bgPlatformType and bgPlatformZ as floats', () => {
     const uniforms = createUniforms();
-    const params = { ...THEME_DEFAULT, bgPlatformType: 2, bgPlatformZ: 9.5 };
+    const params = { ...THEME_DEFAULT, bgPlatformType: 2, bgPlatformZ: 4.0 };
     applyParamsToUniforms(uniforms, params);
     expect(uniforms.uPlatformType.value).toBe(2);
-    expect(uniforms.uPlatformZ.value).toBe(9.5);
+    expect(uniforms.uPlatformZ.value).toBe(4.0);
   });
 
   it('all platform tsKey values exist in THEME_DEFAULT', () => {
@@ -190,8 +190,8 @@ describe('platform uniforms (PLAT-03)', () => {
       expect(typeof preset.bgPlatformZ).toBe('number');
       expect(preset.bgPlatformType).toBeGreaterThanOrEqual(0);
       expect(preset.bgPlatformType).toBeLessThanOrEqual(4);
-      expect(preset.bgPlatformZ).toBeGreaterThanOrEqual(3);
-      expect(preset.bgPlatformZ).toBeLessThanOrEqual(15);
+      expect(preset.bgPlatformZ).toBeGreaterThanOrEqual(2);
+      expect(preset.bgPlatformZ).toBeLessThanOrEqual(5);
     }
   });
 });

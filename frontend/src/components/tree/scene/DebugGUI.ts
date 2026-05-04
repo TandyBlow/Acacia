@@ -127,7 +127,7 @@ export class DebugGUI {
     f.add(this.platformObj, 'type', PLATFORM_LABELS).name('平台类型').onChange((v: string) => {
       this.sm.setPlatformType(parseInt(v, 10));
     });
-    f.add(this.platformObj, 'z', 3.0, 15.0, 0.5).name('平台距离').onChange((v: number) => {
+    f.add(this.platformObj, 'z', 2.0, 5.0, 0.1).name('平台距离').onChange((v: number) => {
       this.sm.setPlatformZ(v);
     });
   }
