@@ -66,8 +66,10 @@ export interface TreeStyleParams {
   bgBuildingDensity: number;
   bgBuildingHeight: number;
   bgFogDistance: number;
-  bgPlatformType: number;
-  bgPlatformZ: number;
+  bgBarrelK: number;
+  bgPlatformHeight: number;
+  bgPlatformFade: number;
+  bgPlatformTexWidth: number;
 }
 
 export const THEME_DEFAULT: TreeStyleParams = {
@@ -115,10 +117,10 @@ export const THEME_DEFAULT: TreeStyleParams = {
   outlineWidth: 0.3,
 
   bgCamY: 2.8,
-  bgCamPitch: -0.15,  // Downward pitch for oblique vista view (CAM-02)
-  bgCamZ: -6.0,
-  bgFovZoom: 1.8,
-  bgGroundY: 0.5,
+  bgCamPitch: -0.20,
+  bgCamZ: -5.0,
+  bgFovZoom: 2.0,
+  bgGroundY: -2.0, // Dialed back from -3.5 (invisible) to find the halfway point
   bgHillFreq: 0.3,
   bgHillAmp: 5.0,
   bgHillDepth: 40.0,
@@ -126,8 +128,10 @@ export const THEME_DEFAULT: TreeStyleParams = {
   bgBuildingDensity: 0.5,
   bgBuildingHeight: 4.0,
   bgFogDistance: 60.0,
-  bgPlatformType: 0,
-  bgPlatformZ: 3.0,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 2048.0,
 };
 
 export const THEME_SAKURA: TreeStyleParams = {
@@ -186,8 +190,10 @@ export const THEME_SAKURA: TreeStyleParams = {
   bgBuildingDensity: 0.4,
   bgBuildingHeight: 3.0,
   bgFogDistance: 55.0,
-  bgPlatformType: 3,
-  bgPlatformZ: 3.5,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 2048.0,
 };
 
 export const THEME_CYBERPUNK: TreeStyleParams = {
@@ -246,8 +252,10 @@ export const THEME_CYBERPUNK: TreeStyleParams = {
   bgBuildingDensity: 0.8,
   bgBuildingHeight: 12.0,
   bgFogDistance: 40.0,
-  bgPlatformType: 2,
-  bgPlatformZ: 2.5,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 2048.0,
 };
 
 export const THEME_INK: TreeStyleParams = {
@@ -306,8 +314,10 @@ export const THEME_INK: TreeStyleParams = {
   bgBuildingDensity: 0.2,
   bgBuildingHeight: 2.0,
   bgFogDistance: 80.0,
-  bgPlatformType: 4,
-  bgPlatformZ: 4.0,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 2048.0,
 };
 
 export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {

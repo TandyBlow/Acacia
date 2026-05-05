@@ -58,7 +58,7 @@ export class BackgroundRenderer {
         uStyleType: { value: styleType },
         uResolution: { value: new THREE.Vector2(1024, 1024) },
         uMouseUV: { value: new THREE.Vector2(0.5, 0.5) },
-        uCliffTexture: { value: testTexture },
+        uPlatformTexture: { value: testTexture },
       },
       depthWrite: false,
       depthTest: false,
