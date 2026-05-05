@@ -1,6 +1,5 @@
 import { SDF_PRIMITIVES } from './sdfPrimitives';
 import { SDF_ARCHITECTURE } from './sdfArchitecture';
-import { SDF_PLATFORMS } from './sdfPlatforms';
 import mapDefault from './vista/mapDefault.glsl?raw';
 import mapSakura from './vista/mapSakura.glsl?raw';
 import mapCyberpunk from './vista/mapCyberpunk.glsl?raw';
@@ -26,7 +25,7 @@ uniform float uSeed;
 uniform float uStyleType;
 uniform vec2 uResolution;
 uniform vec2 uMouseUV;
-${SDF_PLATFORMS}
+uniform sampler2D uCliffTexture;
 
 varying vec2 vScreenUV;
 
@@ -35,26 +34,12 @@ ${mapSakura}
 ${mapCyberpunk}
 ${mapInk}
 
-// --- Main scene map (dispatches to style-specific map + platform SDF) ---
 float map(vec3 p) {
   int style = int(uStyleType + 0.5);
-
-  // Vista SDF dispatch (existing Phase 1 behavior)
-  float vistaD;
-  if (style == 1) vistaD = mapSakura(p);
-  else if (style == 2) vistaD = mapCyberpunk(p);
-  else if (style == 3) vistaD = mapInk(p);
-  else vistaD = mapDefault(p);
-
-  // Platform SDF (PLAT-03) — foreground platform at screen bottom ~5%
-  // Place well below camera to ensure it only appears at screen bottom
-  vec3 ro = vec3(0.0, uCamY, uCamZ);
-  vec3 forward = normalize(vec3(0.0, sin(uCamPitch), cos(uCamPitch)));
-  vec3 platformOrigin = ro + forward * uPlatformZ;
-  platformOrigin.y -= 2.0;  // Drop platform 2.0 units below camera forward point
-  float platformD = sdPlatform(p - platformOrigin, uPlatformType);
-
-  return min(vistaD, platformD);
+  if (style == 1) return mapSakura(p);
+  else if (style == 2) return mapCyberpunk(p);
+  else if (style == 3) return mapInk(p);
+  else return mapDefault(p);
 }
 
 // --- Normal computation from SDF gradient ---
@@ -67,6 +52,20 @@ vec3 calcNormal(vec3 p) {
     k.yxy * map(p + k.yxy * eps) +
     k.xxx * map(p + k.xxx * eps)
   );
+}
+
+// --- Ambient Occlusion (AO) for depth perception ---
+// Samples nearby SDF values to detect crevices and concave areas
+float calcAO(vec3 p, vec3 n) {
+  float occ = 0.0;
+  float sca = 1.0;
+  for (int i = 0; i < 5; i++) {
+    float h = 0.01 + 0.12 * float(i) / 4.0;
+    float d = map(p + h * n);
+    occ += (h - d) * sca;
+    sca *= 0.95;
+  }
+  return clamp(1.0 - 0.8 * occ, 0.3, 1.0);
 }
 
 // --- Toon shading ---
@@ -156,26 +155,10 @@ void main() {
   }
 
   if (hit) {
-    // Compute platform origin (same as map()) to detect platform hits
-    vec3 platformOrigin = ro + forward * uPlatformZ;
-    platformOrigin.y -= 2.0;
-    float platformDist = sdPlatform(hitPos - platformOrigin, uPlatformType);
-    bool isPlatform = platformDist < 0.05;
-
     vec3 baseColor;
     vec3 shadowColor;
 
-    if (isPlatform) {
-      float pt = uPlatformType;
-      vec3 platformTint = uGroundColor * (1.0 + pt * 0.06);
-      if (abs(hitNormal.y) > 0.6) {
-        baseColor = platformTint;
-        shadowColor = uFogColor * 0.7;
-      } else {
-        baseColor = platformTint * 0.55;
-        shadowColor = uFogColor * 0.45;
-      }
-    } else if (abs(hitNormal.y) > 0.6) {
+    if (abs(hitNormal.y) > 0.6) {
       baseColor = uGroundColor;
       shadowColor = uFogColor * 0.7;
     } else {
@@ -183,19 +166,11 @@ void main() {
       shadowColor = uFogColor * 0.6;
     }
 
-    // Apply toon lighting
     col = applyToonLighting(hitPos, hitNormal, baseColor, shadowColor);
 
-    // Apply soft shadow
-    vec3 shadowRd = normalize(vec3(0.6, 0.8, 0.4));
-    float shadow = softShadow(hitPos + hitNormal * 0.02, shadowRd, 10.0);
-    col *= shadow;
-
-    // Apply exponential fog only to geometry hits
-    float fog = 1.0 - exp(-t / uFogDistance);
+    float fog = 1.0 - exp(-t * t / (uFogDistance * uFogDistance * 0.5));
     col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
   } else {
-    // Sky — vertical gradient, no fog
     col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
   }
 
