@@ -122,56 +122,70 @@ void main() {
   // Ray direction with FOV zoom
   vec3 rd = normalize(forward + right * uv.x * uFovZoom + up * uv.y * uFovZoom);
 
-  // Early sky check: if ray points significantly upward, skip raymarch and show sky
-  // This prevents upward rays from eventually hitting distant geometry or ground plane
-  if (rd.y > 0.25) {
-    vec3 col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
-    gl_FragColor = vec4(col, 1.0);
-    return;
-  }
+  // Early sky check: if ray points significantly upward, skip raymarch
+  bool isSky = rd.y > 0.25;
+  vec3 col;
 
-  // Raymarch
-  float t = 0.0;
-  float tMax = uFogDistance + 10.0;
-  vec3 col = vec3(0.0);
-  bool hit = false;
-  vec3 hitPos = vec3(0.0);
-  vec3 hitNormal = vec3(0.0, 1.0, 0.0);
-
-  for (int i = 0; i < 80; i++) {
-    vec3 p = ro + rd * t;
-    float d = map(p);
-
-    if (d < 0.001) {
-      hit = true;
-      hitPos = p;
-      hitNormal = calcNormal(p);
-      break;
-    }
-
-    t += max(d * 0.8, 0.02);
-
-    if (t > tMax) break;
-  }
-
-  if (hit) {
-    vec3 baseColor;
-    vec3 shadowColor;
-
-    if (abs(hitNormal.y) > 0.6) {
-      baseColor = uGroundColor;
-      shadowColor = uFogColor * 0.7;
-    } else {
-      baseColor = uGroundColor * 0.9;
-      shadowColor = uFogColor * 0.6;
-    }
-
-    col = applyToonLighting(hitPos, hitNormal, baseColor, shadowColor);
-
-    float fog = 1.0 - exp(-t * t / (uFogDistance * uFogDistance * 0.5));
-    col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
-  } else {
+  if (isSky) {
     col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
+  } else {
+    // Raymarch
+    float t = 0.0;
+    float tMax = uFogDistance + 10.0;
+    bool hit = false;
+    vec3 hitPos = vec3(0.0);
+    vec3 hitNormal = vec3(0.0, 1.0, 0.0);
+
+    for (int i = 0; i < 80; i++) {
+      vec3 p = ro + rd * t;
+      float d = map(p);
+
+      if (d < 0.001) {
+        hit = true;
+        hitPos = p;
+        hitNormal = calcNormal(p);
+        break;
+      }
+
+      t += max(d * 0.8, 0.02);
+
+      if (t > tMax) break;
+    }
+
+    if (hit) {
+      vec3 baseColor;
+      vec3 shadowColor;
+
+      if (abs(hitNormal.y) > 0.6) {
+        baseColor = uGroundColor;
+        shadowColor = uFogColor * 0.7;
+      } else {
+        baseColor = uGroundColor * 0.9;
+        shadowColor = uFogColor * 0.6;
+      }
+
+      col = applyToonLighting(hitPos, hitNormal, baseColor, shadowColor);
+
+      float fog = 1.0 - exp(-t * t / (uFogDistance * uFogDistance * 0.5));
+      col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
+    } else {
+      col = mix(uSkyBottomColor, uSkyTopColor, vScreenUV.y);
+    }
+  }
+
+  // Billboard compositing (barrel distortion arc, uses original vScreenUV — no parallax)
+  vec2 bc = vScreenUV - 0.5;
+  float br2 = dot(bc, bc);
+  vec2 distortedUV = 0.5 + bc * (1.0 + uBarrelK * br2);
+
+  if (distortedUV.y < uPlatformHeight) {
+    float uvX = 0.5 + (vScreenUV.x - 0.5) * uResolution.x / uPlatformTexWidth;
+    if (uvX >= 0.0 && uvX <= 1.0) {
+      float uvY = distortedUV.y / uPlatformHeight;
+      vec4 platformSample = texture2D(uPlatformTexture, vec2(uvX, uvY));
+      float edgeFade = smoothstep(0.0, uPlatformFade, distortedUV.y);
+      col = mix(col, platformSample.rgb, platformSample.a * edgeFade);
+    }
   }
 
   gl_FragColor = vec4(col, 1.0);
