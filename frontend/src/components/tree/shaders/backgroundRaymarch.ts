@@ -25,7 +25,7 @@ uniform float uSeed;
 uniform float uStyleType;
 uniform vec2 uResolution;
 uniform vec2 uMouseUV;
-uniform sampler2D uCliffTexture;
+uniform sampler2D uPlatformTexture;
 
 varying vec2 vScreenUV;
 

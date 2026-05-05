@@ -34,7 +34,7 @@ describe('SdfParamRegistry', () => {
     }
     expect(categories.color).toBe(3);
     expect(categories.camera).toBe(4);
-    expect(categories.geometry).toBe(9);
+    expect(categories.geometry).toBe(11);
     expect(categories.fog).toBe(1);
   });
 
@@ -133,65 +133,62 @@ describe('applyParamsToUniforms', () => {
   });
 });
 
-describe('platform uniforms (PLAT-03)', () => {
-  it('SDF_PARAM_REGISTRY contains uPlatformType entry with float type', () => {
-    const platformType = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformType');
-    expect(platformType).toBeDefined();
-    expect(platformType!.glslType).toBe('float');
-    expect(platformType!.defaultValue).toBe(0);
-    expect(platformType!.min).toBe(0);
-    expect(platformType!.max).toBe(4);
-    expect(platformType!.tsKey).toBe('bgPlatformType');
+describe('billboard uniforms (BIL-02)', () => {
+  it('SDF_PARAM_REGISTRY contains uBarrelK entry', () => {
+    const entry = SDF_PARAM_REGISTRY.find(e => e.name === 'uBarrelK');
+    expect(entry).toBeDefined();
+    expect(entry!.glslType).toBe('float');
+    expect(entry!.defaultValue).toBe(0.3);
+    expect(entry!.tsKey).toBe('bgBarrelK');
   });
 
-  it('SDF_PARAM_REGISTRY contains uPlatformZ entry with float type', () => {
-    const platformZ = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformZ');
-    expect(platformZ).toBeDefined();
-    expect(platformZ!.glslType).toBe('float');
-    expect(platformZ!.defaultValue).toBe(3.0);
-    expect(platformZ!.min).toBe(2);
-    expect(platformZ!.max).toBe(5);
-    expect(platformZ!.tsKey).toBe('bgPlatformZ');
+  it('SDF_PARAM_REGISTRY contains uPlatformHeight entry', () => {
+    const entry = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformHeight');
+    expect(entry).toBeDefined();
+    expect(entry!.glslType).toBe('float');
+    expect(entry!.defaultValue).toBe(0.12);
+    expect(entry!.tsKey).toBe('bgPlatformHeight');
   });
 
-  it('generateGlslUniforms() includes platform uniform declarations', () => {
+  it('SDF_PARAM_REGISTRY contains uPlatformFade entry', () => {
+    const entry = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformFade');
+    expect(entry).toBeDefined();
+    expect(entry!.glslType).toBe('float');
+    expect(entry!.defaultValue).toBe(0.03);
+    expect(entry!.tsKey).toBe('bgPlatformFade');
+  });
+
+  it('SDF_PARAM_REGISTRY contains uPlatformTexWidth entry', () => {
+    const entry = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformTexWidth');
+    expect(entry).toBeDefined();
+    expect(entry!.glslType).toBe('float');
+    expect(entry!.defaultValue).toBe(2048.0);
+    expect(entry!.tsKey).toBe('bgPlatformTexWidth');
+  });
+
+  it('generateGlslUniforms() includes billboard uniform declarations', () => {
     const result = generateGlslUniforms();
-    expect(result).toContain('uniform float uPlatformType;');
-    expect(result).toContain('uniform float uPlatformZ;');
+    expect(result).toContain('uniform float uBarrelK;');
+    expect(result).toContain('uniform float uPlatformHeight;');
+    expect(result).toContain('uniform float uPlatformFade;');
+    expect(result).toContain('uniform float uPlatformTexWidth;');
   });
 
-  it('createUniforms() creates platform uniforms with correct defaults', () => {
+  it('createUniforms() creates billboard uniforms with correct defaults', () => {
     const uniforms = createUniforms();
-    expect(uniforms.uPlatformType.value).toBe(0);
-    expect(uniforms.uPlatformZ.value).toBe(3.0);
+    expect(uniforms.uBarrelK.value).toBe(0.3);
+    expect(uniforms.uPlatformHeight.value).toBe(0.12);
+    expect(uniforms.uPlatformFade.value).toBe(0.03);
+    expect(uniforms.uPlatformTexWidth.value).toBe(2048.0);
   });
 
-  it('applyParamsToUniforms() writes bgPlatformType and bgPlatformZ as floats', () => {
-    const uniforms = createUniforms();
-    const params = { ...THEME_DEFAULT, bgPlatformType: 2, bgPlatformZ: 4.0 };
-    applyParamsToUniforms(uniforms, params);
-    expect(uniforms.uPlatformType.value).toBe(2);
-    expect(uniforms.uPlatformZ.value).toBe(4.0);
-  });
-
-  it('all platform tsKey values exist in THEME_DEFAULT', () => {
-    const platformEntries = SDF_PARAM_REGISTRY.filter(e =>
-      e.name === 'uPlatformType' || e.name === 'uPlatformZ'
-    );
-    for (const entry of platformEntries) {
-      expect(entry.tsKey in THEME_DEFAULT).toBe(true);
-    }
-  });
-
-  it('platform tsKey values exist in all 4 theme presets', () => {
+  it('billboard tsKey values exist in all 4 theme presets', () => {
     const presets = [THEME_DEFAULT, THEME_SAKURA, THEME_CYBERPUNK, THEME_INK];
     for (const preset of presets) {
-      expect(typeof preset.bgPlatformType).toBe('number');
-      expect(typeof preset.bgPlatformZ).toBe('number');
-      expect(preset.bgPlatformType).toBeGreaterThanOrEqual(0);
-      expect(preset.bgPlatformType).toBeLessThanOrEqual(4);
-      expect(preset.bgPlatformZ).toBeGreaterThanOrEqual(2);
-      expect(preset.bgPlatformZ).toBeLessThanOrEqual(5);
+      expect(typeof preset.bgBarrelK).toBe('number');
+      expect(typeof preset.bgPlatformHeight).toBe('number');
+      expect(typeof preset.bgPlatformFade).toBe('number');
+      expect(typeof preset.bgPlatformTexWidth).toBe('number');
     }
   });
 });
