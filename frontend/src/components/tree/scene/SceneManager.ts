@@ -169,34 +169,6 @@ export class SceneManager {
     this.themeTransition.startTransition(newStyle);
   }
 
-  /** Debug: set platform type directly (0=cliff, 1=viewing-deck, 2=rooftop, 3=temple-base, 4=megalith). */
-  setPlatformType(type: number): void {
-    if (this.backgroundRenderer) {
-      this.backgroundRenderer.setPlatformType(type);
-    }
-  }
-
-  /** Debug: set platform Z distance directly (2-5). */
-  setPlatformZ(z: number): void {
-    if (this.backgroundRenderer) {
-      this.backgroundRenderer.setPlatformZ(z);
-    }
-  }
-
-  getCurrentPlatformType(): number {
-    if (this.backgroundRenderer) {
-      return this.backgroundRenderer.getMaterial().uniforms.uPlatformType!.value as number;
-    }
-    return 0;
-  }
-
-  getCurrentPlatformZ(): number {
-    if (this.backgroundRenderer) {
-      return this.backgroundRenderer.getMaterial().uniforms.uPlatformZ!.value as number;
-    }
-    return 3.0;
-  }
-
   setUserId(id: string) {
     this.userId = id;
   }
