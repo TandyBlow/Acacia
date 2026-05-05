@@ -130,3 +130,40 @@ describe('BackgroundRenderer - Mouse Parallax (CAM-05)', () => {
     expect(mesh.frustumCulled).toBe(false);
   });
 });
+
+describe('BackgroundRenderer - Billboard Uniforms (BIL-07)', () => {
+  let renderer: BackgroundRenderer;
+
+  beforeEach(() => {
+    renderer = new BackgroundRenderer(0, 0);
+  });
+
+  it('uPlatformTexture uniform exists', () => {
+    const mat = renderer.getMaterial();
+    expect(mat.uniforms.uPlatformTexture).toBeDefined();
+  });
+
+  it('uBarrelK uniform exists with default 0.3', () => {
+    const mat = renderer.getMaterial();
+    expect(mat.uniforms.uBarrelK).toBeDefined();
+    expect(mat.uniforms.uBarrelK.value).toBe(0.3);
+  });
+
+  it('uPlatformHeight uniform exists with default 0.12', () => {
+    const mat = renderer.getMaterial();
+    expect(mat.uniforms.uPlatformHeight).toBeDefined();
+    expect(mat.uniforms.uPlatformHeight.value).toBe(0.12);
+  });
+
+  it('uPlatformFade uniform exists with default 0.03', () => {
+    const mat = renderer.getMaterial();
+    expect(mat.uniforms.uPlatformFade).toBeDefined();
+    expect(mat.uniforms.uPlatformFade.value).toBe(0.03);
+  });
+
+  it('uPlatformTexWidth uniform exists with default 2048', () => {
+    const mat = renderer.getMaterial();
+    expect(mat.uniforms.uPlatformTexWidth).toBeDefined();
+    expect(mat.uniforms.uPlatformTexWidth.value).toBe(2048.0);
+  });
+});
