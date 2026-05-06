@@ -183,7 +183,9 @@ void main() {
     if (uvX >= 0.0 && uvX <= 1.0) {
       float uvY = distortedUV.y / uPlatformHeight;
       vec4 platformSample = texture2D(uPlatformTexture, vec2(uvX, uvY));
-      float edgeFade = smoothstep(0.0, uPlatformFade, distortedUV.y);
+      // Fade from top edge of billboard region (not from bottom)
+      float distFromTop = uPlatformHeight - distortedUV.y;
+      float edgeFade = smoothstep(0.0, uPlatformFade, distFromTop);
       col = mix(col, platformSample.rgb, platformSample.a * edgeFade);
     }
   }
