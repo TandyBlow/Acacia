@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -18,6 +18,12 @@ from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
 from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
+from file_parser import parse_file, get_file_info
+from file_knowledge_service import (
+    extract_knowledge_points,
+    start_conversation,
+    process_conversation_turn,
+)
 from quiz_service_sqlite import (
     compute_adaptive_difficulty,
     generate_batch_questions_sqlite,
@@ -497,6 +503,174 @@ def analyze_node_endpoint(node_id: str, user: dict = Depends(get_current_user)):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/upload-file")
+async def upload_file_endpoint(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Upload a file for knowledge point extraction.
+    Supports: .txt, .md, .pdf (max 10MB)
+    """
+    owner_id = user["sub"]
+
+    # Validate file size (10MB limit)
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    file_content = await file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="文件大小超过10MB限制"
+        )
+
+    # Validate file extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ['.txt', '.md', '.pdf']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件类型：{file_ext}。支持的类型：.txt, .md, .pdf"
+        )
+
+    # Create upload directory
+    upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # Generate unique file ID and save file
+    file_id = str(uuid4())
+    file_path = os.path.join(upload_dir, f"{file_id}{file_ext}")
+
+    with open(file_path, 'wb') as f:
+        f.write(file_content)
+
+    # Parse file to extract text content
+    try:
+        text_content = parse_file(file_path)
+        file_info = get_file_info(file_path)
+
+        return {
+            "file_id": file_id,
+            "filename": file.filename,
+            "size": file_info["size"],
+            "extension": file_info["extension"],
+            "text_length": len(text_content),
+            "text_preview": text_content[:200] + "..." if len(text_content) > 200 else text_content
+        }
+    except Exception as e:
+        # Clean up file on error
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"文件解析失败：{str(e)}"
+        )
+
+
+class ExtractKnowledgeRequest(BaseModel):
+    file_id: str
+
+
+@app.post("/extract-knowledge-points")
+def extract_knowledge_points_endpoint(
+    request: ExtractKnowledgeRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Extract knowledge points from uploaded file.
+    Returns structured knowledge points grouped by topic.
+    """
+    owner_id = user["sub"]
+
+    try:
+        result = extract_knowledge_points(request.file_id, owner_id)
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"知识点提取失败：{str(e)}"
+        )
+
+
+class StartConversationRequest(BaseModel):
+    node_id: str
+    file_id: str
+    knowledge_points: list[dict]
+
+
+class ConversationTurnRequest(BaseModel):
+    session_id: str
+    user_answer: str
+    skip: bool = False
+
+
+@app.post("/start-conversation")
+def start_conversation_endpoint(
+    request: StartConversationRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Start a new conversation session for knowledge point learning.
+    Returns session_id and first question.
+    """
+    owner_id = user["sub"]
+
+    try:
+        result = start_conversation(
+            request.node_id,
+            owner_id,
+            request.file_id,
+            request.knowledge_points
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"启动对话失败：{str(e)}"
+        )
+
+
+@app.post("/conversation-turn")
+def conversation_turn_endpoint(
+    request: ConversationTurnRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Process one conversation turn: user answer -> AI evaluation -> next action.
+    Returns AI response, generated content (if any), and progress info.
+    """
+    try:
+        result = process_conversation_turn(
+            request.session_id,
+            request.user_answer,
+            request.skip
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"对话处理失败：{str(e)}"
+        )
 
 
 # --- Quiz ---
