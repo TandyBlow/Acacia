@@ -29,23 +29,21 @@ export class BackgroundRenderer {
     // CAM-03: Use SdfParamRegistry to create all registered uniforms
     const registryUniforms = createUniforms();
 
-    // Create a simple test texture (red-green gradient) to verify texture sampling works
-    const size = 256;
-    const data = new Uint8Array(size * size * 4);
-    for (let i = 0; i < size; i++) {
-      for (let j = 0; j < size; j++) {
-        const idx = (i * size + j) * 4;
-        data[idx] = (i / size) * 255;
-        data[idx + 1] = (j / size) * 255;
-        data[idx + 2] = 128;
-        data[idx + 3] = 255;
-      }
+    // Load billboard platform texture (async, falls back to 1x1 transparent pixel)
+    const platformTexture = new THREE.Texture();
+    if (typeof document !== 'undefined') {
+      const loader = new THREE.TextureLoader();
+      loader.load('/platform-billboard.png', (tex) => {
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        this.material.uniforms.uPlatformTexture!.value = tex;
+        this.material.needsUpdate = true;
+      }, undefined, (err) => {
+        console.warn('[BackgroundRenderer] Failed to load platform-billboard.png:', err);
+      });
     }
-    const testTexture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-    testTexture.wrapS = THREE.RepeatWrapping;
-    testTexture.wrapT = THREE.RepeatWrapping;
-    testTexture.needsUpdate = true;
-    console.log('✓ Test texture created (RGBA):', size, 'x', size);
 
     this.material = new THREE.ShaderMaterial({
       vertexShader: backgroundVertexShader,
@@ -58,28 +56,11 @@ export class BackgroundRenderer {
         uStyleType: { value: styleType },
         uResolution: { value: new THREE.Vector2(1024, 1024) },
         uMouseUV: { value: new THREE.Vector2(0.5, 0.5) },
-        uPlatformTexture: { value: testTexture },
+        uPlatformTexture: { value: platformTexture },
       },
       depthWrite: false,
       depthTest: false,
     });
-
-    // Check for shader compilation errors
-    this.material.onBeforeCompile = (shader) => {
-      console.log('[Shader] Compiling background shader...');
-    };
-
-    // Listen for WebGL errors
-    const checkShaderError = () => {
-      if (this.material.program) {
-        const gl = this.material.program.gl;
-        const error = gl.getError();
-        if (error !== gl.NO_ERROR) {
-          console.error('[Shader] WebGL error:', error);
-        }
-      }
-    };
-    setTimeout(checkShaderError, 1000);
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.name = 'background';

@@ -161,9 +161,9 @@ describe('BackgroundRenderer - Billboard Uniforms (BIL-07)', () => {
     expect(mat.uniforms.uPlatformFade.value).toBe(0.03);
   });
 
-  it('uPlatformTexWidth uniform exists with default 2048', () => {
+  it('uPlatformTexWidth uniform exists with default 1536', () => {
     const mat = renderer.getMaterial();
     expect(mat.uniforms.uPlatformTexWidth).toBeDefined();
-    expect(mat.uniforms.uPlatformTexWidth.value).toBe(2048.0);
+    expect(mat.uniforms.uPlatformTexWidth.value).toBe(1536.0);
   });
 });
