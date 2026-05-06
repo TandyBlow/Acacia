@@ -35,6 +35,7 @@ export class DebugGUI {
     this.buildLeafFolder();
     this.buildLightFolder();
     this.buildThemeFolder();
+    // Billboard folder removed (using 2D background now)
   }
 
   private applySim() {

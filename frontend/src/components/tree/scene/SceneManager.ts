@@ -11,7 +11,7 @@ import type { GrowthMetrics } from '../../../types/tree';
 type EzTreeOptions = EzTree['options'];
 import type { StatsNode } from '../../../composables/useStats';
 // import { ground2dVertexShader, ground2dFragmentShader } from '../shaders/ground2d';
-import { BackgroundRenderer } from './BackgroundRenderer';
+import { BackgroundPlane } from './BackgroundPlane';
 import { crownVertexShader, crownFragmentShader } from '../shaders/crown';
 import { outlineVertexShader, outlineFragmentShader } from '../shaders/outline';
 // import { particleVertexShader, particleFragmentShader } from '../shaders/particle';
@@ -42,7 +42,7 @@ export class SceneManager {
   private outlineGroup!: THREE.Group;
   // private groundMesh: THREE.Mesh | null = null;
   // private groundMaterial: THREE.ShaderMaterial | null = null;
-  private backgroundRenderer: BackgroundRenderer | null = null;
+  private backgroundPlane: BackgroundPlane | null = null;
 
   private mainLight!: THREE.DirectionalLight;
   private ambientLight!: THREE.AmbientLight;
@@ -85,6 +85,19 @@ export class SceneManager {
   // Context loss
   private contextLost = false;
 
+  // Mouse parallax (disabled for 2D background)
+  // private mouseUV = { x: 0.5, y: 0.5 };
+
+  // private onMouseMove = (event: MouseEvent): void => {
+  //   if (!this.backgroundRenderer) return;
+  //   const el = this.container;
+  //   const rect = el.getBoundingClientRect();
+  //   const x = (event.clientX - rect.left) / rect.width;
+  //   const y = 1.0 - (event.clientY - rect.top) / rect.height;
+  //   this.mouseUV = { x, y };
+  //   this.backgroundRenderer.updateMouseUV(this.mouseUV);
+  // };
+
   // Particle system (disabled)
   // private particleMesh: THREE.Mesh | null = null;
   // private particleMaterial: THREE.ShaderMaterial | null = null;
@@ -117,7 +130,7 @@ export class SceneManager {
 
     this.scene = new THREE.Scene();
 
-    this.createBackground();
+    this.createBackground(); // 占位，实际在setupCameraAndRenderer后初始化
     this.createLights();
 
     this.treeGroup = new THREE.Group();
@@ -142,6 +155,9 @@ export class SceneManager {
     // this.createParticleMesh();
     this.setupCameraAndRenderer();
 
+    // 在相机创建后初始化背景
+    this.initBackground();
+
     this.renderer.domElement.addEventListener('click', this.onCanvasClick);
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
@@ -154,6 +170,13 @@ export class SceneManager {
     if (newStyle === this.currentStyle && !this.themeTransition.isRunning) return;
     this.currentStyle = newStyle;
     this.themeTransition.startTransition(newStyle);
+
+    // 切换背景图
+    if (this.backgroundPlane) {
+      const backgroundPath = `/backgrounds/${newStyle}.png`;
+      this.backgroundPlane.updateTexture(backgroundPath);
+      console.log('[SceneManager] 切换背景图:', backgroundPath);
+    }
   }
 
   setUserId(id: string) {
@@ -204,9 +227,9 @@ export class SceneManager {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
 
-    // Update background resolution
-    if (this.backgroundRenderer) {
-      this.backgroundRenderer.updateSize(w, h);
+    // 更新背景尺寸以适配新的相机视口
+    if (this.backgroundPlane) {
+      this.backgroundPlane.updateSize();
     }
 
     // this.updateGroundLineY();
@@ -499,6 +522,11 @@ export class SceneManager {
       this.treeCenter.z + 10,
     );
     this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
+
+    // 更新背景位置以跟随相机
+    if (this.backgroundPlane) {
+      this.backgroundPlane.updateSize();
+    }
   }
 
   private computeOrthoFrustum(w: number, h: number) {
@@ -518,29 +546,20 @@ export class SceneManager {
     return { left: -frustumHalfW, right: frustumHalfW, top: frustumHalfH, bottom: -frustumHalfH };
   }
 
-  // --- Private: Background (raymarched SDF) ---
+  // --- Private: Background ---
 
   private createBackground() {
-    const seed = this.hashUserIdToSeed();
-    const styleType = BackgroundRenderer.styleToType(this.currentStyle);
-    this.backgroundRenderer = new BackgroundRenderer(styleType, seed);
-
-    const bgParams = BackgroundRenderer.paramsFromTheme(
-      this.currentParams, styleType, seed,
-    );
-    this.backgroundRenderer.update(bgParams);
-
-    this.scene.add(this.backgroundRenderer.getMesh());
+    // 注意：需要先创建相机才能创建背景
+    // 所以这个方法会在 setupCameraAndRenderer 之后被调用
   }
 
-  private hashUserIdToSeed(): number {
-    if (!this.userId) return Math.random() * 1000.0;
-    let h = 0;
-    for (let i = 0; i < this.userId.length; i++) {
-      h = ((h << 5) - h) + this.userId.charCodeAt(i);
-      h |= 0;
-    }
-    return Math.abs(h % 100000) / 100000.0;
+  private initBackground() {
+    // 使用新的2D背景图系统
+    const backgroundPath = `/backgrounds/${this.currentStyle}.png`;
+    this.backgroundPlane = new BackgroundPlane(backgroundPath, this.camera);
+    this.scene.add(this.backgroundPlane.getMesh());
+
+    console.log('[SceneManager] 使用2D背景图:', backgroundPath);
   }
 
   // --- Private: Ground (disabled) ---
@@ -720,14 +739,9 @@ export class SceneManager {
     );
     this.refitCamera();
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(containerW, containerH);
     this.renderer.setPixelRatio(window.devicePixelRatio);
-
-    // Set initial background resolution
-    if (this.backgroundRenderer) {
-      this.backgroundRenderer.updateSize(containerW, containerH);
-    }
 
     this.container.appendChild(this.renderer.domElement);
   }
@@ -769,13 +783,7 @@ export class SceneManager {
     //   this.groundMaterial.uniforms.uUndulation!.value = params.groundUndulation;
     // }
 
-    // Update background (raymarched SDF)
-    if (this.backgroundRenderer) {
-      const seed = this.hashUserIdToSeed();
-      const styleType = BackgroundRenderer.styleToType(this.currentStyle);
-      const bgParams = BackgroundRenderer.paramsFromTheme(params, styleType, seed);
-      this.backgroundRenderer.update(bgParams);
-    }
+    // Background is now 2D image, no params to update
 
     // Update lights
     if (this.mainLight) {
@@ -823,10 +831,7 @@ export class SceneManager {
       this.applyStyleParams(transitionParams);
     }
 
-    // Update background time uniform
-    if (this.backgroundRenderer) {
-      this.backgroundRenderer.updateTime(this.elapsedTime);
-    }
+    // Background is now 2D image, no time uniform to update
 
     // Wind sway + time update for custom leaf shader
     if (this.ezTree?.leavesMesh.material instanceof THREE.ShaderMaterial) {
@@ -990,9 +995,9 @@ export class SceneManager {
     // }
 
     // Dispose background
-    if (this.backgroundRenderer) {
-      this.backgroundRenderer.dispose();
-      this.backgroundRenderer = null;
+    if (this.backgroundPlane) {
+      this.backgroundPlane.dispose();
+      this.backgroundPlane = null;
     }
 
     if (this.renderer) {

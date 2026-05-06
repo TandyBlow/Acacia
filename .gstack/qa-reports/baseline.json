@@ -1,0 +1,23 @@
+{
+  "date": "2026-04-29",
+  "branch": "phase/01-sdf-background-completion",
+  "healthScore": 95,
+  "healthScoreNote": "Estimated — visual verification pending (no browser automation available)",
+  "issues": [
+    { "id": "ISSUE-001", "title": "fbm() called with vec3 argument in sdSmallRock", "severity": "critical", "category": "functional", "status": "verified", "commit": "adc0c46" },
+    { "id": "ISSUE-005", "title": "GLSL hash seed ranges overlap within map functions", "severity": "low", "category": "visual", "status": "deferred" },
+    { "id": "ISSUE-006", "title": "#define directives inside main() function body", "severity": "low", "category": "content", "status": "deferred" }
+  ],
+  "categoryScores": {
+    "console": null,
+    "links": null,
+    "visual": null,
+    "functional": 85,
+    "ux": null,
+    "performance": 100,
+    "content": null,
+    "accessibility": null
+  },
+  "tests": { "files": 10, "passed": 87, "failed": 0 },
+  "build": { "frontend": "success", "duration_s": 2.31 }
+}
