@@ -1,6 +1,8 @@
 <template>
   <div class="editor-shell">
+    <FileGenerateButton />
     <EditorContent :editor="editor" class="editor-input" spellcheck="false" />
+    <FileGenerateDialog />
   </div>
 </template>
 
@@ -8,6 +10,9 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
+import FileGenerateButton from '../ai/FileGenerateButton.vue';
+import FileGenerateDialog from '../ai/FileGenerateDialog.vue';
+import { useFileGenerate } from '../../composables/useFileGenerate';
 import type { Editor, JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -27,6 +32,7 @@ const PROSEMIRROR_SLICE_MIME = 'application/x-prosemirror-slice';
 const store = useNodeStore();
 const { activeNode } = storeToRefs(store);
 const lowlight = createLowlight(all);
+const { setEditor } = useFileGenerate();
 
 const draft = ref('');
 const lastSavedContent = ref('');
@@ -300,6 +306,9 @@ watch(
     const content = activeNode.value?.content ?? '';
     lastSavedContent.value = content;
     draft.value = content;
+
+    // Set editor instance for file generate feature
+    setEditor(editor.value);
 
     if (activeNode.value && editor.value) {
       syncEditorContent(content);
