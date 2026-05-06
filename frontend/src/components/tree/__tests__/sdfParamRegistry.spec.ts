@@ -162,7 +162,7 @@ describe('billboard uniforms (BIL-02)', () => {
     const entry = SDF_PARAM_REGISTRY.find(e => e.name === 'uPlatformTexWidth');
     expect(entry).toBeDefined();
     expect(entry!.glslType).toBe('float');
-    expect(entry!.defaultValue).toBe(2048.0);
+    expect(entry!.defaultValue).toBe(1536.0);
     expect(entry!.tsKey).toBe('bgPlatformTexWidth');
   });
 
@@ -179,7 +179,7 @@ describe('billboard uniforms (BIL-02)', () => {
     expect(uniforms.uBarrelK.value).toBe(0.3);
     expect(uniforms.uPlatformHeight.value).toBe(0.12);
     expect(uniforms.uPlatformFade.value).toBe(0.03);
-    expect(uniforms.uPlatformTexWidth.value).toBe(2048.0);
+    expect(uniforms.uPlatformTexWidth.value).toBe(1536.0);
   });
 
   it('billboard tsKey values exist in all 4 theme presets', () => {

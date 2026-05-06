@@ -216,7 +216,7 @@ export const SDF_PARAM_REGISTRY: SdfParamEntry[] = [
     name: 'uPlatformTexWidth',
     glslType: 'float',
     tsKey: 'bgPlatformTexWidth',
-    defaultValue: 2048.0,
+    defaultValue: 1536.0,
     category: 'geometry',
     uiLabel: 'Billboard纹理宽度',
   },
