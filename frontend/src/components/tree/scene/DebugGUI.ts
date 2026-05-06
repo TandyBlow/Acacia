@@ -13,6 +13,7 @@ interface SceneManagerDebugAPI {
   switchTheme: (style: string) => void;
   simulateUserData: (nodeCount: number, maxDepth: number, growthMultiplier: number) => void;
   reloadRealUserData: () => void;
+  setBillboardUniform: (name: string, value: number) => void;
 }
 
 const THEME_STYLES = ['default', 'sakura', 'cyberpunk', 'ink'] as const;
@@ -25,6 +26,7 @@ export class DebugGUI {
   private texObj = { texture: 0 };
   private themeObj = { style: 'default' };
   private simObj = { nodeCount: 50, maxDepth: 4, growth: 0.8 };
+  private billboardObj = { barrelK: 0.3, height: 0.12, fade: 0.03 };
 
   constructor(sceneManager: SceneManagerDebugAPI) {
     this.sm = sceneManager;
@@ -35,6 +37,7 @@ export class DebugGUI {
     this.buildLeafFolder();
     this.buildLightFolder();
     this.buildThemeFolder();
+    this.buildBillboardFolder();
   }
 
   private applySim() {
@@ -102,6 +105,19 @@ export class DebugGUI {
     for (const s of THEME_STYLES) options[s] = s;
     f.add(this.themeObj, 'style', options).name('主题').onChange((v: string) => {
       this.sm.switchTheme(v);
+    });
+  }
+
+  private buildBillboardFolder() {
+    const f = this.gui.addFolder('Billboard');
+    f.add(this.billboardObj, 'barrelK', 0.0, 1.0, 0.05).name('弧度 (BarrelK)').onChange((v: number) => {
+      this.sm.setBillboardUniform('uBarrelK', v);
+    });
+    f.add(this.billboardObj, 'height', 0.05, 0.3, 0.01).name('高度 (Height)').onChange((v: number) => {
+      this.sm.setBillboardUniform('uPlatformHeight', v);
+    });
+    f.add(this.billboardObj, 'fade', 0.005, 0.1, 0.005).name('渐隐 (Fade)').onChange((v: number) => {
+      this.sm.setBillboardUniform('uPlatformFade', v);
     });
   }
 

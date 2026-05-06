@@ -309,6 +309,15 @@ export class SceneManager {
     this.applyOverrides(this.lastUserOverrides);
   }
 
+  /** Debug-only: set a billboard shader uniform in real-time. */
+  setBillboardUniform(name: string, value: number) {
+    if (!this.backgroundRenderer) return;
+    const mat = this.backgroundRenderer.getMaterial();
+    if (mat.uniforms[name]) {
+      mat.uniforms[name].value = value;
+    }
+  }
+
   // --- Private: Tree generation ---
 
   /**

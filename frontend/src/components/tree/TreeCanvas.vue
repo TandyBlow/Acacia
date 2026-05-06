@@ -84,6 +84,7 @@ async function loadTree() {
         switchTheme: (style) => manager!.switchTheme(style as ThemeStyle),
         simulateUserData: (n, d, g) => manager!.simulateUserData(n, d, g),
         reloadRealUserData: () => manager!.reloadRealUserData(),
+        setBillboardUniform: (name, value) => manager!.setBillboardUniform(name, value),
       });
     }
 
