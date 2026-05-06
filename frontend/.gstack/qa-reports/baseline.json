@@ -1,0 +1,25 @@
+{
+  "date": "2026-04-28",
+  "url": "http://localhost:5173",
+  "branch": "phase/01-sdf-background-completion",
+  "healthScore": 88,
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "title": "Production build broken: TS2532 in SdfParamRegistry.ts",
+      "severity": "high",
+      "category": "functional",
+      "status": "fixed",
+      "commit": "b89229b"
+    }
+  ],
+  "categoryScores": {
+    "console": 100,
+    "links": 100,
+    "functional": 90,
+    "ux": 100,
+    "performance": 100,
+    "content": 100,
+    "accessibility": 100
+  }
+}
