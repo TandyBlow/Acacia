@@ -29,22 +29,10 @@ export class BackgroundRenderer {
     // CAM-03: Use SdfParamRegistry to create all registered uniforms
     const registryUniforms = createUniforms();
 
-    // Load billboard platform texture (async, falls back to 1x1 transparent pixel)
+    // Create placeholder texture for billboard platform
     const platformTexture = new THREE.Texture();
-    if (typeof document !== 'undefined') {
-      const loader = new THREE.TextureLoader();
-      loader.load('/platform-billboard.png', (tex) => {
-        tex.wrapS = THREE.ClampToEdgeWrapping;
-        tex.wrapT = THREE.ClampToEdgeWrapping;
-        tex.minFilter = THREE.LinearFilter;
-        tex.magFilter = THREE.LinearFilter;
-        this.material.uniforms.uPlatformTexture!.value = tex;
-        this.material.needsUpdate = true;
-      }, undefined, (err) => {
-        console.warn('[BackgroundRenderer] Failed to load platform-billboard.png:', err);
-      });
-    }
 
+    // Create material first so the texture load callback can reference it
     this.material = new THREE.ShaderMaterial({
       vertexShader: backgroundVertexShader,
       fragmentShader: backgroundFragmentShader,
@@ -61,6 +49,22 @@ export class BackgroundRenderer {
       depthWrite: false,
       depthTest: false,
     });
+
+    // Load billboard platform texture (async, updates uniform when ready)
+    if (typeof document !== 'undefined') {
+      const loader = new THREE.TextureLoader();
+      loader.load('/platform-billboard.png', (tex) => {
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        console.log('[BackgroundRenderer] Billboard texture loaded:', tex.image?.width, 'x', tex.image?.height);
+        this.material.uniforms.uPlatformTexture!.value = tex;
+        this.material.uniformsNeedUpdate = true;
+      }, undefined, (err) => {
+        console.warn('[BackgroundRenderer] Failed to load platform-billboard.png:', err);
+      });
+    }
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.name = 'background';
