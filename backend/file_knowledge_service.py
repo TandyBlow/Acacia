@@ -112,7 +112,7 @@ def call_deepseek(messages: List[Dict[str, str]]) -> str:
         "temperature": 0.7,
     }
 
-    with httpx.Client(timeout=30) as client:
+    with httpx.Client(timeout=60.0) as client:
         resp = client.post(f"{DEEPSEEK_BASE_URL}/v1/chat/completions", headers=headers, json=payload)
         resp.raise_for_status()
 
