@@ -5,6 +5,8 @@ Uses DeepSeek API for AI-powered knowledge extraction and dialogue.
 import json
 import os
 import re
+import glob
+import time
 from typing import List, Dict, Any
 from uuid import uuid4
 
@@ -13,7 +15,7 @@ import httpx
 from file_parser import parse_file
 
 # DeepSeek API configuration
-DEEPSEEK_API_KEY = "sk-fe13ac5f49fa4b9dae15fb4937387203"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-fe13ac5f49fa4b9dae15fb4937387203")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
 
@@ -145,7 +147,6 @@ def extract_knowledge_points(file_id: str, owner_id: str) -> Dict[str, Any]:
     file_path = f"/tmp/acacia_uploads/{owner_id}/{file_id}"
 
     # Find file with any extension
-    import glob
     matching_files = glob.glob(f"{file_path}.*")
     if not matching_files:
         raise FileNotFoundError(f"File not found: {file_id}")
@@ -332,8 +333,8 @@ def create_conversation_session(
         "messages": [],
         "generated_content": "",
         "status": "active",
-        "created_at": __import__('time').time(),
-        "last_activity_at": __import__('time').time(),
+        "created_at": time.time(),
+        "last_activity_at": time.time(),
         "follow_up_count": 0,
     }
 
@@ -347,7 +348,7 @@ def get_conversation_session(session_id: str) -> Dict[str, Any]:
         raise ValueError(f"Session not found: {session_id}")
 
     # Update last activity
-    session["last_activity_at"] = __import__('time').time()
+    session["last_activity_at"] = time.time()
     return session
 
 
@@ -383,7 +384,7 @@ def start_conversation(
     session["messages"].append({
         "role": "ai",
         "content": question_data["question"],
-        "timestamp": __import__('time').time(),
+        "timestamp": time.time(),
         "metadata": {
             "kp_id": current_kp["id"],
             "hints": question_data.get("hints", [])
@@ -429,7 +430,7 @@ def process_conversation_turn(
     session["messages"].append({
         "role": "user",
         "content": user_answer,
-        "timestamp": __import__('time').time(),
+        "timestamp": time.time(),
     })
 
     # Handle skip
@@ -458,7 +459,7 @@ def process_conversation_turn(
         session["messages"].append({
             "role": "ai",
             "content": question_data["question"],
-            "timestamp": __import__('time').time(),
+            "timestamp": time.time(),
             "metadata": {
                 "kp_id": next_kp["id"],
                 "hints": question_data.get("hints", [])
@@ -498,7 +499,7 @@ def process_conversation_turn(
     session["messages"].append({
         "role": "ai",
         "content": ai_message,
-        "timestamp": __import__('time').time(),
+        "timestamp": time.time(),
         "metadata": {
             "action": action,
             "reason": evaluation.get("reason", "")
@@ -554,7 +555,7 @@ def process_conversation_turn(
         session["messages"].append({
             "role": "ai",
             "content": question_data["question"],
-            "timestamp": __import__('time').time(),
+            "timestamp": time.time(),
             "metadata": {
                 "kp_id": next_kp["id"],
                 "hints": question_data.get("hints", [])
@@ -612,7 +613,6 @@ def process_conversation_turn(
 
 def cleanup_old_sessions(max_age_seconds: int = 1800):
     """Clean up sessions older than max_age_seconds (default 30 minutes)."""
-    import time
     current_time = time.time()
     to_delete = []
 
