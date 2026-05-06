@@ -85,6 +85,10 @@ async function loadTree() {
         simulateUserData: (n, d, g) => manager!.simulateUserData(n, d, g),
         reloadRealUserData: () => manager!.reloadRealUserData(),
       });
+
+      // Expose manager to window for debugging
+      (window as any).__SCENE_MANAGER__ = manager;
+      console.log('[TreeCanvas] SceneManager exposed to window.__SCENE_MANAGER__');
     }
 
     // Set up resize observer

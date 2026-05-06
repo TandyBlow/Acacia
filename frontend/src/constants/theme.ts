@@ -52,6 +52,24 @@ export interface TreeStyleParams {
   // --- Outline ---
   outlineColor: [number, number, number];
   outlineWidth: number;
+
+  // --- Background (SDF raymarch) ---
+  bgCamY: number;
+  bgCamPitch: number;
+  bgCamZ: number;
+  bgFovZoom: number;
+  bgGroundY: number;
+  bgHillFreq: number;
+  bgHillAmp: number;
+  bgHillDepth: number;
+  bgBldgDepth: number;
+  bgBuildingDensity: number;
+  bgBuildingHeight: number;
+  bgFogDistance: number;
+  bgBarrelK: number;
+  bgPlatformHeight: number;
+  bgPlatformFade: number;
+  bgPlatformTexWidth: number;
 }
 
 export const THEME_DEFAULT: TreeStyleParams = {
@@ -97,6 +115,23 @@ export const THEME_DEFAULT: TreeStyleParams = {
 
   outlineColor: [0.17, 0.10, 0.05],
   outlineWidth: 0.3,
+
+  bgCamY: 2.8,
+  bgCamPitch: -0.20,
+  bgCamZ: -5.0,
+  bgFovZoom: 2.0,
+  bgGroundY: -2.0, // Dialed back from -3.5 (invisible) to find the halfway point
+  bgHillFreq: 0.3,
+  bgHillAmp: 5.0,
+  bgHillDepth: 40.0,
+  bgBldgDepth: 40.0,
+  bgBuildingDensity: 0.5,
+  bgBuildingHeight: 4.0,
+  bgFogDistance: 60.0,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 1536.0,
 };
 
 export const THEME_SAKURA: TreeStyleParams = {
@@ -142,6 +177,23 @@ export const THEME_SAKURA: TreeStyleParams = {
 
   outlineColor: [0.20, 0.12, 0.10],
   outlineWidth: 0.25,
+
+  bgCamY: 3.2,
+  bgCamPitch: -0.18,
+  bgCamZ: -5.5,
+  bgFovZoom: 1.6,
+  bgGroundY: 0.4,
+  bgHillFreq: 0.25,
+  bgHillAmp: 4.0,
+  bgHillDepth: 45.0,
+  bgBldgDepth: 35.0,
+  bgBuildingDensity: 0.4,
+  bgBuildingHeight: 3.0,
+  bgFogDistance: 55.0,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 1536.0,
 };
 
 export const THEME_CYBERPUNK: TreeStyleParams = {
@@ -187,6 +239,23 @@ export const THEME_CYBERPUNK: TreeStyleParams = {
 
   outlineColor: [0.0, 0.3, 0.5],
   outlineWidth: 0.35,
+
+  bgCamY: 2.2,
+  bgCamPitch: -0.12,
+  bgCamZ: -7.0,
+  bgFovZoom: 2.0,
+  bgGroundY: 0.6,
+  bgHillFreq: 0.4,
+  bgHillAmp: 3.0,
+  bgHillDepth: 30.0,
+  bgBldgDepth: 60.0,
+  bgBuildingDensity: 0.8,
+  bgBuildingHeight: 12.0,
+  bgFogDistance: 40.0,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 1536.0,
 };
 
 export const THEME_INK: TreeStyleParams = {
@@ -232,6 +301,23 @@ export const THEME_INK: TreeStyleParams = {
 
   outlineColor: [0.10, 0.08, 0.06],
   outlineWidth: 0.4,
+
+  bgCamY: 3.5,
+  bgCamPitch: -0.2,
+  bgCamZ: -8.0,
+  bgFovZoom: 2.2,
+  bgGroundY: 0.3,
+  bgHillFreq: 0.15,
+  bgHillAmp: 8.0,
+  bgHillDepth: 60.0,
+  bgBldgDepth: 30.0,
+  bgBuildingDensity: 0.2,
+  bgBuildingHeight: 2.0,
+  bgFogDistance: 80.0,
+  bgBarrelK: 0.3,
+  bgPlatformHeight: 0.12,
+  bgPlatformFade: 0.03,
+  bgPlatformTexWidth: 1536.0,
 };
 
 export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {
@@ -239,4 +325,14 @@ export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {
   sakura: THEME_SAKURA,
   cyberpunk: THEME_CYBERPUNK,
   ink: THEME_INK,
+};
+
+/** Phase 2 default platform-type-to-vista-style mapping.
+ *  Matches ROADMAP success criterion #2.
+ *  Refined in Phase 3 StyleTemplate system. */
+export const STYLE_TO_PLATFORM_TYPE: Record<ThemeStyle, number> = {
+  default: 0,   // cliff
+  sakura: 3,    // temple-base
+  cyberpunk: 2, // rooftop
+  ink: 4,       // megalith
 };
