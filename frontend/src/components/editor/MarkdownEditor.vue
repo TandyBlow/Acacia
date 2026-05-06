@@ -308,7 +308,7 @@ watch(
     draft.value = content;
 
     // Set editor instance for file generate feature
-    setEditor(editor.value);
+    setEditor(editor.value || null);
 
     if (activeNode.value && editor.value) {
       syncEditorContent(content);
