@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useFileGenerate } from '../../composables/useFileGenerate';
