@@ -1,82 +1,116 @@
-# Roadmap: Acacia -- SDF 背景风格视觉引擎
+# Roadmap: Billboard Platform System
 
-**Created:** 2026-04-28
-**Granularity:** Fine (8 phases)
-**Total requirements:** 47 v1
-**Project context:** Brownfield -- existing Vue 3 + FastAPI hierarchical note-taking app. The SDF background system is a WIP with 4 prototype styles and basic raymarch pipeline already functional.
+**Created:** 2025-05-05
+**Phases:** 3 (coarse granularity)
+**Parallelization:** Phase 1 and 2 are sequential (2 depends on 1's cleanup); Phase 3 can partially overlap with Phase 2 (AI 图片生成可以提前做)
 
----
+## Phase 1: SDF Platform Removal + Dead Code Cleanup
 
-## Phase Overview
+**Goal:** 移除所有平台 SDF 代码和死代码，背景 vista 正常渲染无平台
+**Requirements:** CLN-01 ~ CLN-07
+**Verification:** `npm run dev` 启动后背景只显示 vista + sky，无平台，无 console error
 
-| # | Phase | Goal | REQ-IDs | Success Criteria |
-|---|-------|------|---------|------------------|
-| 1 | Camera System & Shader Foundation | SDF background renders from camera parameters flowing through the pipeline, with correct downward pitch, mouse-driven parallax, and modular shader files | CAM-01..05, ARCH-01 | 5 |
-| 2 | Foreground Platform SDF | A solid foreground platform renders at screen bottom with distinct visual identity per platform type, anchoring the 3-layer depth composition | PLAT-01..05 | 5 |
-| 3 | Style Template System | ~100 valid background styles are auto-generated from dimension combinations, each producing a complete TreeStyleParams object ready for shader consumption | TMPL-01..06 | 5 |
-| 4 | Style Transition Engine | Style changes produce a smooth 3-second visual transition with fog-masked geometry handoff and no visible popping | TRAN-01..07 | 5 |
-| 5 | Knowledge-Driven Style Triggering | Background style changes automatically when user knowledge data crosses defined thresholds, without user interaction | TRIG-01..07 | 5 |
-| 6 | Time-of-Day System & Particles | Sky colors and atmosphere shift through a natural dawn-noon-dusk-night cycle based on system clock, with particle effects adding visual life | TOD-01..05, ARCH-02 | 5 |
-| 7 | LLM Style Generation | Backend endpoint accepts knowledge data summaries and returns AI-generated, validated TreeStyleParams suitable for the template system | LLM-01..04 | 4 |
-| 8 | Error Handling & Performance Hardening | Background system degrades gracefully on all device tiers, meeting frame rate targets while providing usable fallbacks under error conditions | ERR-01..04, ARCH-03, ARCH-04 | 5 |
+### Plans
 
----
+1. **01-01**: 从 map() 移除平台 SDF 调用 + 删除 sdfPlatforms.ts + triplanarMapping.ts
+2. **01-02**: 清理 BackgroundRenderer（删除 testFragmentShader、setPlatformType/Z、SdfParamRegistry 条目）+ 删除 sdfPlatforms.spec.ts
 
-## Phase Details
+### Exit Criteria
 
-### Phase 1: Camera System & Shader Foundation
-**Goal**: The SDF background renders from camera parameters (uCamY/uCamPitch/uCamZ/uFovZoom uniforms) flowing through the rendering pipeline, with correct downward pitch producing an oblique vista view, and mouse-driven parallax depth on the vista layer. Each vista map function lives in its own .glsl file.
-
-**Depends on**: Nothing (first phase -- builds on existing BackgroundRenderer and SdfParamRegistry)
-
-**Requirements**:
-- CAM-01: Shader declares uCamY/uCamPitch/uCamZ/uFovZoom uniforms, replacing hardcoded ro/lookAt/zoom values
-- CAM-02: Camera looks downward -- lookAt.y < ro.y, pitch is negative, main view is oblique vista downward
-- CAM-03: BackgroundRenderer passes camera params through SdfParamRegistry.applyParamsToUniforms
-- CAM-04: Each of the 4 existing styles (default/sakura/cyberpunk/ink) defines bgCam* baseline values with subtle differences in height and pitch
-- CAM-05: Shader adds uniform vec2 uMouseUV; vista layer offsets by up to 3% based on mouse position; platform layer unaffected
-- ARCH-01: Each vista map function (default/sakura/cyberpunk/ink, plus new ones) lives in its own .glsl file; Vite raw import dynamically combines them into a single shader at build time
-
-**Success Criteria**:
-1. Open the app in a browser with debug GUI (lil-gui) visible -- adjusting camera params (height, pitch, Z position, FOV) in realtime produces immediate visible changes in the background composition (sky/vista boundaries shift, zoom level changes)
-2. Look at the default view -- the screen shows sky in the upper 45-50%, vista/ground in the middle 40-50%, and the composition looks like a downward-angled view (horizon line is visible near the upper-middle, not centered)
-3. Switch between the 4 existing styles (default/sakura/cyberpunk/ink) via the debug GUI or style selector -- each shows a noticeably different camera position (e.g., cyberpunk is lower and closer, ink is higher and further)
-4. Move the mouse slowly from left edge to right edge of the screen -- the distant vista layer (hills/buildings) shifts horizontally by a small but visible amount (up to 3%), while the foreground platform area remains completely stationary
-5. Inspect the shader source tree -- each vista map function (mapDefault, mapSakura, mapCyberpunk, mapInk) is in its own .glsl file under `frontend/src/components/tree/shaders/vistas/`, and the final shader compiles without errors
-
-**Plans**: 2 plans (Wave 1: Plan 01; Wave 2: Plan 02)
-
-Plans:
-- [ ] 01-01-PLAN.md -- Shader Camera Reform + Parallax GLSL: extract vista map functions to .glsl files (ARCH-01), replace hardcoded camera with uniform-driven 4-parameter model (CAM-01), fix pitch direction for downward look (CAM-02), add shader-side parallax GLSL code reading uMouseUV for vista-layer horizontal offset (CAM-05 GLSL side)
-- [ ] 01-02-PLAN.md -- SdfParamRegistry Integration + Mouse Parallax JS: refactor BackgroundRenderer to use registry (CAM-03), wire bgCam* data flow from theme to shader (CAM-04), add mouse-driven parallax JS-side uniform writer with security guards (CAM-05 JS side)
+- backgroundRaymarch.ts 的 map() 只返回 vistaD
+- BackgroundRenderer 无 SDF_PLATFORMS import
+- `npx vitest run` 通过（无引用已删除文件的测试）
+- 浏览器中背景正常渲染（vista + sky）
 
 ---
 
-### Phase 2: Foreground Platform SDF
-**Goal**: A solid foreground platform renders at screen bottom with distinct visual identity per platform type, anchoring the 3-layer depth composition (platform foreground / vista midground / sky background). The platform SDF evaluates alongside the vista SDF via `min()` in the main `map()` function.
+## Phase 2: Billboard Compositing Pipeline
 
-**Depends on**: Phase 1 (Camera System & Shader Foundation) -- uses uCamY/uCamPitch/uCamZ uniforms for camera-relative platform placement
+**Goal:** 在 shader 底部区域实现 billboard 纹理合成，带桶形畸变弧形边界和视差分离
+**Requirements:** BIL-01 ~ BIL-07
+**Verification:** 用测试纹理（纯色或渐变）验证 UV 映射、弧形边界、视差分离正确
 
-**Requirements**:
-- PLAT-01: Add sdCliff(p, width, height, edgeRound) SDF primitive -- round box + FBM noise on top edge
-- PLAT-02: Add sdPlatform(p, type) dispatch function -- routes to 5 platform SDFs by int type
-- PLAT-03: Platform placed at camera-relative z≈2-5, occupies screen bottom ~5%
-- PLAT-04: 5 platform types: cliff (山崖), viewing-deck (观景台), rooftop (天台), temple-base (寺庙台基), megalith (巨石)
-- PLAT-05: 2-3 detail SDFs per platform type placed by hash11 grid-cell hashing
+### Plans
 
-**Success Criteria**:
-1. Open the app in a browser -- the default view shows a solid platform (cliff) occupying approximately 5% of the screen bottom, visually distinct from the vista midground
-2. Each theme preset shows its mapped platform type (default→cliff, sakura→temple-base, cyberpunk→rooftop, ink→megalith) with visually distinct shapes
-3. Detail SDFs (gravel, railings, AC units, stone lanterns, moss patches, etc.) are visible on the platform surface without flickering as the camera moves
-4. No visible gap between the platform foreground and the vista background ground -- the 3-layer depth composition reads as continuous
-5. Production build (`npm run build`) completes without errors, full test suite passes
+1. **02-01**: uCliffTexture → uPlatformTexture 重命名 + 注册新 uniforms（uBarrelK、uPlatformHeight、uPlatformFade、uPlatformTexWidth）
+2. **02-02**: shader 合成逻辑实现（桶形畸变边界 + 纹理采样 + alpha 混合 + 视差分离）+ 单元测试
 
-**Plans**: 4 plans in 3 waves (Wave 1: Plan 01; Wave 2: Plan 02; Wave 3: Plans 03 + 04 parallel)
+### Shader Spec (locked from eng review)
 
-Plans:
-- [ ] 02-01-PLAN.md -- sdCliff SDF Primitive + Test Foundation: add sdCliff GLSL function to SDF_PRIMITIVES (sdRoundBox + FBM noise displacement), create sdfPrimitives.spec.ts test file (PLAT-01)
-- [ ] 02-02-PLAN.md -- Platform SDF Types + Dispatch: create sdfPlatforms.ts with sdPlatform dispatch + 5 platform type SDFs (cliff/viewing-deck/rooftop/temple-base/megalith), create sdfPlatforms.spec.ts test file (PLAT-02, PLAT-04)
-- [ ] 02-03-PLAN.md -- Detail SDFs: add 11 detail SDF primitives with hash11 grid-cell placement to sdfPlatforms.ts, extend tests for deterministic placement (PLAT-05)
-- [ ] 02-04-PLAN.md -- Map Integration + Uniforms + Visual Checkpoint: import SDF_PLATFORMS into backgroundRaymarch.ts, composite platform into map() via min(vistaD, platformD), register uPlatformType/uPlatformZ in SdfParamRegistry, extend TreeStyleParams + theme presets, human-verify checkpoint for visual verification (PLAT-03)
+```glsl
+// 在 main() 最后，gl_FragColor 输出前：
+
+// 1. 桶形畸变：计算 billboard 边界
+vec2 c = vScreenUV - 0.5;
+float r2 = dot(c, c);
+float distort = 1.0 + uBarrelK * r2;
+vec2 distortedUV = 0.5 + c * distort;
+
+// 2. billboard 区域判断
+bool inBillboard = distortedUV.y < uPlatformHeight;
+
+// 3. 纹理采样（用原始 vScreenUV，不用视差偏移 UV）
+float uvX = 0.5 + (vScreenUV.x - 0.5) * uResolution.x / uPlatformTexWidth;
+float uvY = distortedUV.y / uPlatformHeight;
+vec4 platformSample = texture2D(uPlatformTexture, vec2(uvX, uvY));
+
+// 4. 底部渐隐
+float edgeFade = smoothstep(0.0, uPlatformFade, distortedUV.y);
+float alpha = platformSample.a * edgeFade * float(inBillboard) * float(uvX >= 0.0 && uvX <= 1.0);
+
+// 5. 合成
+gl_FragColor = vec4(mix(col, platformSample.rgb, alpha), 1.0);
+```
+
+### New Uniforms
+
+| Name | Type | Default | Purpose |
+|------|------|---------|---------|
+| uBarrelK | float | 0.3 | 桶形畸变系数 |
+| uPlatformHeight | float | 0.12 | billboard 占屏幕高度比例 |
+| uPlatformFade | float | 0.03 | 底部渐隐宽度 |
+| uPlatformTexWidth | float | 2048.0 | 纹理像素宽度 |
+
+### Exit Criteria
+
+- 用测试纹理（红绿渐变）验证 billboard 区域正确显示
+- 弧形边界可见（中心高、两端低）
+- 鼠标移动时 billboard 固定、远景浮动
+- `npx vitest run` 通过
 
 ---
+
+## Phase 3: AI Texture Generation + Integration
+
+**Goal:** 生成真实的平台 billboard 图片，去背后接入 shader
+**Requirements:** TEX-01 ~ TEX-05
+**Verification:** 浏览器中 billboard 显示 AI 生成的弧形阳台/悬崖图片，边缘自然融入背景
+
+### Plans
+
+1. **03-01**: AI 图片生成（gpt-image-1 prompt 设计 + 生成 + rembg 去背）+ 文件替换 + 路径更新
+2. **03-02**: 视觉调参（uBarrelK、uPlatformHeight、uPlatformFade 微调）+ 最终验证
+
+### Exit Criteria
+
+- /public/platform-billboard.png 存在且有 alpha 通道
+- 浏览器中 billboard 显示真实图片
+- 弧形效果自然，两端向底部消失
+- 与背景 vista 色调协调
+
+---
+
+## Summary
+
+| Phase | Focus | Plans | Dependencies |
+|-------|-------|-------|--------------|
+| 1 | SDF 删除 + 清理 | 2 | None |
+| 2 | Billboard 合成管线 | 2 | Phase 1 |
+| 3 | AI 纹理生成 + 集成 | 2 | Phase 2 |
+
+**Total plans:** 6
+**Estimated effort:** Phase 1 (~15min CC), Phase 2 (~20min CC), Phase 3 (~15min CC)
+
+---
+*Roadmap created: 2025-05-05*
+*Last updated: 2025-05-05 after CEO review + eng review*
