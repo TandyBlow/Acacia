@@ -89,7 +89,10 @@ function selectAll() {
 const selectedKnowledgePoints = computed(() => {
   const points: KnowledgePoint[] = [];
   selectedGroups.value.forEach(index => {
-    points.push(...props.groups[index].knowledge_points);
+    const group = props.groups[index];
+    if (group) {
+      points.push(...group.knowledge_points);
+    }
   });
   return points;
 });
