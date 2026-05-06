@@ -1,49 +1,85 @@
 import * as THREE from 'three';
 import { backgroundVertexShader, backgroundFragmentShader } from '../shaders/backgroundRaymarch';
+import { createUniforms, applyParamsToUniforms } from './SdfParamRegistry';
 import type { TreeStyleParams } from '../../../constants/theme';
-
-export interface BackgroundUniformParams {
-  skyTopColor: [number, number, number];
-  skyBottomColor: [number, number, number];
-  groundColor: [number, number, number];
-  fogColor: [number, number, number];
-  fogDistance: number;
-  buildingDensity: number;
-  buildingHeight: number;
-  styleType: number;
-  seed: number;
-}
 
 /**
  * Full-screen quad with raymarched SDF background.
- * Replaces the old sky2d gradient quad.
+ *
+ * CAM-03: Uses SdfParamRegistry.createUniforms() and applyParamsToUniforms()
+ *         instead of hardcoding uniform lists. All bg* params from
+ *         TreeStyleParams flow automatically through the registry.
+ *
+ * CAM-05: updateMouseUV() writes mouse position to uMouseUV uniform
+ *         for vista-layer parallax offset (applied in fragment shader
+ *         via PARALLAX_THRESHOLD + smoothstep — see Plan 01-01).
  */
 export class BackgroundRenderer {
   private mesh: THREE.Mesh;
   private material: THREE.ShaderMaterial;
+  private styleType: number;
+  private seed: number;
 
   constructor(styleType: number, seed: number) {
+    this.styleType = styleType;
+    this.seed = seed;
+
     const geo = new THREE.PlaneGeometry(2, 2);
+
+    // CAM-03: Use SdfParamRegistry to create all registered uniforms
+    const registryUniforms = createUniforms();
+
+    // Create a simple test texture (red-green gradient) to verify texture sampling works
+    const size = 256;
+    const data = new Uint8Array(size * size * 4);
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j < size; j++) {
+        const idx = (i * size + j) * 4;
+        data[idx] = (i / size) * 255;
+        data[idx + 1] = (j / size) * 255;
+        data[idx + 2] = 128;
+        data[idx + 3] = 255;
+      }
+    }
+    const testTexture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    testTexture.wrapS = THREE.RepeatWrapping;
+    testTexture.wrapT = THREE.RepeatWrapping;
+    testTexture.needsUpdate = true;
+    console.log('✓ Test texture created (RGBA):', size, 'x', size);
 
     this.material = new THREE.ShaderMaterial({
       vertexShader: backgroundVertexShader,
       fragmentShader: backgroundFragmentShader,
       uniforms: {
-        uSkyTopColor: { value: new THREE.Color(0.53, 0.81, 0.92) },
-        uSkyBottomColor: { value: new THREE.Color(0.96, 0.94, 0.92) },
+        ...registryUniforms,
         uFogColor: { value: new THREE.Color(0.7, 0.75, 0.8) },
-        uGroundColor: { value: new THREE.Color(0.36, 0.23, 0.12) },
-        uFogDistance: { value: 60.0 },
-        uBuildingDensity: { value: 0.5 },
-        uBuildingHeight: { value: 4.0 },
-        uSeed: { value: seed },
         uTime: { value: 0 },
+        uSeed: { value: seed },
         uStyleType: { value: styleType },
         uResolution: { value: new THREE.Vector2(1024, 1024) },
+        uMouseUV: { value: new THREE.Vector2(0.5, 0.5) },
+        uPlatformTexture: { value: testTexture },
       },
       depthWrite: false,
       depthTest: false,
     });
+
+    // Check for shader compilation errors
+    this.material.onBeforeCompile = (shader) => {
+      console.log('[Shader] Compiling background shader...');
+    };
+
+    // Listen for WebGL errors
+    const checkShaderError = () => {
+      if (this.material.program) {
+        const gl = this.material.program.gl;
+        const error = gl.getError();
+        if (error !== gl.NO_ERROR) {
+          console.error('[Shader] WebGL error:', error);
+        }
+      }
+    };
+    setTimeout(checkShaderError, 1000);
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.name = 'background';
@@ -61,55 +97,60 @@ export class BackgroundRenderer {
     return this.material;
   }
 
-  /** Update all background parameters (called on style change or user data change) */
-  update(params: BackgroundUniformParams) {
-    const u = this.material.uniforms;
-    u.uSkyTopColor!.value.set(...params.skyTopColor);
-    u.uSkyBottomColor!.value.set(...params.skyBottomColor);
-    u.uGroundColor!.value.set(...params.groundColor);
-    u.uFogColor!.value.set(...params.fogColor);
-    u.uFogDistance!.value = params.fogDistance;
-    u.uBuildingDensity!.value = params.buildingDensity;
-    u.uBuildingHeight!.value = params.buildingHeight;
-    u.uStyleType!.value = params.styleType;
-    u.uSeed!.value = params.seed;
+  /**
+   * CAM-03: Update all registry-managed uniforms from TreeStyleParams.
+   * Replaces the old update(BackgroundUniformParams) and paramsFromTheme().
+   *
+   * applyParamsToUniforms iterates SDF_PARAM_REGISTRY and writes each
+   * params[entry.tsKey] to uniforms[entry.name]. This covers all bg*
+   * fields including bgCamY/bgCamPitch/bgCamZ/bgFovZoom (CAM-04 data flow).
+   */
+  updateParams(params: TreeStyleParams): void {
+    // Registry-managed params (colors, camera, geometry, fog)
+    applyParamsToUniforms(this.material.uniforms, params);
+
+    // Non-registry params that change on style switch
+    this.material.uniforms.uSeed!.value = this.seed;
+    this.material.uniforms.uStyleType!.value = this.styleType;
+    // uFogColor derived from skyBottomColor
+    const sbc = params.skyBottomColor;
+    (this.material.uniforms.uFogColor!.value as THREE.Color).set(
+      sbc[0] * 0.85,
+      sbc[1] * 0.85,
+      sbc[2] * 0.85,
+    );
   }
 
-  /** Update time uniform for animated elements */
-  updateTime(time: number) {
+  /**
+   * CAM-05: Update mouse UV for vista-layer parallax.
+   *
+   * The parallax offset computation (smoothstep, PARALLAX_THRESHOLD) is
+   * in the fragment shader (see Plan 01-01). This method only writes
+   * the normalized mouse position to the uMouseUV uniform.
+   *
+   * SECURITY: Clamp to [0,1] and guard against NaN/Infinity to prevent
+   * shader injection of invalid floating-point values (ASVS V5).
+   */
+  updateMouseUV(mouseUV: { x: number; y: number }): void {
+    const clamp = (v: number): number => Math.max(0, Math.min(1, v));
+    const x = Number.isFinite(mouseUV.x) ? clamp(mouseUV.x) : this.material.uniforms.uMouseUV!.value.x;
+    const y = Number.isFinite(mouseUV.y) ? clamp(mouseUV.y) : this.material.uniforms.uMouseUV!.value.y;
+    this.material.uniforms.uMouseUV!.value.set(x, y);
+  }
+
+  updateTime(time: number): void {
     this.material.uniforms.uTime!.value = time;
   }
 
   /** Update resolution uniform on resize */
-  updateSize(w: number, h: number) {
+  updateSize(w: number, h: number): void {
     this.material.uniforms.uResolution!.value.set(w, h);
   }
 
   /** Clean up GPU resources */
-  dispose() {
+  dispose(): void {
     this.mesh.geometry.dispose();
     this.material.dispose();
-  }
-
-  /** Build background params from TreeStyleParams */
-  static paramsFromTheme(theme: TreeStyleParams, styleType: number, seed: number): BackgroundUniformParams {
-    const fogColor: [number, number, number] = [
-      theme.skyBottomColor[0] * 0.85,
-      theme.skyBottomColor[1] * 0.85,
-      theme.skyBottomColor[2] * 0.85,
-    ];
-
-    return {
-      skyTopColor: theme.skyTopColor,
-      skyBottomColor: theme.skyBottomColor,
-      groundColor: theme.groundColor,
-      fogColor,
-      fogDistance: 60.0,
-      buildingDensity: 0.5,
-      buildingHeight: 4.0,
-      styleType,
-      seed,
-    };
   }
 
   /** Map ThemeStyle string to numeric type for the shader */

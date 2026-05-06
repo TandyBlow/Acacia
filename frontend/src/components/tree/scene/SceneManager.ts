@@ -85,6 +85,19 @@ export class SceneManager {
   // Context loss
   private contextLost = false;
 
+  // Mouse parallax (CAM-05)
+  private mouseUV = { x: 0.5, y: 0.5 };
+
+  private onMouseMove = (event: MouseEvent): void => {
+    if (!this.backgroundRenderer) return;
+    const el = this.container;
+    const rect = el.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = 1.0 - (event.clientY - rect.top) / rect.height;
+    this.mouseUV = { x, y };
+    this.backgroundRenderer.updateMouseUV(this.mouseUV);
+  };
+
   // Particle system (disabled)
   // private particleMesh: THREE.Mesh | null = null;
   // private particleMaterial: THREE.ShaderMaterial | null = null;
@@ -525,12 +538,15 @@ export class SceneManager {
     const styleType = BackgroundRenderer.styleToType(this.currentStyle);
     this.backgroundRenderer = new BackgroundRenderer(styleType, seed);
 
-    const bgParams = BackgroundRenderer.paramsFromTheme(
-      this.currentParams, styleType, seed,
-    );
-    this.backgroundRenderer.update(bgParams);
+    // CAM-03: Use updateParams with TreeStyleParams directly (via SdfParamRegistry)
+    // This replaces paramsFromTheme() + update(BackgroundUniformParams)
+    this.backgroundRenderer.updateParams(this.currentParams);
 
-    this.scene.add(this.backgroundRenderer.getMesh());
+    const bgMesh = this.backgroundRenderer.getMesh();
+    console.log('[BG-DEBUG] Adding background mesh to scene:', bgMesh.name, 'renderOrder:', bgMesh.renderOrder, 'visible:', bgMesh.visible, 'material.type:', bgMesh.material.type);
+    this.scene.add(bgMesh);
+    console.log('[BG-DEBUG] Scene children count after adding background:', this.scene.children.length);
+    console.log('[BG-DEBUG] Scene children:', this.scene.children.map(c => `${c.name || c.type}(${c.type})`));
   }
 
   private hashUserIdToSeed(): number {
@@ -720,7 +736,7 @@ export class SceneManager {
     );
     this.refitCamera();
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(containerW, containerH);
     this.renderer.setPixelRatio(window.devicePixelRatio);
 
@@ -730,6 +746,9 @@ export class SceneManager {
     }
 
     this.container.appendChild(this.renderer.domElement);
+
+    // CAM-05: Listen for mouse movement to update parallax offset
+    document.addEventListener('mousemove', this.onMouseMove);
   }
 
   // --- Private: Style application ---
@@ -770,11 +789,10 @@ export class SceneManager {
     // }
 
     // Update background (raymarched SDF)
+    // CAM-03: Use updateParams — all bg* params (including bgCam*) flow
+    // through SdfParamRegistry.applyParamsToUniforms (CAM-04 data link)
     if (this.backgroundRenderer) {
-      const seed = this.hashUserIdToSeed();
-      const styleType = BackgroundRenderer.styleToType(this.currentStyle);
-      const bgParams = BackgroundRenderer.paramsFromTheme(params, styleType, seed);
-      this.backgroundRenderer.update(bgParams);
+      this.backgroundRenderer.updateParams(params);
     }
 
     // Update lights
@@ -945,6 +963,8 @@ export class SceneManager {
       this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
       this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     }
+
+    document.removeEventListener('mousemove', this.onMouseMove);
 
     // Dispose leaf shader material (we own it)
     if (this.ezTree?.leavesMesh.material instanceof THREE.ShaderMaterial) {
