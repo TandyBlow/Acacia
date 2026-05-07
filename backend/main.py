@@ -19,11 +19,12 @@ from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
 from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
 from file_parser import parse_file, get_file_info
-from file_knowledge_service import (
-    extract_knowledge_points,
-    start_conversation,
-    process_conversation_turn,
-)
+# Lazy import for file_knowledge_service to avoid startup failures
+# from file_knowledge_service import (
+#     extract_knowledge_points,
+#     start_conversation,
+#     process_conversation_turn,
+# )
 from quiz_service_sqlite import (
     compute_adaptive_difficulty,
     generate_batch_questions_sqlite,
@@ -580,6 +581,8 @@ def extract_knowledge_points_endpoint(
     Extract knowledge points from uploaded file.
     Returns structured knowledge points grouped by topic.
     """
+    from file_knowledge_service import extract_knowledge_points
+
     owner_id = user["sub"]
 
     try:
@@ -614,6 +617,12 @@ class ConversationTurnRequest(BaseModel):
     skip: bool = False
 
 
+class ExampleFeedbackRequest(BaseModel):
+    session_id: str
+    action: str  # "accept" | "regenerate" | "skip"
+    feedback: str | None = None
+
+
 @app.post("/start-conversation")
 def start_conversation_endpoint(
     request: StartConversationRequest,
@@ -623,6 +632,8 @@ def start_conversation_endpoint(
     Start a new conversation session for knowledge point learning.
     Returns session_id and first question.
     """
+    from file_knowledge_service import start_conversation
+
     owner_id = user["sub"]
 
     try:
@@ -654,6 +665,8 @@ def conversation_turn_endpoint(
     Process one conversation turn: user answer -> AI evaluation -> next action.
     Returns AI response, generated content (if any), and progress info.
     """
+    from file_knowledge_service import process_conversation_turn
+
     try:
         result = process_conversation_turn(
             request.session_id,
@@ -670,6 +683,50 @@ def conversation_turn_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"对话处理失败：{str(e)}"
+        )
+
+
+@app.post("/example-feedback")
+def example_feedback_endpoint(
+    request: ExampleFeedbackRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Process user feedback on generated example.
+    Returns next action: next_question, example_preview, or completed.
+    """
+    from file_knowledge_service import process_example_feedback
+
+    # Validate action
+    if request.action not in ["accept", "regenerate", "skip"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid action: {request.action}"
+        )
+
+    # Validate feedback for regenerate
+    if request.action == "regenerate" and not request.feedback:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Feedback is required for regenerate action"
+        )
+
+    try:
+        result = process_example_feedback(
+            request.session_id,
+            request.action,
+            request.feedback
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"例题反馈处理失败：{str(e)}"
         )
 
 
