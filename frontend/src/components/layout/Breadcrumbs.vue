@@ -1,6 +1,6 @@
 <template>
   <div class="breadcrumbs-shell">
-    <TransitionGroup v-if="isAuthenticated" name="crumb" tag="div" class="crumb-track">
+    <TransitionGroup v-if="isAuthenticated" name="crumb" tag="div" class="crumb-track" ref="crumbTrackRef" @wheel.passive="onWheel">
       <GlassWrapper
         v-for="node in displayNodes"
         :key="node.id"
@@ -43,8 +43,6 @@ import { UI } from '../../constants/uiStrings';
 const BREADCRUMB_ANIM_MS = 180;
 const BREADCRUMB_SCROLL_MIN_ANIM_MS = 80;
 const BREADCRUMB_SCROLL_MAX_ANIM_MS = 240;
-// Used by wheel event handler in Task 6
-// @ts-ignore - used in subsequent tasks
 const BREADCRUMB_SCROLL_INPUT_WINDOW_MS = 150;
 
 const store = useNodeStore();
@@ -58,22 +56,12 @@ const displayNodes = ref<NodeRecord[]>([...pathNodes.value]);
 const showCurrentNode = ref(true);
 
 // Scroll engine state
-// Used by processScrollQueue in Task 5
-// @ts-ignore - used in subsequent tasks
 const scrollQueue = ref<Array<{ direction: 'left' | 'right' }>>([]);
-// Used by processScrollQueue in Task 5
-// @ts-ignore - used in subsequent tasks
 const isAnimating = ref(false);
-// Used by wheel event handler in Task 6
-// @ts-ignore - used in subsequent tasks
 const lastWheelTime = ref(0);
 const currentSpeed = ref(0);
-// Used by calcAnimDuration in Task 5
-// @ts-ignore - used in subsequent tasks
 const currentAnimMs = ref(BREADCRUMB_ANIM_MS);
 const crumbTrackRef = ref<HTMLElement | null>(null);
-// Used by animateSingleScroll in Task 5
-// @ts-ignore - used in subsequent tasks
 let scrollCancelToken = 0;
 
 // [Bug6 fix] cancel token to invalidate stale animation callbacks
@@ -94,6 +82,12 @@ watch(pathNodes, (newPath, oldPath) => {
     displayNodes.value = [...newPath];
     return;
   }
+
+  // [Task 7] Reset scroll state on path change
+  scrollQueue.value = [];
+  currentSpeed.value = 0;
+  isAnimating.value = false;
+  scrollCancelToken++;
 
   const old = oldPath;
   const next = newPath;
@@ -140,8 +134,6 @@ watch(pathNodes, (newPath, oldPath) => {
   }
 }, { immediate: true });
 
-// Used by processScrollQueue in Task 5
-// @ts-ignore - used in subsequent tasks
 function calcAnimDuration(): number {
   const speed = currentSpeed.value;
   if (speed <= 0) return BREADCRUMB_ANIM_MS;
@@ -187,8 +179,6 @@ function findNextScrollTarget(direction: 'left' | 'right'): number {
   }
 }
 
-// Used by processScrollQueue in Task 5
-// @ts-ignore - used in subsequent tasks
 async function animateSingleScroll(direction: 'left' | 'right', duration: number): Promise<void> {
   const container = crumbTrackRef.value;
   if (!container) return;
@@ -206,8 +196,6 @@ async function animateSingleScroll(direction: 'left' | 'right', duration: number
   container.style.scrollBehavior = 'auto';
 }
 
-// Used by wheel event handler in Task 6
-// @ts-ignore - used in subsequent tasks
 async function processScrollQueue(): Promise<void> {
   isAnimating.value = true;
 
@@ -233,8 +221,6 @@ async function processScrollQueue(): Promise<void> {
   currentSpeed.value = 0;
 }
 
-// Used by wheel event binding in Task 8
-// @ts-ignore - used in subsequent tasks
 function onWheel(e: WheelEvent): void {
   if (e.deltaY === 0) return;
 
