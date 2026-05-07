@@ -39,6 +39,56 @@
       </div>
     </div>
 
+    <!-- Example preview card -->
+    <div v-if="isShowingExample && currentExample" class="example-preview-card">
+      <div class="example-header">
+        <span class="example-icon">💡</span>
+        <span class="example-title">示例答案预览</span>
+      </div>
+
+      <div class="example-content">
+        <div class="example-answer" v-html="renderMarkdown(currentExample.content)"></div>
+      </div>
+
+      <div class="example-explanation">
+        <div class="explanation-label">解释</div>
+        <div class="explanation-text">{{ currentExample.explanation }}</div>
+      </div>
+
+      <div v-if="showFeedbackInput" class="example-feedback-input">
+        <textarea
+          v-model="feedbackText"
+          class="feedback-textarea"
+          placeholder="请说明需要改进的地方..."
+          rows="2"
+        />
+      </div>
+
+      <div class="example-actions">
+        <button
+          class="example-btn example-btn-skip"
+          :disabled="isThinking"
+          @click="handleSkipExample"
+        >
+          跳过示例
+        </button>
+        <button
+          class="example-btn example-btn-regenerate"
+          :disabled="isThinking"
+          @click="handleRegenerateExample"
+        >
+          {{ showFeedbackInput ? '提交反馈并重新生成' : '重新生成' }}
+        </button>
+        <button
+          class="example-btn example-btn-accept"
+          :disabled="isThinking"
+          @click="handleAcceptExample"
+        >
+          接受示例
+        </button>
+      </div>
+    </div>
+
     <!-- Input area -->
     <div class="input-area">
       <textarea
@@ -76,6 +126,15 @@ interface Message {
   role: 'user' | 'ai';
   content: string;
   generatedContent?: string;
+}
+
+function renderMarkdown(content: string): string {
+  // Simple markdown to HTML conversion for preview
+  // Note: KaTeX rendering will happen automatically via TipTap's Mathematics extension
+  return content
+    .replace(/\n/g, '<br>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
 }
 
 interface Props {
@@ -416,6 +475,135 @@ defineExpose({
 }
 
 .input-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.example-preview-card {
+  border: 1px solid rgba(102, 255, 229, 0.3);
+  border-radius: 16px;
+  background: rgba(102, 255, 229, 0.08);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: message-appear 0.3s ease;
+}
+
+.example-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.example-icon {
+  font-size: 20px;
+}
+
+.example-content {
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-glass-border);
+}
+
+.example-answer {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-primary);
+}
+
+.example-explanation {
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.explanation-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(102, 255, 229, 0.8);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.explanation-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-primary);
+  opacity: 0.85;
+}
+
+.example-feedback-input {
+  margin-top: -4px;
+}
+
+.feedback-textarea {
+  width: 100%;
+  border: 1px solid var(--color-glass-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-primary);
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.feedback-textarea:focus {
+  outline: 2px solid rgba(102, 255, 229, 0.35);
+}
+
+.example-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.example-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--color-glass-border);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.example-btn-skip {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-primary);
+}
+
+.example-btn-skip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.example-btn-regenerate {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--color-primary);
+}
+
+.example-btn-regenerate:hover:not(:disabled) {
+  background: rgba(255, 193, 7, 0.32);
+}
+
+.example-btn-accept {
+  background: rgba(46, 204, 113, 0.28);
+  color: var(--color-primary);
+}
+
+.example-btn-accept:hover:not(:disabled) {
+  background: rgba(46, 204, 113, 0.44);
+}
+
+.example-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
