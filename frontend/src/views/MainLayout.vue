@@ -3,13 +3,13 @@
     <p>{{ UI.app.insufficientSpace }}</p>
   </div>
   <main v-else class="layout" :class="layoutClasses">
-    <section class="logo-area">
+    <section ref="logoRef" class="logo-area">
       <div class="inset-shell static-shell">
         <LogoArea />
       </div>
     </section>
 
-    <section class="breadcrumbs-area">
+    <section ref="breadcrumbsRef" class="breadcrumbs-area">
       <div class="inset-shell static-shell">
         <Breadcrumbs />
       </div>
@@ -17,13 +17,13 @@
 
     <section class="merged-area">
       <div class="merged-shell inset-shell static-shell">
-        <section class="navigation-area">
+        <section ref="navigationRef" class="navigation-area">
           <div class="inset-shell static-shell navigation-shell">
             <Navigation />
           </div>
         </section>
 
-        <section class="content-area">
+        <section ref="contentRef" class="content-area">
           <div class="inset-shell static-shell content-shell">
             <GlassWrapper class="content-surface">
               <template v-if="!isFeaturePanel">
@@ -43,7 +43,7 @@
       </div>
     </section>
 
-  <section class="knob-area">
+  <section ref="knobRef" class="knob-area">
       <Knob />
     </section>
 
@@ -75,6 +75,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch } from '../composables/useKnobDispatch';
 import { useGlobalLoading } from '../composables/useGlobalLoading';
+import { usePageTransition } from '../composables/usePageTransition';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
 
@@ -90,6 +91,14 @@ useAppInit();
 const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout, closeFeaturePanel } = useKnobDispatch();
 
 const { isLoading: globalLoading } = useGlobalLoading();
+const { registerRegion, unregisterRegion } = usePageTransition();
+
+// Region refs for page transition system
+const logoRef = ref<HTMLElement | null>(null);
+const breadcrumbsRef = ref<HTMLElement | null>(null);
+const navigationRef = ref<HTMLElement | null>(null);
+const contentRef = ref<HTMLElement | null>(null);
+const knobRef = ref<HTMLElement | null>(null);
 const injectedTreeResizing = inject<Ref<boolean> | null>('isTreeResizing', null);
 const isTreeResizing = computed(() => injectedTreeResizing?.value ?? false);
 const isLoading = computed(() => globalLoading.value || isTreeResizing.value);
@@ -131,10 +140,87 @@ function updateCompactState(): void {
 onMounted(() => {
   updateCompactState();
   window.addEventListener('resize', updateCompactState);
+
+  // Register all main regions with the page transition system
+  if (logoRef.value) {
+    registerRegion({
+      id: 'logo',
+      type: 'inset',
+      element: logoRef,
+      shouldShow: (state) => {
+        // Logo is hidden in compact-nav and compact-feature modes
+        if (state.layout === 'small') {
+          return state.compactMode === 'content';
+        }
+        return true;
+      },
+    });
+  }
+
+  if (breadcrumbsRef.value) {
+    registerRegion({
+      id: 'breadcrumbs',
+      type: 'inset',
+      element: breadcrumbsRef,
+      shouldShow: (state) => {
+        // Breadcrumbs are hidden in compact-content and compact-feature modes
+        if (state.layout === 'small') {
+          return state.compactMode === 'nav';
+        }
+        return true;
+      },
+    });
+  }
+
+  if (navigationRef.value) {
+    registerRegion({
+      id: 'navigation',
+      type: 'inset',
+      element: navigationRef,
+      shouldShow: (state) => {
+        // Navigation is hidden in compact-content and compact-feature modes
+        if (state.layout === 'small') {
+          return state.compactMode === 'nav';
+        }
+        return true;
+      },
+    });
+  }
+
+  if (contentRef.value) {
+    registerRegion({
+      id: 'content',
+      type: 'glass',
+      element: contentRef,
+      shouldShow: () => {
+        // Content is always visible in all modes
+        return true;
+      },
+    });
+  }
+
+  if (knobRef.value) {
+    registerRegion({
+      id: 'knob',
+      type: 'glass',
+      element: knobRef,
+      shouldShow: () => {
+        // Knob is always visible
+        return true;
+      },
+    });
+  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateCompactState);
+
+  // Unregister all regions
+  unregisterRegion('logo');
+  unregisterRegion('breadcrumbs');
+  unregisterRegion('navigation');
+  unregisterRegion('content');
+  unregisterRegion('knob');
 });
 
 watch(isFeaturePanel, (open) => {
