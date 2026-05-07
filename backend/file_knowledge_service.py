@@ -758,3 +758,237 @@ def cleanup_old_sessions(max_age_seconds: int = 1800):
 
     return len(to_delete)
 
+
+def process_example_feedback(
+    session_id: str,
+    action: str,
+    feedback: str = ""
+) -> Dict[str, Any]:
+    """
+    Process user feedback on generated example for procedure-type knowledge point.
+
+    Args:
+        session_id: Conversation session ID
+        action: User action - "accept", "regenerate", or "skip"
+        feedback: User feedback for regeneration (required if action is "regenerate")
+
+    Returns:
+        Dictionary with action result, next question (if any), and progress info
+    """
+    session = get_conversation_session(session_id)
+
+    # Validate pending example exists
+    if not session.get("pending_example"):
+        raise ValueError("No pending example to process")
+
+    pending_example = session["pending_example"]
+    current_index = session["current_index"]
+    knowledge_points = session["knowledge_points"]
+    current_kp = knowledge_points[current_index]
+
+    if action == "accept":
+        # Combine user answer with example to create final content
+        user_answer = pending_example["user_answer"]
+        example_content = pending_example["example_content"]
+
+        # Generate final content combining understanding and example
+        final_content = f"{user_answer}\n\n{example_content}"
+
+        # Append to accumulated content
+        if session["generated_content"]:
+            session["generated_content"] += "\n\n---\n\n"
+        session["generated_content"] += f"## {current_kp['title']}\n\n{final_content}"
+
+        # Clear pending example
+        session["pending_example"] = None
+
+        # Move to next knowledge point
+        session["current_index"] += 1
+        session["follow_up_count"] = 0
+
+        # Check if all completed
+        if session["current_index"] >= len(knowledge_points):
+            session["status"] = "completed"
+            return {
+                "action": "completed",
+                "ai_message": "所有知识点已完成！",
+                "generated_content": final_content,
+                "total_content": session["generated_content"],
+                "progress": {
+                    "current": session["current_index"],
+                    "total": len(knowledge_points),
+                    "completed": True
+                }
+            }
+
+        # Generate question for next knowledge point
+        next_kp = knowledge_points[session["current_index"]]
+        question_data = generate_question_for_knowledge_point(next_kp)
+
+        session["messages"].append({
+            "role": "ai",
+            "content": question_data["question"],
+            "timestamp": time.time(),
+            "metadata": {
+                "kp_id": next_kp["id"],
+                "hints": question_data.get("hints", [])
+            }
+        })
+
+        return {
+            "action": "accept_and_next",
+            "ai_message": "很好！让我们继续下一个知识点。",
+            "generated_content": final_content,
+            "next_question": question_data["question"],
+            "hints": question_data.get("hints", []),
+            "progress": {
+                "current": session["current_index"],
+                "total": len(knowledge_points),
+                "kp_title": next_kp["title"],
+                "kp_type": next_kp["type"],
+            }
+        }
+
+    elif action == "regenerate":
+        # Check regeneration limit (max 3 attempts)
+        example_history = session.get("example_history", [])
+        regeneration_count = len([e for e in example_history if e.get("kp_id") == current_kp["id"]])
+
+        if regeneration_count >= 3:
+            return {
+                "action": "regeneration_limit_reached",
+                "ai_message": "已达到重新生成次数上限（3次）。您可以选择接受当前例题或跳过。",
+                "example_content": pending_example["example_content"],
+                "explanation": pending_example.get("explanation", ""),
+                "progress": {
+                    "current": session["current_index"],
+                    "total": len(knowledge_points),
+                    "kp_title": current_kp["title"],
+                    "kp_type": current_kp["type"],
+                }
+            }
+
+        if not feedback:
+            raise ValueError("Feedback is required for regeneration")
+
+        # Store current example in history
+        if "example_history" not in session:
+            session["example_history"] = []
+        session["example_history"].append({
+            "kp_id": current_kp["id"],
+            "example_content": pending_example["example_content"],
+            "timestamp": time.time()
+        })
+
+        # Generate new example with feedback
+        kp_messages = pending_example["kp_messages"]
+        user_answer = pending_example["user_answer"]
+
+        new_example_result = generate_example_for_procedure(
+            current_kp,
+            user_answer,
+            kp_messages,
+            previous_example=pending_example["example_content"],
+            user_feedback=feedback
+        )
+
+        # Update pending example
+        session["pending_example"] = {
+            "example_content": new_example_result["example_content"],
+            "explanation": new_example_result.get("explanation", ""),
+            "user_answer": user_answer,
+            "kp_messages": kp_messages
+        }
+
+        return {
+            "action": "example_regenerated",
+            "ai_message": "我根据您的反馈重新生成了例题，请查看。",
+            "example_content": new_example_result["example_content"],
+            "explanation": new_example_result.get("explanation", ""),
+            "regeneration_count": regeneration_count + 1,
+            "progress": {
+                "current": session["current_index"],
+                "total": len(knowledge_points),
+                "kp_title": current_kp["title"],
+                "kp_type": current_kp["type"],
+            }
+        }
+
+    elif action == "skip":
+        # Generate text-only content without example
+        user_answer = pending_example["user_answer"]
+        kp_messages = pending_example["kp_messages"]
+
+        # Get last question
+        last_question = None
+        for msg in reversed(session["messages"]):
+            if msg["role"] == "ai" and msg.get("metadata", {}).get("kp_id") == current_kp["id"]:
+                last_question = msg["content"]
+                break
+
+        # Generate content from answer only
+        generated_content = generate_content_from_answer(
+            current_kp,
+            last_question or "",
+            user_answer,
+            kp_messages
+        )
+
+        # Append to accumulated content
+        if session["generated_content"]:
+            session["generated_content"] += "\n\n---\n\n"
+        session["generated_content"] += f"## {current_kp['title']}\n\n{generated_content}"
+
+        # Clear pending example
+        session["pending_example"] = None
+
+        # Move to next knowledge point
+        session["current_index"] += 1
+        session["follow_up_count"] = 0
+
+        # Check if all completed
+        if session["current_index"] >= len(knowledge_points):
+            session["status"] = "completed"
+            return {
+                "action": "completed",
+                "ai_message": "所有知识点已完成！",
+                "generated_content": generated_content,
+                "total_content": session["generated_content"],
+                "progress": {
+                    "current": session["current_index"],
+                    "total": len(knowledge_points),
+                    "completed": True
+                }
+            }
+
+        # Generate question for next knowledge point
+        next_kp = knowledge_points[session["current_index"]]
+        question_data = generate_question_for_knowledge_point(next_kp)
+
+        session["messages"].append({
+            "role": "ai",
+            "content": question_data["question"],
+            "timestamp": time.time(),
+            "metadata": {
+                "kp_id": next_kp["id"],
+                "hints": question_data.get("hints", [])
+            }
+        })
+
+        return {
+            "action": "skip_and_next",
+            "ai_message": "好的，我们跳过例题，继续下一个知识点。",
+            "generated_content": generated_content,
+            "next_question": question_data["question"],
+            "hints": question_data.get("hints", []),
+            "progress": {
+                "current": session["current_index"],
+                "total": len(knowledge_points),
+                "kp_title": next_kp["title"],
+                "kp_type": next_kp["type"],
+            }
+        }
+
+    else:
+        raise ValueError(f"Invalid action: {action}. Must be 'accept', 'regenerate', or 'skip'")
+
