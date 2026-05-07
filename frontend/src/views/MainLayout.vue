@@ -150,6 +150,7 @@ const layoutClasses = computed(() => ({
   'compact-nav': isCompact.value && compactMode.value === 'nav',
   'compact-feature': isCompact.value && compactMode.value === 'feature',
   'is-too-small': isTooSmall.value,
+  'is-rising': isRising.value,
 }));
 
 const showTree = computed(() => {
@@ -187,6 +188,26 @@ const contentKey = computed(() => {
   }
   const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
+});
+
+// Rising animation for homepage navigation
+const isRising = ref(false);
+let risingTimer: number | null = null;
+
+watch(contentKey, () => {
+  const goingHome = isAuthenticated.value && !activeNode.value
+    && !nodeStore.isConfirmState && !isFeaturePanel.value
+    && !nodeStore.isQuizState && !nodeStore.isQuizHistoryState
+    && !nodeStore.isStatsState && !nodeStore.isReviewState;
+
+  if (goingHome) {
+    if (risingTimer !== null) window.clearTimeout(risingTimer);
+    isRising.value = true;
+    risingTimer = window.setTimeout(() => {
+      isRising.value = false;
+      risingTimer = null;
+    }, 650);
+  }
 });
 
 </script>
@@ -400,6 +421,26 @@ const contentKey = computed(() => {
 
 .is-loading .logo-area :deep(*) {
   color: inherit !important;
+}
+
+@keyframes glass-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.is-rising .content-area :deep(.content-surface) {
+  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.is-rising .knob-area :deep(.knob-well) {
+  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 100ms;
 }
 
 @media (max-width: 900px) {

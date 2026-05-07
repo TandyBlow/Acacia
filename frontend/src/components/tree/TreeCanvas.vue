@@ -160,8 +160,11 @@ watch(() => statsNodes.value, () => {
 }, { deep: true });
 
 function onBecameVisible() {
-  if (!lastSkeleton || !containerRef.value) return;
-  redrawTree();
+  // 不需要重新加载，场景已经存在
+  // 只需要确保渲染器正常工作
+  if (manager) {
+    manager.handleResize();
+  }
 }
 
 watch(() => props.visible, async (nowVisible, wasVisible) => {
@@ -170,18 +173,6 @@ watch(() => props.visible, async (nowVisible, wasVisible) => {
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   onBecameVisible();
 });
-
-async function redrawTree() {
-  if (!lastSkeleton || !containerRef.value) {
-    isResizing.value = false;
-    return;
-  }
-  cleanup();
-  invalidateSkeleton();
-  treeLoaded = false;
-  await loadTree();
-  isResizing.value = false;
-}
 
 function cleanup() {
   if (debugGUI) {
