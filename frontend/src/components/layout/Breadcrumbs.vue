@@ -233,6 +233,34 @@ async function processScrollQueue(): Promise<void> {
   currentSpeed.value = 0;
 }
 
+// Used by wheel event binding in Task 8
+// @ts-ignore - used in subsequent tasks
+function onWheel(e: WheelEvent): void {
+  if (e.deltaY === 0) return;
+
+  const now = Date.now();
+  const dt = now - lastWheelTime.value;
+  lastWheelTime.value = now;
+
+  if (dt > 0 && dt < BREADCRUMB_SCROLL_INPUT_WINDOW_MS * 3) {
+    const delta = Math.abs(e.deltaY);
+    const itemsEquiv = delta / 120;
+    currentSpeed.value = itemsEquiv / (dt / 1000);
+  } else {
+    currentSpeed.value = Math.max(1, currentSpeed.value * 0.5);
+  }
+
+  const direction: 'left' | 'right' = e.deltaY > 0 ? 'right' : 'left';
+
+  if (scrollQueue.value.length < 20) {
+    scrollQueue.value.push({ direction });
+  }
+
+  if (!isAnimating.value) {
+    processScrollQueue();
+  }
+}
+
 async function goTo(nodeId: string): Promise<void> {
   if (phase.value !== 'idle') return;
   await store.loadNode(nodeId);
