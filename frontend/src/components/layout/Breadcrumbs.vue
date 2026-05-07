@@ -206,6 +206,33 @@ async function animateSingleScroll(direction: 'left' | 'right', duration: number
   container.style.scrollBehavior = 'auto';
 }
 
+// Used by wheel event handler in Task 6
+// @ts-ignore - used in subsequent tasks
+async function processScrollQueue(): Promise<void> {
+  isAnimating.value = true;
+
+  while (scrollQueue.value.length > 0) {
+    const entry = scrollQueue.value.shift()!;
+
+    const container = crumbTrackRef.value;
+    if (!container) break;
+
+    const canScroll = entry.direction === 'right'
+      ? container.scrollLeft < container.scrollWidth - container.clientWidth
+      : container.scrollLeft > 0;
+
+    if (!canScroll) continue;
+
+    const duration = calcAnimDuration();
+    currentAnimMs.value = duration;
+
+    await animateSingleScroll(entry.direction, duration);
+  }
+
+  isAnimating.value = false;
+  currentSpeed.value = 0;
+}
+
 async function goTo(nodeId: string): Promise<void> {
   if (phase.value !== 'idle') return;
   await store.loadNode(nodeId);
