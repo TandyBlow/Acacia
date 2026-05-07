@@ -435,6 +435,8 @@ def create_conversation_session(
         "created_at": time.time(),
         "last_activity_at": time.time(),
         "follow_up_count": 0,
+        "pending_example": None,  # NEW: Store pending example for confirmation
+        "example_history": [],    # NEW: Track previous examples
     }
 
     return session_id
@@ -607,7 +609,7 @@ def process_conversation_turn(
 
     # Handle different actions
     if action == "accept":
-        # Generate content from conversation
+        # Get conversation messages for this knowledge point
         kp_messages = [
             msg for msg in session["messages"]
             if msg.get("metadata", {}).get("kp_id") == current_kp["id"] or
@@ -616,6 +618,38 @@ def process_conversation_turn(
                       if m.get("metadata", {}).get("kp_id") == current_kp["id"]), 0))
         ]
 
+        # Check if this is a procedure-type knowledge point
+        if current_kp.get("type") == "procedure":
+            # Generate example instead of final content
+            example_result = generate_example_for_procedure(
+                current_kp,
+                user_answer,
+                kp_messages
+            )
+
+            # Store pending example in session
+            session["pending_example"] = {
+                "example_content": example_result["example_content"],
+                "explanation": example_result.get("explanation", ""),
+                "user_answer": user_answer,
+                "kp_messages": kp_messages
+            }
+
+            # Return example for user confirmation
+            return {
+                "action": "example_preview",
+                "ai_message": ai_message,
+                "example_content": example_result["example_content"],
+                "explanation": example_result.get("explanation", ""),
+                "progress": {
+                    "current": session["current_index"],
+                    "total": len(knowledge_points),
+                    "kp_title": current_kp["title"],
+                    "kp_type": current_kp["type"],
+                }
+            }
+
+        # For non-procedure types, generate content directly
         generated_content = generate_content_from_answer(
             current_kp,
             last_question or "",
