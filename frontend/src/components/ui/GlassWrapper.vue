@@ -34,7 +34,7 @@ const isBusy = computed(() => injectedBusy?.value ?? false);
 .glass {
   width: 100%;
   height: 100%;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease,
+  transition: transform 160ms ease, box-shadow 800ms cubic-bezier(0.22, 1, 0.36, 1), border-color 800ms ease,
               background 160ms ease, backdrop-filter 160ms ease, -webkit-backdrop-filter 160ms ease;
   border: 1px solid var(--color-glass-border);
   overflow: hidden;
@@ -57,9 +57,9 @@ const isBusy = computed(() => injectedBusy?.value ?? false);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   transition:
-    background 160ms ease,
-    backdrop-filter 160ms ease,
-    -webkit-backdrop-filter 160ms ease;
+    background 800ms cubic-bezier(0.22, 1, 0.36, 1),
+    backdrop-filter 800ms cubic-bezier(0.22, 1, 0.36, 1),
+    -webkit-backdrop-filter 800ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .glass-raised {
