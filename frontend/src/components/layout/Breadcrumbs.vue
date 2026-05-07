@@ -41,9 +41,7 @@ import { UI } from '../../constants/uiStrings';
 
 // Scroll animation constants
 const BREADCRUMB_ANIM_MS = 180;
-// @ts-expect-error — used in subsequent tasks
 const BREADCRUMB_SCROLL_MIN_ANIM_MS = 80;
-// @ts-expect-error — used in subsequent tasks
 const BREADCRUMB_SCROLL_MAX_ANIM_MS = 240;
 // @ts-expect-error — used in subsequent tasks
 const BREADCRUMB_SCROLL_INPUT_WINDOW_MS = 150;
@@ -65,11 +63,9 @@ const scrollQueue = ref<Array<{ direction: 'left' | 'right' }>>([]);
 const isAnimating = ref(false);
 // @ts-expect-error — used in subsequent tasks
 const lastWheelTime = ref(0);
-// @ts-expect-error — used in subsequent tasks
 const currentSpeed = ref(0);
 // @ts-expect-error — used in subsequent tasks
 const currentAnimMs = ref(BREADCRUMB_ANIM_MS);
-// @ts-expect-error — used in subsequent tasks
 const crumbTrackRef = ref<HTMLElement | null>(null);
 // @ts-expect-error — used in subsequent tasks
 let scrollCancelToken = 0;
@@ -148,6 +144,40 @@ function calcAnimDuration(): number {
     (clampedSpeed - 1) * (BREADCRUMB_SCROLL_MAX_ANIM_MS - BREADCRUMB_SCROLL_MIN_ANIM_MS) / 11;
 
   return Math.round(duration);
+}
+
+// @ts-expect-error — used in subsequent tasks
+function findNextScrollTarget(direction: 'left' | 'right'): number {
+  const container = crumbTrackRef.value;
+  if (!container) return 0;
+
+  const currentScrollLeft = container.scrollLeft;
+  const containerLeft = container.getBoundingClientRect().left;
+
+  const items = Array.from(container.querySelectorAll('.crumb-wrap')) as HTMLElement[];
+
+  if (direction === 'right') {
+    for (const item of items) {
+      const itemRect = item.getBoundingClientRect();
+      const itemLeft = itemRect.left - containerLeft + currentScrollLeft;
+
+      if (itemLeft > currentScrollLeft + 10) {
+        return itemLeft;
+      }
+    }
+    return container.scrollWidth - container.clientWidth;
+  } else {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      const itemRect = item.getBoundingClientRect();
+      const itemLeft = itemRect.left - containerLeft + currentScrollLeft;
+
+      if (itemLeft < currentScrollLeft - 10) {
+        return itemLeft;
+      }
+    }
+    return 0;
+  }
 }
 
 async function goTo(nodeId: string): Promise<void> {
