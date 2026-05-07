@@ -1,5 +1,5 @@
 <template>
-  <div class="tree-shell">
+  <div ref="treeRef" class="tree-shell">
     <header class="header">
       <h2>{{ UI.tree.moveNode }}</h2>
     </header>
@@ -31,15 +31,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import TreeNodeItem from './TreeNodeItem.vue';
 import { useNodeStore } from '../../stores/nodeStore';
+import { usePageTransition } from '../../composables/usePageTransition';
 import type { TreeNode } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
 
 const store = useNodeStore();
 const { treeNodes, moveTargetParentId, blockedParentIds } = storeToRefs(store);
+const { registerRegion, unregisterRegion } = usePageTransition();
+const treeRef = ref<HTMLElement | null>(null);
 const expandedIds = ref<string[]>([]);
 
 function collectAllIds(nodes: TreeNode[], result: string[]): void {
@@ -68,9 +71,21 @@ watch(
 );
 
 onMounted(async () => {
+  registerRegion({
+    id: 'content-globaltree',
+    type: 'glass',
+    element: treeRef,
+    shouldShow: (state) => state.viewState === 'move',
+    parent: 'content',
+  });
+
   if (treeNodes.value.length === 0) {
     await store.refreshTree();
   }
+});
+
+onBeforeUnmount(() => {
+  unregisterRegion('content-globaltree');
 });
 </script>
 

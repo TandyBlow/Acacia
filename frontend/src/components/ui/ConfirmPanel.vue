@@ -1,5 +1,5 @@
 <template>
-  <div class="panel">
+  <div ref="panelRef" class="panel">
     <section v-if="viewState === ViewStates.ADD" class="block">
       <h2>{{ UI.confirm.addNode }}</h2>
       <input
@@ -39,12 +39,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from './GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
+import { usePageTransition } from '../../composables/usePageTransition';
 import { ViewStates } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
 
@@ -54,10 +55,30 @@ const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteW
   storeToRefs(nodeStore);
 const { currentUsername } = storeToRefs(authStore);
 const { isLoggingOut, logoutUsername } = useKnobDispatch();
+const { registerRegion, unregisterRegion } = usePageTransition();
+const panelRef = ref<HTMLElement | null>(null);
 
 const logoutPrompt = computed(() => {
   const name = logoutUsername.value || currentUsername.value || UI.errors.unknownUser;
   return UI.confirm.logoutPrompt(name);
+});
+
+onMounted(() => {
+  registerRegion({
+    id: 'content-confirm',
+    type: 'glass',
+    element: panelRef,
+    shouldShow: (state) => {
+      return state.viewState === 'add' ||
+             state.viewState === 'delete' ||
+             state.viewState === 'move';
+    },
+    parent: 'content',
+  });
+});
+
+onBeforeUnmount(() => {
+  unregisterRegion('content-confirm');
 });
 </script>
 

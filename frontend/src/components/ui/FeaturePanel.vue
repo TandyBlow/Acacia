@@ -1,5 +1,5 @@
 <template>
-  <div class="feature-panel">
+  <div ref="featureRef" class="feature-panel">
     <div
       v-for="feature in features"
       :key="feature.id"
@@ -15,14 +15,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
 import { useAiGenerate } from '../../composables/useAiGenerate';
 import { useNodeStore } from '../../stores/nodeStore';
+import { usePageTransition } from '../../composables/usePageTransition';
 
 const { closeFeaturePanel, startLogout } = useKnobDispatch();
 const { requestOpenPopup, requestAnalysis } = useAiGenerate();
 const nodeStore = useNodeStore();
+const { registerRegion, unregisterRegion } = usePageTransition();
+const featureRef = ref<HTMLElement | null>(null);
 
 interface FeatureItem {
   id: string;
@@ -75,6 +78,20 @@ function handleReview() {
   closeFeaturePanel();
   nodeStore.startReview();
 }
+
+onMounted(() => {
+  registerRegion({
+    id: 'content-feature',
+    type: 'glass',
+    element: featureRef,
+    shouldShow: (state) => state.isFeaturePanel,
+    parent: 'content',
+  });
+});
+
+onBeforeUnmount(() => {
+  unregisterRegion('content-feature');
+});
 </script>
 
 <style scoped>
