@@ -157,6 +157,10 @@ export function usePageTransition() {
       // Phase 4: Swap visibility (instant, no animation)
       phase.value = 'swapping';
 
+      // Apply pending data before calculating new state
+      const nodeStore = useNodeStore();
+      nodeStore.applyPendingData();
+
       // Calculate new visible regions based on new state
       const newState = getCurrentPageState(layout);
       const newVisibleRegions = new Set<string>();
