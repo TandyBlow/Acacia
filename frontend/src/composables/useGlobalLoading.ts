@@ -1,3 +1,8 @@
+/**
+ * @deprecated This composable is deprecated and will be removed in a future version.
+ * Use the page transition system (usePageTransition) instead for managing loading states.
+ */
+
 import { computed, ref } from 'vue';
 
 const loadingSources = ref<Map<string, boolean>>(new Map());
