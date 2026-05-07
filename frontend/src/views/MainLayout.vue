@@ -208,7 +208,7 @@ onMounted(() => {
   if (knobRef.value) {
     registerRegion({
       id: 'knob',
-      type: 'glass',
+      type: 'inset', // 旋钮区域不参与玻璃动画，保持静止
       element: knobRef,
       shouldShow: () => {
         // Knob is always visible

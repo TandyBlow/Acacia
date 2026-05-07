@@ -28,7 +28,8 @@ export class DebugGUI {
 
   constructor(sceneManager: SceneManagerDebugAPI) {
     this.sm = sceneManager;
-    this.gui = new GUI({ title: 'Tree Debug' });
+    this.gui = new GUI({ title: 'Tree Debug', closeFolders: true });
+    this.gui.close(); // 默认收起
 
     this.buildSimFolder();
     this.buildTreeFolder();
