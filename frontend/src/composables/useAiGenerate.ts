@@ -1,5 +1,6 @@
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { apiFetch } from '../utils/api';
+import { useGlobalLoading } from './useGlobalLoading';
 
 export interface AiGenerateResult {
   nodes: Array<{ id: string; name: string; parent_id: string | null; skipped?: boolean }>;
@@ -16,12 +17,20 @@ const requestOpen = ref(false);
 const analysisRequest = ref(false);
 
 export function useAiGenerate() {
+  const { registerLoadingSource, setLoading, unregisterLoadingSource } = useGlobalLoading();
+  registerLoadingSource('aiGenerate');
+
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
   const analyzeResult = ref<AnalyzeResult | null>(null);
 
+  onUnmounted(() => {
+    unregisterLoadingSource('aiGenerate');
+  });
+
   async function generate(input: string): Promise<AiGenerateResult | null> {
     isBusy.value = true;
+    setLoading('aiGenerate', true);
     errorMessage.value = null;
     try {
       return await apiFetch<AiGenerateResult>('/ai-generate-nodes', {
@@ -33,11 +42,13 @@ export function useAiGenerate() {
       return null;
     } finally {
       isBusy.value = false;
+      setLoading('aiGenerate', false);
     }
   }
 
   async function analyzeNode(nodeId: string): Promise<AnalyzeResult | null> {
     isBusy.value = true;
+    setLoading('aiGenerate', true);
     errorMessage.value = null;
     analyzeResult.value = null;
     try {
@@ -51,6 +62,7 @@ export function useAiGenerate() {
       return null;
     } finally {
       isBusy.value = false;
+      setLoading('aiGenerate', false);
     }
   }
 

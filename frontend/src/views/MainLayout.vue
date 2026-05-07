@@ -27,12 +27,18 @@
           <div class="inset-shell static-shell content-shell">
             <GlassWrapper class="content-surface">
               <template v-if="!isFeaturePanel">
-                <div v-show="showTree" class="content-host"><TreeCanvas :visible="showTree" /></div>
+                <Transition name="tree-fade-in" mode="out-in">
+                  <div v-if="showTree" key="tree" class="content-host">
+                    <TreeCanvas :visible="showTree" />
+                  </div>
+                </Transition>
                 <Transition v-if="!showTree" name="content-rise" mode="out-in">
                   <component :is="nonTreeContent" :key="contentKey" class="content-host" />
                 </Transition>
               </template>
-              <FeaturePanel v-else class="feature-host" />
+              <Transition name="feature-panel" mode="out-in">
+                <FeaturePanel v-if="isFeaturePanel" key="feature" class="feature-host" />
+              </Transition>
             </GlassWrapper>
           </div>
         </section>
@@ -70,6 +76,7 @@ import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch } from '../composables/useKnobDispatch';
+import { useGlobalLoading } from '../composables/useGlobalLoading';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
 
@@ -84,11 +91,10 @@ const {
 useAppInit();
 const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout, closeFeaturePanel } = useKnobDispatch();
 
-const { isBusy: nodeBusy } = storeToRefs(nodeStore);
-const { isBusy: authBusy } = storeToRefs(authStore);
-const isBusy = computed(() => nodeBusy.value || authBusy.value);
+const { isLoading: globalLoading } = useGlobalLoading();
 const injectedTreeResizing = inject<Ref<boolean> | null>('isTreeResizing', null);
 const isTreeResizing = computed(() => injectedTreeResizing?.value ?? false);
+const isLoading = computed(() => globalLoading.value || isTreeResizing.value);
 
 // Compact layout tracking
 const isCompact = ref(false);
@@ -172,33 +178,6 @@ const contentKey = computed(() => {
   const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
 });
-
-// View transition tracking — force loading on content changes
-const isTransitioning = ref(false);
-let transitionTimer: number | null = null;
-
-function triggerTransition(): void {
-  if (transitionTimer !== null) window.clearTimeout(transitionTimer);
-  if (document.startViewTransition) {
-    document.startViewTransition(() => {
-      isTransitioning.value = true;
-      transitionTimer = window.setTimeout(() => {
-        isTransitioning.value = false;
-        transitionTimer = null;
-      }, 300);
-    });
-  } else {
-    isTransitioning.value = true;
-    transitionTimer = window.setTimeout(() => {
-      isTransitioning.value = false;
-      transitionTimer = null;
-    }, 300);
-  }
-}
-
-watch(contentKey, triggerTransition);
-
-const isLoading = computed(() => isBusy.value || isTreeResizing.value || isTransitioning.value);
 
 // Rising animation for homepage navigation
 const isRising = ref(false);
@@ -367,6 +346,33 @@ watch(contentKey, () => {
   transform: translateY(-8px) scale(0.99);
 }
 
+.tree-fade-in-enter-active {
+  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tree-fade-in-enter-from {
+  opacity: 0;
+}
+
+.feature-panel-enter-active {
+  transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.feature-panel-leave-active {
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.feature-panel-enter-from {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.feature-panel-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+/* 加载状态：文字透明 */
 .is-loading .breadcrumbs-area,
 .is-loading .navigation-area,
 .is-loading .content-area,
@@ -386,24 +392,31 @@ watch(contentKey, () => {
   caret-color: transparent;
 }
 
-.is-loading .navigation-area::after,
-.is-loading .content-area::after,
-.is-loading .breadcrumbs-area::after,
-.is-loading .knob-area::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(255, 255, 255, 0.15);
-  animation: load-pulse 1.2s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 5;
+/* 加载状态：所有玻璃区域下沉 */
+.is-loading .breadcrumbs-area :deep(.glass-raised),
+.is-loading .navigation-area :deep(.glass-raised),
+.is-loading .content-area :deep(.glass-raised),
+.is-loading .knob-area :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
+.is-loading .breadcrumbs-area :deep(.glass-raised .glass-content),
+.is-loading .navigation-area :deep(.glass-raised .glass-content),
+.is-loading .content-area :deep(.glass-raised .glass-content),
+.is-loading .knob-area :deep(.glass-raised .glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
-@keyframes load-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.8; }
+/* Logo 区域不受影响 */
+.is-loading .logo-area {
+  color: inherit;
+}
+
+.is-loading .logo-area :deep(*) {
+  color: inherit !important;
 }
 
 @keyframes glass-rise {
@@ -582,14 +595,5 @@ watch(contentKey, () => {
     justify-self: center;
     width: min(100%, 260px);
   }
-}
-</style>
-
-<style>
-/* View Transition API — 全站交叉渐变（不能 scoped，作用在 ::view-transition 伪元素上） */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 250ms;
-  animation-timing-function: ease;
 }
 </style>

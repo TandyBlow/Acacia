@@ -1,5 +1,6 @@
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { apiFetch } from '../utils/api';
+import { useGlobalLoading } from './useGlobalLoading';
 
 export interface QuizQuestion {
   id?: string;
@@ -33,6 +34,9 @@ export interface BatchGenerateResult {
 }
 
 export function useQuiz() {
+  const { registerLoadingSource, setLoading, unregisterLoadingSource } = useGlobalLoading();
+  registerLoadingSource('quiz');
+
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
   const currentQuestion = ref<QuizQuestion | null>(null);
@@ -41,11 +45,16 @@ export function useQuiz() {
   const questions = ref<QuizQuestionListItem[]>([]);
   const wrongQuestions = ref<QuizQuestion[]>([]);
 
+  onUnmounted(() => {
+    unregisterLoadingSource('quiz');
+  });
+
   async function generateQuestion(
     nodeId: string,
     questionType: string = 'single_choice',
   ): Promise<void> {
     isBusy.value = true;
+    setLoading('quiz', true);
     errorMessage.value = null;
     currentQuestion.value = null;
     selectedOption.value = null;
@@ -60,6 +69,7 @@ export function useQuiz() {
       errorMessage.value = err instanceof Error ? err.message : '出题失败';
     } finally {
       isBusy.value = false;
+      setLoading('quiz', false);
     }
   }
 
@@ -70,6 +80,7 @@ export function useQuiz() {
     questionTypes: string[] = ['single_choice'],
   ): Promise<BatchGenerateResult | null> {
     isBusy.value = true;
+    setLoading('quiz', true);
     errorMessage.value = null;
     try {
       return await apiFetch<BatchGenerateResult>(`/generate-batch/${nodeId}`, {
@@ -85,11 +96,13 @@ export function useQuiz() {
       return null;
     } finally {
       isBusy.value = false;
+      setLoading('quiz', false);
     }
   }
 
   async function fetchQuestions(nodeId: string): Promise<void> {
     isBusy.value = true;
+    setLoading('quiz', true);
     errorMessage.value = null;
     try {
       questions.value = await apiFetch<QuizQuestionListItem[]>(`/quiz-questions/${nodeId}`);
@@ -97,11 +110,13 @@ export function useQuiz() {
       errorMessage.value = err instanceof Error ? err.message : '获取题目列表失败';
     } finally {
       isBusy.value = false;
+      setLoading('quiz', false);
     }
   }
 
   async function fetchWrongQuestions(limit: number = 20): Promise<void> {
     isBusy.value = true;
+    setLoading('quiz', true);
     errorMessage.value = null;
     try {
       wrongQuestions.value = await apiFetch<QuizQuestion[]>(`/wrong-questions?limit=${limit}`);
@@ -109,11 +124,13 @@ export function useQuiz() {
       errorMessage.value = err instanceof Error ? err.message : '获取错题失败';
     } finally {
       isBusy.value = false;
+      setLoading('quiz', false);
     }
   }
 
   async function loadQuestion(nodeId: string, questionId: string): Promise<void> {
     isBusy.value = true;
+    setLoading('quiz', true);
     errorMessage.value = null;
     currentQuestion.value = null;
     selectedOption.value = null;
@@ -124,6 +141,7 @@ export function useQuiz() {
       errorMessage.value = err instanceof Error ? err.message : '加载题目失败';
     } finally {
       isBusy.value = false;
+      setLoading('quiz', false);
     }
   }
 

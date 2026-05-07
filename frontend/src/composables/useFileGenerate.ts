@@ -1,5 +1,6 @@
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
+import { useGlobalLoading } from './useGlobalLoading';
 
 export interface KnowledgePoint {
   id: string;
@@ -49,7 +50,14 @@ const conversationState = ref<{
 let editorInstance: Editor | null = null;
 
 export function useFileGenerate() {
+  const { registerLoadingSource, setLoading, unregisterLoadingSource } = useGlobalLoading();
+  registerLoadingSource('fileGenerate');
+
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+
+  onUnmounted(() => {
+    unregisterLoadingSource('fileGenerate');
+  });
 
   function setEditor(editor: Editor | null) {
     editorInstance = editor;
@@ -87,6 +95,7 @@ export function useFileGenerate() {
 
   async function extractKnowledgePoints(fileId: string): Promise<ExtractionResult> {
     isBusy.value = true;
+    setLoading('fileGenerate', true);
     errorMessage.value = '';
 
     try {
@@ -113,6 +122,7 @@ export function useFileGenerate() {
       throw error;
     } finally {
       isBusy.value = false;
+      setLoading('fileGenerate', false);
     }
   }
 
@@ -122,6 +132,7 @@ export function useFileGenerate() {
     knowledgePoints: KnowledgePoint[]
   ): Promise<{ sessionId: string; question: string; hints: string[] }> {
     isBusy.value = true;
+    setLoading('fileGenerate', true);
     errorMessage.value = '';
 
     try {
@@ -159,6 +170,7 @@ export function useFileGenerate() {
       throw error;
     } finally {
       isBusy.value = false;
+      setLoading('fileGenerate', false);
     }
   }
 
@@ -171,6 +183,7 @@ export function useFileGenerate() {
     }
 
     isBusy.value = true;
+    setLoading('fileGenerate', true);
     errorMessage.value = '';
 
     try {
@@ -211,6 +224,7 @@ export function useFileGenerate() {
       throw error;
     } finally {
       isBusy.value = false;
+      setLoading('fileGenerate', false);
     }
   }
 
@@ -223,6 +237,7 @@ export function useFileGenerate() {
     }
 
     isBusy.value = true;
+    setLoading('fileGenerate', true);
     errorMessage.value = '';
 
     try {
@@ -263,6 +278,7 @@ export function useFileGenerate() {
       throw error;
     } finally {
       isBusy.value = false;
+      setLoading('fileGenerate', false);
     }
   }
 

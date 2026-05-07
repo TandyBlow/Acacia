@@ -56,6 +56,10 @@ const isBusy = computed(() => injectedBusy?.value ?? false);
   background: var(--color-glass-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  transition:
+    background 160ms ease,
+    backdrop-filter 160ms ease,
+    -webkit-backdrop-filter 160ms ease;
 }
 
 .glass-raised {

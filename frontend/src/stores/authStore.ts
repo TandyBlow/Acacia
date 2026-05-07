@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import type { AuthUser } from '../types/auth';
 import type { AuthAdapter } from '../types/auth';
 import { UI } from '../constants/uiStrings';
+import { useGlobalLoading } from '../composables/useGlobalLoading';
 
 export type AuthMode = 'login' | 'register';
 
@@ -20,6 +21,9 @@ export function setAuthAdapter(adapter: AuthAdapter): void {
 }
 
 export const useAuthStore = defineStore('auth', () => {
+  const { registerLoadingSource, setLoading } = useGlobalLoading();
+  registerLoadingSource('authStore');
+
   const initialized = ref(false);
   const mode = ref<AuthMode>('login');
 
@@ -125,6 +129,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     isBusy.value = true;
+    setLoading('authStore', true);
     errorMessage.value = null;
 
     try {
@@ -144,6 +149,7 @@ export const useAuthStore = defineStore('auth', () => {
       return false;
     } finally {
       isBusy.value = false;
+      setLoading('authStore', false);
     }
   }
 
@@ -154,6 +160,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     const userId = user.value?.id;
     isBusy.value = true;
+    setLoading('authStore', true);
     try {
       await authAdapter.signOut();
       if (userId) {
@@ -167,6 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
       return false;
     } finally {
       isBusy.value = false;
+      setLoading('authStore', false);
     }
   }
 

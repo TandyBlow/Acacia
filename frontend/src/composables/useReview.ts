@@ -1,5 +1,6 @@
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { apiFetch } from '../utils/api';
+import { useGlobalLoading } from './useGlobalLoading';
 
 export interface DueReviewItem {
   node_id: string;
@@ -34,13 +35,21 @@ export interface ReviewStats {
 }
 
 export function useReview() {
+  const { registerLoadingSource, setLoading, unregisterLoadingSource } = useGlobalLoading();
+  registerLoadingSource('review');
+
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
   const dueItems = ref<DueReviewItem[]>([]);
   const reviewStats = ref<ReviewStats | null>(null);
 
+  onUnmounted(() => {
+    unregisterLoadingSource('review');
+  });
+
   async function fetchDueReviews(limit = 20): Promise<DueReviewItem[]> {
     isBusy.value = true;
+    setLoading('review', true);
     errorMessage.value = null;
     try {
       const data = await apiFetch<DueReviewItem[]>(`/due-reviews?limit=${limit}`);
@@ -51,11 +60,13 @@ export function useReview() {
       return [];
     } finally {
       isBusy.value = false;
+      setLoading('review', false);
     }
   }
 
   async function submitReview(nodeId: string, rating: number): Promise<ReviewResult | null> {
     isBusy.value = true;
+    setLoading('review', true);
     errorMessage.value = null;
     try {
       return await apiFetch<ReviewResult>(`/review/${nodeId}`, {
@@ -67,6 +78,7 @@ export function useReview() {
       return null;
     } finally {
       isBusy.value = false;
+      setLoading('review', false);
     }
   }
 
