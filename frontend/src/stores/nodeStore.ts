@@ -48,6 +48,13 @@ export const useNodeStore = defineStore('node', () => {
   const childNodes = ref<NodeRecord[]>([]);
   const treeNodes = ref<TreeNode[]>([]);
 
+  // 待应用的节点上下文（在转换动画期间缓存）
+  const pendingNodeContext = ref<{
+    nodeInfo: NodeRecord | null;
+    pathNodes: NodeRecord[];
+    children: NodeRecord[];
+  } | null>(null);
+
   const operationNode = ref<NodeRecord | null>(null);
   const operationHasChildren = ref(false);
   const pendingNodeName = ref('');
@@ -133,11 +140,10 @@ export const useNodeStore = defineStore('node', () => {
     errorMessage.value = null;
     try {
       const context = await dataAdapter!.getNodeContext(nodeId);
-      activeNode.value = context.nodeInfo;
-      pathNodes.value = context.pathNodes;
-      childNodes.value = context.children;
-      viewState.value = ViewStates.DISPLAY;
-      clearTransientState();
+
+      // 缓存数据，但不立即更新响应式状态
+      // 等待转换系统在合适的时机调用 applyPendingData
+      pendingNodeContext.value = context;
 
       nodeCache.setCache(nodeId, context);
 
@@ -148,6 +154,18 @@ export const useNodeStore = defineStore('node', () => {
       errorMessage.value = formatError(error);
     } finally {
       isBusy.value = false;
+    }
+  }
+
+  // 应用待处理的数据（由转换系统调用）
+  function applyPendingData(): void {
+    if (pendingNodeContext.value) {
+      activeNode.value = pendingNodeContext.value.nodeInfo;
+      pathNodes.value = pendingNodeContext.value.pathNodes;
+      childNodes.value = pendingNodeContext.value.children;
+      viewState.value = ViewStates.DISPLAY;
+      clearTransientState();
+      pendingNodeContext.value = null;
     }
   }
 
@@ -348,6 +366,7 @@ export const useNodeStore = defineStore('node', () => {
     currentNodeId,
     initialize,
     loadNode,
+    applyPendingData,
     startAdd,
     startDelete,
     startMove,
