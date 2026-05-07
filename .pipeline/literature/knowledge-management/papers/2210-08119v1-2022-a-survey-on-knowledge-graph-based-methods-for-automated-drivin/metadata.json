@@ -1,0 +1,22 @@
+{
+  "source": "arxiv",
+  "title": "A Survey on Knowledge Graph-based Methods for Automated Driving",
+  "authors": [
+    "Juergen Luettin",
+    "Sebastian Monka",
+    "Cory Henson",
+    "Lavdim Halilaj"
+  ],
+  "abstract": "Automated driving is one of the most active research areas in computer science. Deep learning methods have made remarkable breakthroughs in machine learning in general and in automated driving (AD)in particular. However, there are still unsolved problems to guarantee reliability and safety of automated systems, especially to effectively incorporate all available information and knowledge in the driving task. Knowledge graphs (KG) have recently gained significant attention from both industry and academia for applications that benefit by exploiting structured, dynamic, and relational data. The complexity of graph-structured data with complex relationships and inter-dependencies between objects has posed significant challenges to existing machine learning algorithms. However, recent progress in knowledge graph embeddings and graph neural networks allows to applying machine learning to graph-structured data. Therefore, we motivate and discuss the potential benefit of KGs applied to the main tasks of AD including 1) ontologies 2) perception, 3) scene understanding, 4) motion planning, and 5) validation. Then, we survey, analyze and categorize ontologies and KG-based approaches for AD. We discuss current research challenges and propose promising future research directions for KG-based solutions for AD.",
+  "year": 2022,
+  "published": "2022-09-30T15:47:19Z",
+  "landing_page": "https://arxiv.org/abs/2210.08119v1",
+  "pdf_url": "https://arxiv.org/pdf/2210.08119v1.pdf",
+  "doi": null,
+  "arxiv_id": "2210.08119v1",
+  "venue": "arXiv",
+  "rank": 3,
+  "paper_slug": "2210-08119v1-2022-a-survey-on-knowledge-graph-based-methods-for-automated-drivin",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2210-08119v1-2022-a-survey-on-knowledge-graph-based-methods-for-automated-drivin\\paper.pdf",
+  "pdf_status": "downloaded"
+}

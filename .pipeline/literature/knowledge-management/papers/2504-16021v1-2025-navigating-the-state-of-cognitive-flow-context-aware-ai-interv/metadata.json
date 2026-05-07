@@ -1,0 +1,20 @@
+{
+  "source": "arxiv",
+  "title": "Navigating the State of Cognitive Flow: Context-Aware AI Interventions for Effective Reasoning Support",
+  "authors": [
+    "Dinithi Dissanayake",
+    "Suranga Nanayakkara"
+  ],
+  "abstract": "Flow theory describes an optimal cognitive state where individuals experience deep focus and intrinsic motivation when a task's difficulty aligns with their skill level. In AI-augmented reasoning, interventions that disrupt the state of cognitive flow can hinder rather than enhance decision-making. This paper proposes a context-aware cognitive augmentation framework that adapts interventions based on three key contextual factors: type, timing, and scale. By leveraging multimodal behavioral cues (e.g., gaze behavior, typing hesitation, interaction speed), AI can dynamically adjust cognitive support to maintain or restore flow. We introduce the concept of cognitive flow, an extension of flow theory in AI-augmented reasoning, where interventions are personalized, adaptive, and minimally intrusive. By shifting from static interventions to context-aware augmentation, our approach ensures that AI systems support deep engagement in complex decision-making and reasoning without disrupting cognitive immersion.",
+  "year": 2025,
+  "published": "2025-04-22T16:35:39Z",
+  "landing_page": "https://arxiv.org/abs/2504.16021v1",
+  "pdf_url": "https://arxiv.org/pdf/2504.16021v1.pdf",
+  "doi": null,
+  "arxiv_id": "2504.16021v1",
+  "venue": "arXiv",
+  "rank": 6,
+  "paper_slug": "2504-16021v1-2025-navigating-the-state-of-cognitive-flow-context-aware-ai-interv",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2504-16021v1-2025-navigating-the-state-of-cognitive-flow-context-aware-ai-interv\\paper.pdf",
+  "pdf_status": "downloaded"
+}

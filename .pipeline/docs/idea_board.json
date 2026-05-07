@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-05-04",
+  "evaluated_at": "2026-05-04",
+  "eval_mode": "standalone (3 persona × 5 dimension, grounded on paper_digests.md)",
+  "eval_report": ".pipeline/ideas/eval_report.txt",
+  "based_on": {
+    "gap_matrix": ".pipeline/docs/gap_matrix.md",
+    "paper_digests": ".pipeline/docs/paper_digests.md",
+    "literature_bank": ".pipeline/memory/literature_bank.md"
+  },
+  "ideas": [
+    {
+      "id": "A",
+      "title": "层级树 vs 大纲 vs 图谱：知识组织范式的认知保留率比较实验",
+      "tagline": "为知识管理工具的设计选择提供第一个实证依据",
+      "scores": {
+        "clarity": 7.3, "novelty": 7.3, "validity": 6.3, "feasibility": 6.0, "significance": 9.0,
+        "overall_avg": 7.2, "decision": "strong_accept"
+      },
+      "key_concern": "三种UI界面的实现差异可能引入混淆变量；n≥50+4周跟踪资源需求高",
+      "breaks_through": [
+        "Naim et al. (2019) — 将认知实验扩展至数字工具场景",
+        "IBM/Obsidian (arXiv:2509.20187) — 跨三种范式比较而非单一工具"
+      ]
+    },
+    {
+      "id": "B",
+      "title": "寻找'认知债务'的最小化点：AI在笔记组织中的最优干预时机",
+      "tagline": "回应Chen et al.的'AI辅助困境'",
+      "scores": {
+        "clarity": 7.3, "novelty": 9.0, "validity": 6.3, "feasibility": 4.3, "significance": 9.0,
+        "overall_avg": 7.2, "decision": "strong_accept"
+      },
+      "key_concern": "可行性最低（4.3）——需开发4版AI系统+EEG子样本+60人+2周跟踪；AI建议质量可能混淆时机效应",
+      "breaks_through": [
+        "Chen et al. (2025) — 首次操作化'适度AI支持'",
+        "MIT EEG (Kosmyna et al., 2025) — 引入AI介入程度作为连续变量"
+      ]
+    },
+    {
+      "id": "C",
+      "title": "树导航的'深度-效率'曲线：面包屑深度和侧边栏宽度对知识检索效率的实证研究",
+      "tagline": "第一次用实验数据回答：多深算太深？多宽算太宽？",
+      "scores": {
+        "clarity": 9.0, "novelty": 5.7, "validity": 8.0, "feasibility": 8.7, "significance": 6.3,
+        "overall_avg": 7.6, "decision": "strong_accept"
+      },
+      "key_concern": "学术新颖性最低（5.7）——菜单深度研究在HCI中有悠久历史；显著性中等（6.3）——可能不足以发表顶会",
+      "breaks_through": [
+        "Atlas (2025) — 首次系统操作深度/宽度参数",
+        "Gap Matrix #4 — 首次实证测量面包屑导航最优参数"
+      ]
+    },
+    {
+      "id": "D",
+      "title": "PKM工具的'检索策略→知识结构'因果链：跨范式验证",
+      "tagline": "验证IBM发现的普适性",
+      "scores": {
+        "clarity": 5.3, "novelty": 8.3, "validity": 5.3, "feasibility": 4.3, "significance": 7.3,
+        "overall_avg": 6.1, "decision": "accept"
+      },
+      "key_concern": "整体最弱（6.1）——工具质量混淆范式类型无法消除；4周新手期可能不足以形成稳定策略；拓扑指标在笔记领域的效度未验证",
+      "breaks_through": [
+        "IBM/Obsidian (arXiv:2509.20187) — 观察性→因果推断，单工具→跨范式"
+      ]
+    },
+    {
+      "id": "E",
+      "title": "AI时代的Source Memory侵蚀：用户能否区分'我的笔记'和'AI的笔记'？",
+      "tagline": "当AI帮你写笔记，你还记得哪些是你写的吗？",
+      "scores": {
+        "clarity": 7.0, "novelty": 8.7, "validity": 7.3, "feasibility": 7.7, "significance": 7.7,
+        "overall_avg": 7.7, "decision": "strong_accept"
+      },
+      "key_concern": "50条笔记的'拥有感'在实验环境中难以深度建立；AI笔记质量需要作为控制变量精心校准",
+      "breaks_through": [
+        "Alessa et al. (2025) — 单次接触→2周延迟Source Memory测试",
+        "MIT EEG (Kosmyna et al., 2025) — 首次分离'内容遗忘'和'来源混淆'"
+      ]
+    }
+  ],
+  "meta_review_summary": {
+    "ranking_by_score": ["E (7.7)", "C (7.6)", "A (7.2)", "B (7.2)", "D (6.1)"],
+    "best_fast_output": "C — 最优可行性(8.7)和最清晰设计(9.0)，可2-3周完成数据收集，适合作为第一个快速产出",
+    "best_academic_impact": "E — 最高总分(7.7)，新颖性(8.7)+显著性(7.7)均衡优秀，可能产出具传播力的发现",
+    "long_term_ambition": "A和B — 同为7.2分但可行度低，建议在C/E建立实验范式后推进"
+  }
+}

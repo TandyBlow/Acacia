@@ -1,0 +1,21 @@
+{
+  "source": "arxiv",
+  "title": "Enhancing Critical Thinking with AI: A Tailored Warning System for RAG Models",
+  "authors": [
+    "Xuyang Zhu",
+    "Sejoon Chang",
+    "Andrew Kuik"
+  ],
+  "abstract": "Retrieval-Augmented Generation (RAG) systems offer a powerful approach to enhancing large language model (LLM) outputs by incorporating fact-checked, contextually relevant information. However, fairness and reliability concerns persist, as hallucinations can emerge at both the retrieval and generation stages, affecting users' reasoning and decision-making. Our research explores how tailored warning messages -- whose content depends on the specific context of hallucination -- shape user reasoning and actions in an educational quiz setting. Preliminary findings suggest that while warnings improve accuracy and awareness of high-level hallucinations, they may also introduce cognitive friction, leading to confusion and diminished trust in the system. By examining these interactions, this work contributes to the broader goal of AI-augmented reasoning: developing systems that actively support human reflection, critical thinking, and informed decision-making rather than passive information consumption.",
+  "year": 2025,
+  "published": "2025-04-23T17:00:25Z",
+  "landing_page": "https://arxiv.org/abs/2504.16883v1",
+  "pdf_url": "https://arxiv.org/pdf/2504.16883v1.pdf",
+  "doi": null,
+  "arxiv_id": "2504.16883v1",
+  "venue": "arXiv",
+  "rank": 4,
+  "paper_slug": "2504-16883v1-2025-enhancing-critical-thinking-with-ai-a-tailored-warning-system-",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2504-16883v1-2025-enhancing-critical-thinking-with-ai-a-tailored-warning-system-\\paper.pdf",
+  "pdf_status": "downloaded"
+}

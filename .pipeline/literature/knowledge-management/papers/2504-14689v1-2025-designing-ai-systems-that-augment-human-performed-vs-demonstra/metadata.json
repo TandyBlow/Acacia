@@ -1,0 +1,20 @@
+{
+  "source": "arxiv",
+  "title": "Designing AI Systems that Augment Human Performed vs. Demonstrated Critical Thinking",
+  "authors": [
+    "Katelyn Xiaoying Mei",
+    "Nic Weber"
+  ],
+  "abstract": "The recent rapid advancement of LLM-based AI systems has accelerated our search and production of information. While the advantages brought by these systems seemingly improve the performance or efficiency of human activities, they do not necessarily enhance human capabilities. Recent research has started to examine the impact of generative AI on individuals' cognitive abilities, especially critical thinking. Based on definitions of critical thinking across psychology and education, this position paper proposes the distinction between demonstrated and performed critical thinking in the era of generative AI and discusses the implication of this distinction in research and development of AI systems that aim to augment human critical thinking.",
+  "year": 2025,
+  "published": "2025-04-20T17:40:28Z",
+  "landing_page": "https://arxiv.org/abs/2504.14689v1",
+  "pdf_url": "https://arxiv.org/pdf/2504.14689v1.pdf",
+  "doi": null,
+  "arxiv_id": "2504.14689v1",
+  "venue": "arXiv",
+  "rank": 1,
+  "paper_slug": "2504-14689v1-2025-designing-ai-systems-that-augment-human-performed-vs-demonstra",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2504-14689v1-2025-designing-ai-systems-that-augment-human-performed-vs-demonstra\\paper.pdf",
+  "pdf_status": "downloaded"
+}

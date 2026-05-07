@@ -1,0 +1,26 @@
+{
+  "source": "openalex",
+  "title": "TraceMem: Weaving Narrative Memory Schemata from User Conversational Traces",
+  "authors": [
+    "Yiming Shu",
+    "Pei Liu",
+    "Tiange Zhang",
+    "Ruiyang Gao",
+    "Jun Ma",
+    "Chen Sun"
+  ],
+  "abstract": null,
+  "year": 2026,
+  "landing_page": "http://arxiv.org/abs/2602.09712",
+  "pdf_url": "https://arxiv.org/pdf/2602.09712",
+  "primary_pdf_url": "https://arxiv.org/pdf/2602.09712",
+  "oa_url": "https://arxiv.org/pdf/2602.09712",
+  "doi": null,
+  "arxiv_id": null,
+  "venue": "arXiv (Cornell University)",
+  "is_open_access": true,
+  "rank": 8,
+  "paper_slug": "2026-tracemem-weaving-narrative-memory-schemata-from-user-conversational-traces",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2026-tracemem-weaving-narrative-memory-schemata-from-user-conversational-traces\\paper.pdf",
+  "pdf_status": "downloaded"
+}

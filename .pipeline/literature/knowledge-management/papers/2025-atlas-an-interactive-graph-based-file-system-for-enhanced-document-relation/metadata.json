@@ -1,0 +1,21 @@
+{
+  "source": "openalex",
+  "title": "Atlas: An Interactive Graph-Based File System for Enhanced Document Relationship Visualization",
+  "authors": [
+    "Danièl Thomas"
+  ],
+  "abstract": null,
+  "year": 2025,
+  "landing_page": "https://doi.org/10.31224/5027",
+  "pdf_url": "https://engrxiv.org/preprint/download/5027/8561/7115",
+  "primary_pdf_url": "https://engrxiv.org/preprint/download/5027/8561/7115",
+  "oa_url": "https://engrxiv.org/preprint/download/5027/8561/7115",
+  "doi": "10.31224/5027",
+  "arxiv_id": null,
+  "venue": null,
+  "is_open_access": true,
+  "rank": 7,
+  "paper_slug": "2025-atlas-an-interactive-graph-based-file-system-for-enhanced-document-relation",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2025-atlas-an-interactive-graph-based-file-system-for-enhanced-document-relation\\paper.pdf",
+  "pdf_status": "downloaded"
+}

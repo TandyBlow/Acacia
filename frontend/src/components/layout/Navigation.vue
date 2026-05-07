@@ -134,7 +134,8 @@ watch(childNodes, (list) => {
   currentSpeed.value = 0;
   currentAnimMs.value = NAV_ANIM_MS;
   displayNodes.value = list.slice(0, maxVisible.value);
-  transitionName.value = 'nav-rise';
+  // 禁用初始动画，直接显示
+  transitionName.value = 'none';
   nextTick(() => { transitionName.value = 'nav-row'; });
 }, { immediate: true });
 

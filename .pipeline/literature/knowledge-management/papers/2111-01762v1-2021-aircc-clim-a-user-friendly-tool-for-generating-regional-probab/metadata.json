@@ -1,0 +1,23 @@
+{
+  "source": "arxiv",
+  "title": "AIRCC-Clim: a user-friendly tool for generating regional probabilistic climate change scenarios and risk measures",
+  "authors": [
+    "Francisco Estrada",
+    "Oscar Calderón-Bustamante",
+    "Wouter Botzen",
+    "Julián A. Velasco",
+    "Richard S. J. Tol"
+  ],
+  "abstract": "Complex physical models are the most advanced tools available for producing realistic simulations of the climate system. However, such levels of realism imply high computational cost and restrictions on their use for policymaking and risk assessment. Two central characteristics of climate change are uncertainty and that it is a dynamic problem in which international actions can significantly alter climate projections and information needs, including partial and full compliance of global climate goals. Here we present AIRCC-Clim, a simple climate model emulator that produces regional probabilistic climate change projections of monthly and annual temperature and precipitation, as well as risk measures, based both on standard and user-defined emissions scenarios for six greenhouse gases. AIRCC-Clim emulates 37 atmosphere-ocean coupled general circulation models with low computational and technical requirements for the user. This standalone, user-friendly software is designed for a variety of applications including impact assessments, climate policy evaluation and integrated assessment modelling.",
+  "year": 2021,
+  "published": "2021-10-30T11:09:03Z",
+  "landing_page": "https://arxiv.org/abs/2111.01762v1",
+  "pdf_url": "https://arxiv.org/pdf/2111.01762v1.pdf",
+  "doi": null,
+  "arxiv_id": "2111.01762v1",
+  "venue": "arXiv",
+  "rank": 4,
+  "paper_slug": "2111-01762v1-2021-aircc-clim-a-user-friendly-tool-for-generating-regional-probab",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2111-01762v1-2021-aircc-clim-a-user-friendly-tool-for-generating-regional-probab\\paper.pdf",
+  "pdf_status": "downloaded"
+}

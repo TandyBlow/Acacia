@@ -1,0 +1,257 @@
+{
+  "converted_files": 21,
+  "items": [
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    },
+    {
+      "input_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2001-11379v1-2020-proposal-of-a-standard-of-knowledge-management-and-technologic\\paper.pdf",
+      "output_dir": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper",
+      "backend": "pdfminer",
+      "documents": [
+        {
+          "markdown_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\paper\\doc_0.md",
+          "markdown_image_paths": [],
+          "output_image_paths": []
+        }
+      ]
+    }
+  ]
+}

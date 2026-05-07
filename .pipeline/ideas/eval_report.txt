@@ -1,0 +1,247 @@
+# Idea Evaluation Report — Knowledge Management Tools Research
+
+Generated: 2026-05-04 | Mode: standalone (无完整 pipeline artifacts，基于 paper_digests.md + gap_matrix.md + 文献调研积累评估)
+
+---
+
+## Evidence Assembly
+
+- **Source papers**: paper_digests.md (6篇核心论文深度摘要)
+- **Gap reference**: gap_matrix.md (5方向 + 跨方向空白)
+- **Literature bank**: 35+ 条目
+- **Prior art knowledge**: 调研阶段深度搜索 NoTeeline, MIT EEG, Chen et al., IBM/Obsidian, Naim et al., Alessa et al., 三大开源工具架构分析
+- **Mode limitation noted**: 未运行 search_ai_papers.py 进行活跃新颖性搜索；新颖性判断基于 paper_digests.md 中已记录的局限性分析和 known prior art
+
+---
+
+## Persona 1: Senior ML Researcher — 侧重技术严谨性和实验设计
+
+### Idea A: 层级树 vs 大纲 vs 图谱 — 知识保留率比较实验
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 8 | 研究问题、自变量（三种范式）、因变量（回忆率/再认/结构复原度）、实验设计均清晰定义。唯一模糊点：'知识材料'的具体内容未指定 |
+| Novelty | 7 | 跨范式比较在文献中完全缺失（gap_matrix 已确认为空白），但受控实验比较不同UI范式在HCI中是成熟范式，非方法论创新 |
+| Validity | 7 | 混合设计（组间+组内）是合理的。主要威胁：三种UI界面的实现差异可能引入混淆变量（如每个界面的视觉质量/响应速度不同） |
+| Feasibility | 6 | n≥50受控实验可行但需大量开发（需构建三个功能完整的笔记界面）+ 4周纵向跟踪。资源需求高 |
+| Significance | 9 | 如果层级树优势被证实，将成为知识管理工具领域被引最多的实证研究——目前这个空白是惊人的 |
+
+**Avg: 7.4 | Recommendation: STRONG ACCEPT**
+
+### Idea B: AI在笔记组织中的最优干预时机
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 8 | 四组条件定义明确（纯手动/前置/后置/全自动），因变量选择合理。但'最优'的操作化定义（多目标帕累托最优？加权综合？）需要更精确 |
+| Novelty | 9 | Chen et al.发现了AI辅助困境但未操作化'适度'；MIT EEG只测了全自动。将'干预时机'作为自变量是真正的增量贡献 |
+| Validity | 7 | 组间设计合理。但'AI建议结构'的质量取决于LLM质量——不同模型可能产生不同的效应量。需控制此变量 |
+| Feasibility | 5 | n≥60 + EEG子样本 + 2周跟踪。开发四个版本的AI笔记系统。成本高，且需要IRB审批（涉及认知实验）。小团队可行性低 |
+| Significance | 9 | 如果建立'认知债务的剂量-反应曲线'，将同时影响HCI、认知科学和AI产品设计三个领域。可能成为CHI最佳论文候选 |
+
+**Avg: 7.6 | Recommendation: STRONG ACCEPT**
+
+### Idea C: 树导航的'深度-效率'曲线
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 9 | 实验设计最为清晰：4深度×4宽度×3导航模式，操作化定义精确。产出直接可用的设计指南 |
+| Novelty | 6 | 在HCI领域，菜单深度vs宽度的研究已有(如Landauer & Nachbar 1985, Jacko & Salvendy 1996)，但在知识管理树导航场景下是首次。方法论不新，应用场景新 |
+| Validity | 8 | 因子设计稳健。16种深度×宽度组合×3种导航的内部效度高。生态效度可接受（模拟知识管理场景） |
+| Feasibility | 8 | 无需长期跟踪(单次实验)，无需AI开发，仅需可控的树导航界面。n≥40可在2-3周内完成数据收集 |
+| Significance | 7 | 产出直接的设计指南（面包屑最多几级、何时折叠等），实践价值高。学术新颖性中等 |
+
+**Avg: 7.6 | Recommendation: STRONG ACCEPT**
+
+### Idea D: PKM工具的'检索策略→知识结构'因果链 — 跨范式验证
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 6 | 核心假设（'检索策略→内容结构'因果链跨范式成立）清晰，但'知识结构的拓扑指标'（聚类系数/孤岛率/链接密度）的定义需要从图论映射到笔记领域——这个映射本身需要验证 |
+| Novelty | 8 | 直接突破IBM研究的单工具局限。跨范式、随机分配实验设计将观察性发现转化为因果推断——这是方法论升级 |
+| Validity | 6 | 4周使用周期可能不足以让新手用户形成稳定的组织策略。'知识库拓扑结构'作为因变量的效度需要先验证 |
+| Feasibility | 5 | n≥45 × 4周 × 三种工具开发/适配 + 前后测 + 定性访谈。是最重的实验设计。且需要确保三种工具的编辑体验相当（否则工具质量成为混淆变量） |
+| Significance | 7 | 如果证实工具范式因果性地塑造知识结构，将重新定义PKM工具的设计哲学——'选择工具就是选择思维方式' |
+
+**Avg: 6.4 | Recommendation: ACCEPT**
+
+### Idea E: AI时代Source Memory侵蚀
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | 核心假设明确（AI参与度越高→Source Memory越弱），实验设计清晰。但'Source Memory测试'的具体题库/方案需要更详细说明 |
+| Novelty | 9 | Alessa et al.测量了AI对判断的即时影响，MIT EEG测量了内容遗忘。首次将'来源混淆'和'内容遗忘'分离测量，引入信号检测论框架——这是真正的增量贡献 |
+| Validity | 7 | 组间设计+2周延迟合理。但50条笔记×4周提示——50条笔记的"拥有感"建立需要足够的使用场景，单纯实验任务可能生态效度不足 |
+| Feasibility | 7 | 无需复杂的AI系统开发（可预制不同比例的AI笔记作为刺激材料）。n≥50可实现。主要成本：50条笔记的内容设计 + 2周后的召回测试 |
+| Significance | 8 | 直接挑战'AI辅助=纯正面'的流行叙事。如果Source Memory在高AI参与度下系统性崩溃，将成为AI产品设计的重要约束条件 |
+
+**Avg: 7.6 | Recommendation: STRONG ACCEPT**
+
+---
+
+## Persona 2: Domain Expert (HCI/Knowledge Management)
+
+### Idea A
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | 对KM领域研究者来说，三种范式的操作化定义（具体什么算'层级树界面'）可能需要更详细的说明——Trilium和Acacia的树，与文件系统的树，是非常不同的东西 |
+| Novelty | 8 | KM领域极度缺乏实证比较研究。目前的选择建议（'喜欢结构化用Trilium，喜欢自由用Logseq'）全凭直觉。第一个实证比较将改变对话方式 |
+| Validity | 6 | 知识材料的生态效度是核心问题。20个概念+100条事实——这种材料更像考试复习而非真实的KM工作流（读书笔记、项目记录、想法演化）。如果材料不生态，结论的推广性受限 |
+| Feasibility | 6 | KM领域的纵向实验流失率高。4周的跟踪可能流失30%+参与者 |
+| Significance | 9 | 同Persona 1 |
+
+**Avg: 7.2 | Recommendation: STRONG ACCEPT**
+
+### Idea B
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | 'AI后置增强'在KM领域是什么样子？如果用户先写笔记，AI再建议链接/重组——这和后置增强是同构。但当前笔记工具(Obsidian Copilot)的AI使用模式大多是'on-demand'而非'前置或后置'，需要更贴近真实使用场景 |
+| Novelty | 9 | 同Persona 1 |
+| Validity | 6 | KM领域的AI使用是高度个体化的——有些用户重度依赖AI，有些完全不碰。组间设计假设随机分配能控制个体差异，但用户对AI的态度(信任/怀疑)可能是一个重要的调节变量 |
+| Feasibility | 4 | KM领域招募60人+4条件+2周跟踪非常难。且需要开发4个版本的笔记工具——可能超出典型HCI实验室的资源 |
+| Significance | 9 | 同Persona 1 |
+
+**Avg: 7.0 | Recommendation: ACCEPT**
+
+### Idea C
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 9 | 最清晰的实验设计。KM社区会直接使用产出数据指导设计 |
+| Novelty | 5 | 菜单深度研究在HCI中有悠久历史。虽然有场景新颖性，但核心研究问题（'多深算太深'）已经被菜单研究反复回答过了。KM树与文件系统菜单的关键区别（节点有语义内容，导航是渐进式知识发现）需要被突出 |
+| Validity | 8 | 同Persona 1 |
+| Feasibility | 9 | KM领域最容易执行的实验。单次任务，无跟踪。可能2周完成数据收集 |
+| Significance | 6 | 对工具开发者实践价值极高，但学术贡献度可能不足以发表顶会。适合作为CHI LBW或CSCW poster |
+
+**Avg: 7.4 | Recommendation: ACCEPT**
+
+### Idea D
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 5 | IBM研究的'检索策略'概念在KM领域其实不够清晰——指的是'用户偏好搜索还是浏览'还是'用户使用全文搜索还是图导航还是文件夹'？需要精确操作化 |
+| Novelty | 9 | 跨范式因果推断在KM领域是前所未有的。纵向+随机分配+拓扑分析——方法上比IBM的观察性案例研究强一个等级 |
+| Validity | 5 | 4周恐怕不足以让新手形成稳定的'检索策略'。IBM研究中的参与者已使用Obsidian数月到数年。新手的4周行为容易受实验者效应和初始引导的影响 |
+| Feasibility | 4 | KM纵向实验最重的设计。45人×4周流失率可能达40%。三种工具的质量差异无法完全控制 |
+| Significance | 8 | 如果'工具范式→知识结构'因果链被证实，这将对KM教育、工具选择、企业部署产生深远影响 |
+
+**Avg: 6.2 | Recommendation: BORDERLINE ACCEPT**
+
+### Idea E
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | 同Persona 1 |
+| Novelty | 8 | Source Memory在认知心理学中有成熟范式，但从未被应用于AI+KM场景。跨学科迁移是新颖的 |
+| Validity | 8 | Source Memory测试在认知心理学中的实验范式成熟（信号检测论框架）。应用于笔记场景的生态效度取决于笔记内容的设计质量 |
+| Feasibility | 8 | 无需开发复杂AI系统。预制不同AI参与比例的笔记作为刺激材料即可。实验材料设计工作量大但可行 |
+| Significance | 8 | 如果Source Memory在高AI参与下崩溃，'AI帮我写笔记=AI帮我不记得'的叙事将被实证。对KM+AI产品的设计哲学有直接约束力 |
+
+**Avg: 7.8 | Recommendation: STRONG ACCEPT**
+
+---
+
+## Persona 3: Methods Specialist — 侧重实验设计和统计效度
+
+### Idea A
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | 混合设计（组间：三种范式；组内：三个时间点）。需要明确是3×3的全因子还是3(范式)×3(时间)的裂区设计。统计模型的随机效应结构需要预先注册 |
+| Novelty | 7 | 同Persona 1 |
+| Validity | 6 | 三种界面的实现差异是最大的内部效度威胁。理想情况是：同一底层代码，只改变前端结构呈现（树/大纲/图）。但'改变结构'本身就是干预——不能同时'改变结构'和'保持其他一切不变' |
+| Feasibility | 6 | n≥50、4周跟踪。流失率需要纳入功效分析。如果流失30%，需要recruit 70+。3×3混合设计的功效分析需要预先做 |
+| Significance | 9 | 同Persona 1 |
+
+**Avg: 7.0 | Recommendation: ACCEPT**
+
+### Idea B
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | 四组组间设计——但'AI后置'和'AI前置'的实验操作需要明确区分。'AI后置'条件下，用户先组织完，AI再建议修改——用户是否被要求必须考虑AI建议？如果是，那'后置'和'前置'的区别在于决策顺序，但AI的影响可能等价 |
+| Novelty | 9 | 同Persona 1 |
+| Validity | 6 | 核心问题是：AI建议的'质量'会混淆'时机'的效应。如果后置条件下的AI建议恰好比前置条件下的更准确（因为后置有了用户的组织作为上下文），那么效应来自质量而非时机。需要解耦 |
+| Feasibility | 4 | EEG子样本+2周跟踪+60人+4版本AI系统。开发成本和招募成本对于学术实验室非常高 |
+| Significance | 9 | 同Persona 1 |
+
+**Avg: 7.0 | Recommendation: ACCEPT**
+
+### Idea C
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 9 | 4×4×3因子设计。推荐使用混合设计：深度和宽度作为within-subject（因子组合多），导航模式作为between-subject（避免迁移效应） |
+| Novelty | 6 | 同Persona 2 |
+| Validity | 8 | 因子设计内有效度高。建议增加'任务类型'因子（找已知位置 vs 找'最合适的分类位置'），因为KM中的导航常是后一种 |
+| Feasibility | 9 | 单次实验，最佳可行性。推荐做功效分析预先注册。16×3=48条件，每个参与者可以经历所有深度×宽度组合（随机顺序），导航模式组间 |
+| Significance | 6 | 同Persona 2 |
+
+**Avg: 7.6 | Recommendation: STRONG ACCEPT**
+
+### Idea D
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 5 | 因变量'知识库拓扑结构'的操作化方法需要明确定义。聚类系数和链接密度在网络科学中是标准的，但笔记网络是有向图还是无向图？'孤岛率'的定义是什么（连通分量数/总节点数？）？ |
+| Novelty | 8 | 同Persona 2 |
+| Validity | 5 | 最大的方法学问题：工具质量×范式类型的混淆无法消除。如果Trilium的Tree UI恰好比Logseq的Outliner UI更好用（且无关范式），那么'范式效应'的显著性可能来自工具质量 |
+| Feasibility | 4 | 同Persona 2 |
+| Significance | 7 | 同Persona 2 |
+
+**Avg: 5.8 | Recommendation: BORDERLINE ACCEPT**
+
+### Idea E
+
+| 维度 | 评分 | 理由 |
+|------|------|------|
+| Clarity | 7 | Source Memory实验范式成熟，直接迁移即可。但需要预先注册：信号检测论的d'（辨别力）和C（反应偏差）哪个作为主要因变量？ |
+| Novelty | 9 | 同Persona 1 |
+| Validity | 7 | 预制AI笔记作为刺激材料——这里AI笔记的'质量'是控制变量但非自变量。需要确保AI笔记的质量足够好（否则Source Memory差可能因为AI笔记质量差而容易识别），但又不能完美到让人无法区分 |
+| Feasibility | 8 | 实验材料设计（50条笔记×4个AI比例条件×质量控制）是主要工作量。但不需要开发AI系统。使用现成LLM生成+人工审核即可 |
+| Significance | 7 | 信号检测论框架使得'Source Memory侵蚀'可以分解为'辨别力下降'(真的分不清)和'反应偏差改变'(倾向于认为一切都是自己写的)——这个分解对AI产品设计非常有用 |
+
+**Avg: 7.6 | Recommendation: STRONG ACCEPT**
+
+---
+
+## Meta-Review (Area Chair Aggregation)
+
+### Score Summary
+
+| Idea | Persona 1 (ML) | Persona 2 (Domain) | Persona 3 (Methods) | **Overall Avg** | Decision |
+|------|----------------|--------------------|--------------------|-----------------|----------|
+| A: 范式比较实验 | 7.4 | 7.2 | 7.0 | **7.2** | STRONG ACCEPT |
+| B: AI最优干预时机 | 7.6 | 7.0 | 7.0 | **7.2** | STRONG ACCEPT |
+| C: 树导航深度-效率 | 7.6 | 7.4 | 7.6 | **7.6** | STRONG ACCEPT |
+| D: 检索策略→知识结构 | 6.4 | 6.2 | 5.8 | **6.1** | ACCEPT |
+| E: Source Memory侵蚀 | 7.6 | 7.8 | 7.6 | **7.7** | STRONG ACCEPT |
+
+### Dimension Averages
+
+| Dimension | A | B | C | D | E |
+|-----------|------|------|------|------|------|
+| Clarity | 7.3 | 7.3 | 9.0 | 5.3 | 7.0 |
+| Novelty | 7.3 | 9.0 | 5.7 | 8.3 | 8.7 |
+| Validity | 6.3 | 6.3 | 8.0 | 5.3 | 7.3 |
+| Feasibility | 6.0 | 4.3 | 8.7 | 4.3 | 7.7 |
+| Significance | 9.0 | 9.0 | 6.3 | 7.3 | 7.7 |
+
+### Reviewer Disagreement Resolution
+
+- **Idea B Feasibility**: P1=5, P2=4, P3=4 → 一致认为可行度偏低。如需推进，建议简化设计（放弃EEG子样本，聚焦行为数据）
+- **Idea D Validity**: P1=6, P2=5, P3=5 → 一致认为效度有顾虑。工具质量混淆范式的问题需要在实验设计中解决
+- **Idea C Novelty**: P1=6, P2=5, P3=6 → 一致认为方法新颖度一般。但Clarity和Feasibility高，适合作为快速产出的第一个实验
+
+### Meta-Review Recommendation
+
+**C (树导航深度-效率)和E (Source Memory)是最优的两个选择**，理由互补：
+
+- **C** 最优可行性（8.7），最清晰的实验设计（9.0），可以最快产生可发表的结果。代价是学术新颖性（5.7）和显著性（6.3）中等。**适合作为第一个快速产出的实验，建立实验范式后扩展到A和B**。
+
+- **E** 最高Overall Avg（7.7），新颖性（8.7）和显著性（7.7）均衡优秀。可行性也好（7.7）——不需要开发AI系统，只需预制刺激材料。**可能产出最具传播力的结果**（'AI让你忘记自己的笔记'是一个大众传播级的发现）。
+
+- **A和B** 都是高分（7.2）但可行性偏低。B的可行性最低（4.3）——需要开发4版AI系统+EEG。建议作为长期目标，C/E先行。
+
+- **D** 是最弱的（6.1），建议重新设计以解决工具质量混淆问题，或拆分为更小的先导研究。

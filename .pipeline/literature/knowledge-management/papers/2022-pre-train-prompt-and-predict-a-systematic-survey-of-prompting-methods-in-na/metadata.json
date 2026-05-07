@@ -1,0 +1,26 @@
+{
+  "source": "openalex",
+  "title": "Pre-train, Prompt, and Predict: A Systematic Survey of Prompting Methods in Natural Language Processing",
+  "authors": [
+    "Pengfei Liu",
+    "Weizhe Yuan",
+    "Jinlan Fu",
+    "Zhengbao Jiang",
+    "Hiroaki Hayashi",
+    "Graham Neubig"
+  ],
+  "abstract": null,
+  "year": 2022,
+  "landing_page": "https://doi.org/10.1145/3560815",
+  "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3560815",
+  "primary_pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3560815",
+  "oa_url": "https://dl.acm.org/doi/pdf/10.1145/3560815",
+  "doi": "10.1145/3560815",
+  "arxiv_id": null,
+  "venue": "ACM Computing Surveys",
+  "is_open_access": true,
+  "rank": 5,
+  "paper_slug": "2022-pre-train-prompt-and-predict-a-systematic-survey-of-prompting-methods-in-na",
+  "local_pdf_path": null,
+  "pdf_status": "failed: 403 Client Error: Forbidden for url: https://dl.acm.org/doi/pdf/10.1145/3560815"
+}

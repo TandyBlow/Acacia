@@ -1,0 +1,22 @@
+{
+  "source": "arxiv",
+  "title": "Semantic TrueLearn: Using Semantic Knowledge Graphs in Recommendation Systems",
+  "authors": [
+    "Sahan Bulathwela",
+    "María Pérez-Ortiz",
+    "Emine Yilmaz",
+    "John Shawe-Taylor"
+  ],
+  "abstract": "In informational recommenders, many challenges arise from the need to handle the semantic and hierarchical structure between knowledge areas. This work aims to advance towards building a state-aware educational recommendation system that incorporates semantic relatedness between knowledge topics, propagating latent information across semantically related topics. We introduce a novel learner model that exploits this semantic relatedness between knowledge components in learning resources using the Wikipedia link graph, with the aim to better predict learner engagement and latent knowledge in a lifelong learning scenario. In this sense, Semantic TrueLearn builds a humanly intuitive knowledge representation while leveraging Bayesian machine learning to improve the predictive performance of the educational engagement. Our experiments with a large dataset demonstrate that this new semantic version of TrueLearn algorithm achieves statistically significant improvements in terms of predictive performance with a simple extension that adds semantic awareness to the model.",
+  "year": 2021,
+  "published": "2021-12-08T16:23:27Z",
+  "landing_page": "https://arxiv.org/abs/2112.04368v1",
+  "pdf_url": "https://arxiv.org/pdf/2112.04368v1.pdf",
+  "doi": null,
+  "arxiv_id": "2112.04368v1",
+  "venue": "arXiv",
+  "rank": 4,
+  "paper_slug": "2112-04368v1-2021-semantic-truelearn-using-semantic-knowledge-graphs-in-recommen",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2112-04368v1-2021-semantic-truelearn-using-semantic-knowledge-graphs-in-recommen\\paper.pdf",
+  "pdf_status": "downloaded"
+}

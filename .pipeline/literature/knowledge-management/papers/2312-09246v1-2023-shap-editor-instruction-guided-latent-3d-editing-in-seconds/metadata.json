@@ -1,0 +1,22 @@
+{
+  "source": "arxiv",
+  "title": "SHAP-EDITOR: Instruction-guided Latent 3D Editing in Seconds",
+  "authors": [
+    "Minghao Chen",
+    "Junyu Xie",
+    "Iro Laina",
+    "Andrea Vedaldi"
+  ],
+  "abstract": "We propose a novel feed-forward 3D editing framework called Shap-Editor. Prior research on editing 3D objects primarily concentrated on editing individual objects by leveraging off-the-shelf 2D image editing networks. This is achieved via a process called distillation, which transfers knowledge from the 2D network to 3D assets. Distillation necessitates at least tens of minutes per asset to attain satisfactory editing results, and is thus not very practical. In contrast, we ask whether 3D editing can be carried out directly by a feed-forward network, eschewing test-time optimisation. In particular, we hypothesise that editing can be greatly simplified by first encoding 3D objects in a suitable latent space. We validate this hypothesis by building upon the latent space of Shap-E. We demonstrate that direct 3D editing in this space is possible and efficient by building a feed-forward editor network that only requires approximately one second per edit. Our experiments show that Shap-Editor generalises well to both in-distribution and out-of-distribution 3D assets with different prompts, exhibiting comparable performance with methods that carry out test-time optimisation for each edited instance.",
+  "year": 2023,
+  "published": "2023-12-14T18:59:06Z",
+  "landing_page": "https://arxiv.org/abs/2312.09246v1",
+  "pdf_url": "https://arxiv.org/pdf/2312.09246v1.pdf",
+  "doi": null,
+  "arxiv_id": "2312.09246v1",
+  "venue": "arXiv",
+  "rank": 2,
+  "paper_slug": "2312-09246v1-2023-shap-editor-instruction-guided-latent-3d-editing-in-seconds",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2312-09246v1-2023-shap-editor-instruction-guided-latent-3d-editing-in-seconds\\paper.pdf",
+  "pdf_status": "downloaded"
+}

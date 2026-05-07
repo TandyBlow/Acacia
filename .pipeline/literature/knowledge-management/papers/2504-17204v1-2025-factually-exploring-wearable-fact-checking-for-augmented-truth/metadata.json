@@ -1,0 +1,24 @@
+{
+  "source": "arxiv",
+  "title": "Factually: Exploring Wearable Fact-Checking for Augmented Truth Discernment",
+  "authors": [
+    "Chitralekha Gupta",
+    "Hanjun Wu",
+    "Praveen Sasikumar",
+    "Shreyas Sridhar",
+    "Priambudi Bagaskara",
+    "Suranga Nanayakkara"
+  ],
+  "abstract": "Wearable devices are transforming human capabilities by seamlessly augmenting cognitive functions. In this position paper, we propose a voice-based, interactive learning companion designed to amplify and extend cognitive abilities through informal learning. Our vision is threefold: (1) to enable users to discover new knowledge on-the-go through contextual interactive quizzes, fostering critical thinking and mindfulness, (2) to proactively detect misinformation, empowering users to critically assess information in real time, and (3) to provide spoken language correction and prompting hints for second language learning and effective communication. As an initial step toward this vision, we present Factually - a proactive, wearable fact-checking system integrated into devices like smartwatches or rings. Factually discreetly alerts users to potential falsehoods via vibrotactile feedback, helping them assess information critically. We demonstrate its utility through three illustrative scenarios, highlighting its potential to extend cognitive abilities for real-time misinformation detection. Early qualitative feedback suggests that Factually can enhance users' fact-checking capabilities, offering both practical and experiential benefits.",
+  "year": 2025,
+  "published": "2025-04-24T02:29:50Z",
+  "landing_page": "https://arxiv.org/abs/2504.17204v1",
+  "pdf_url": "https://arxiv.org/pdf/2504.17204v1.pdf",
+  "doi": null,
+  "arxiv_id": "2504.17204v1",
+  "venue": "arXiv",
+  "rank": 3,
+  "paper_slug": "2504-17204v1-2025-factually-exploring-wearable-fact-checking-for-augmented-truth",
+  "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2504-17204v1-2025-factually-exploring-wearable-fact-checking-for-augmented-truth\\paper.pdf",
+  "pdf_status": "downloaded"
+}

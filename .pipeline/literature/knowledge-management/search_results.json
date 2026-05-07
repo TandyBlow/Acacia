@@ -1,0 +1,132 @@
+{
+  "mode": "query",
+  "query": "knowledge graph semantic linking bidirectional link graph-based knowledge representation note-taking",
+  "arxiv_ids": null,
+  "limit": 5,
+  "sources": [
+    "arxiv",
+    "semanticscholar",
+    "openalex"
+  ],
+  "sort": "relevance",
+  "min_year": 2020,
+  "source_errors": {
+    "semanticscholar": "429 Client Error:  for url: https://api.semanticscholar.org/graph/v1/paper/search?query=knowledge+graph+semantic+linking+bidirectional+link+graph-based+knowledge+representation+note-taking&limit=5&fields=title%2Cyear%2Cauthors%2Cabstract%2Curl%2CopenAccessPdf%2CisOpenAccess%2CexternalIds%2Cvenue"
+  },
+  "records": [
+    {
+      "source": "arxiv",
+      "title": "AI Agent-Driven Framework for Automated Product Knowledge Graph Construction in E-Commerce",
+      "authors": [
+        "Dimitar Peshevski",
+        "Riste Stojanov",
+        "Dimitar Trajanov"
+      ],
+      "abstract": "The rapid expansion of e-commerce platforms generates vast amounts of unstructured product data, creating significant challenges for information retrieval, recommendation systems, and data analytics. Knowledge Graphs (KGs) offer a structured, interpretable format to organize such data, yet constructing product-specific KGs remains a complex and manual process. This paper introduces a fully automated, AI agent-driven framework for constructing product knowledge graphs directly from unstructured product descriptions. Leveraging Large Language Models (LLMs), our method operates in three stages using dedicated agents: ontology creation and expansion, ontology refinement, and knowledge graph population. This agent-based approach ensures semantic coherence, scalability, and high-quality output without relying on predefined schemas or handcrafted extraction rules. We evaluate the system on a real-world dataset of air conditioner product descriptions, demonstrating strong performance in both ontology generation and KG population. The framework achieves over 97\\% property coverage and minimal redundancy, validating its effectiveness and practical applicability. Our work highlights the potential of LLMs to automate structured knowledge extraction in retail, providing a scalable path toward intelligent product data integration and utilization.",
+      "year": 2025,
+      "published": "2025-11-14T07:09:13Z",
+      "landing_page": "https://arxiv.org/abs/2511.11017v1",
+      "pdf_url": "https://arxiv.org/pdf/2511.11017v1.pdf",
+      "doi": "10.5281/zenodo.16913321",
+      "arxiv_id": "2511.11017v1",
+      "venue": "arXiv",
+      "merged_sources": [
+        "arxiv"
+      ],
+      "rank": 1,
+      "paper_slug": "2511-11017v1-2025-ai-agent-driven-framework-for-automated-product-knowledge-grap",
+      "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2511-11017v1-2025-ai-agent-driven-framework-for-automated-product-knowledge-grap\\paper.pdf",
+      "pdf_status": "downloaded"
+    },
+    {
+      "source": "arxiv",
+      "title": "Learning Attention-based Representations from Multiple Patterns for Relation Prediction in Knowledge Graphs",
+      "authors": [
+        "Vítor Lourenço",
+        "Aline Paes"
+      ],
+      "abstract": "Knowledge bases, and their representations in the form of knowledge graphs (KGs), are naturally incomplete. Since scientific and industrial applications have extensively adopted them, there is a high demand for solutions that complete their information. Several recent works tackle this challenge by learning embeddings for entities and relations, then employing them to predict new relations among the entities. Despite their aggrandizement, most of those methods focus only on the local neighbors of a relation to learn the embeddings. As a result, they may fail to capture the KGs' context information by neglecting long-term dependencies and the propagation of entities' semantics. In this manuscript, we propose ÆMP (Attention-based Embeddings from Multiple Patterns), a novel model for learning contextualized representations by: (i) acquiring entities' context information through an attention-enhanced message-passing scheme, which captures the entities' local semantics while focusing on different aspects of their neighborhood; and (ii) capturing the semantic context, by leveraging the paths and their relationships between entities. Our empirical findings draw insights into how attention mechanisms can improve entities' context representation and how combining entities and semantic path contexts improves the general representation of entities and the relation predictions. Experimental results on several large and small knowledge graph benchmarks show that ÆMP either outperforms or competes with state-of-the-art relation prediction methods.",
+      "year": 2022,
+      "published": "2022-06-07T10:53:35Z",
+      "landing_page": "https://arxiv.org/abs/2206.04801v1",
+      "pdf_url": "https://arxiv.org/pdf/2206.04801v1.pdf",
+      "doi": "10.1016/j.knosys.2022.109232",
+      "arxiv_id": "2206.04801v1",
+      "venue": "arXiv",
+      "rank": 2,
+      "paper_slug": "2206-04801v1-2022-learning-attention-based-representations-from-multiple-pattern",
+      "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2206-04801v1-2022-learning-attention-based-representations-from-multiple-pattern\\paper.pdf",
+      "pdf_status": "downloaded"
+    },
+    {
+      "source": "arxiv",
+      "title": "A Survey on Knowledge Graph-based Methods for Automated Driving",
+      "authors": [
+        "Juergen Luettin",
+        "Sebastian Monka",
+        "Cory Henson",
+        "Lavdim Halilaj"
+      ],
+      "abstract": "Automated driving is one of the most active research areas in computer science. Deep learning methods have made remarkable breakthroughs in machine learning in general and in automated driving (AD)in particular. However, there are still unsolved problems to guarantee reliability and safety of automated systems, especially to effectively incorporate all available information and knowledge in the driving task. Knowledge graphs (KG) have recently gained significant attention from both industry and academia for applications that benefit by exploiting structured, dynamic, and relational data. The complexity of graph-structured data with complex relationships and inter-dependencies between objects has posed significant challenges to existing machine learning algorithms. However, recent progress in knowledge graph embeddings and graph neural networks allows to applying machine learning to graph-structured data. Therefore, we motivate and discuss the potential benefit of KGs applied to the main tasks of AD including 1) ontologies 2) perception, 3) scene understanding, 4) motion planning, and 5) validation. Then, we survey, analyze and categorize ontologies and KG-based approaches for AD. We discuss current research challenges and propose promising future research directions for KG-based solutions for AD.",
+      "year": 2022,
+      "published": "2022-09-30T15:47:19Z",
+      "landing_page": "https://arxiv.org/abs/2210.08119v1",
+      "pdf_url": "https://arxiv.org/pdf/2210.08119v1.pdf",
+      "doi": null,
+      "arxiv_id": "2210.08119v1",
+      "venue": "arXiv",
+      "rank": 3,
+      "paper_slug": "2210-08119v1-2022-a-survey-on-knowledge-graph-based-methods-for-automated-drivin",
+      "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2210-08119v1-2022-a-survey-on-knowledge-graph-based-methods-for-automated-drivin\\paper.pdf",
+      "pdf_status": "downloaded"
+    },
+    {
+      "source": "arxiv",
+      "title": "Semantic TrueLearn: Using Semantic Knowledge Graphs in Recommendation Systems",
+      "authors": [
+        "Sahan Bulathwela",
+        "María Pérez-Ortiz",
+        "Emine Yilmaz",
+        "John Shawe-Taylor"
+      ],
+      "abstract": "In informational recommenders, many challenges arise from the need to handle the semantic and hierarchical structure between knowledge areas. This work aims to advance towards building a state-aware educational recommendation system that incorporates semantic relatedness between knowledge topics, propagating latent information across semantically related topics. We introduce a novel learner model that exploits this semantic relatedness between knowledge components in learning resources using the Wikipedia link graph, with the aim to better predict learner engagement and latent knowledge in a lifelong learning scenario. In this sense, Semantic TrueLearn builds a humanly intuitive knowledge representation while leveraging Bayesian machine learning to improve the predictive performance of the educational engagement. Our experiments with a large dataset demonstrate that this new semantic version of TrueLearn algorithm achieves statistically significant improvements in terms of predictive performance with a simple extension that adds semantic awareness to the model.",
+      "year": 2021,
+      "published": "2021-12-08T16:23:27Z",
+      "landing_page": "https://arxiv.org/abs/2112.04368v1",
+      "pdf_url": "https://arxiv.org/pdf/2112.04368v1.pdf",
+      "doi": null,
+      "arxiv_id": "2112.04368v1",
+      "venue": "arXiv",
+      "rank": 4,
+      "paper_slug": "2112-04368v1-2021-semantic-truelearn-using-semantic-knowledge-graphs-in-recommen",
+      "local_pdf_path": "D:\\others\\Acacia\\.pipeline\\literature\\knowledge-management\\papers\\2112-04368v1-2021-semantic-truelearn-using-semantic-knowledge-graphs-in-recommen\\paper.pdf",
+      "pdf_status": "downloaded"
+    },
+    {
+      "source": "openalex",
+      "title": "Pre-train, Prompt, and Predict: A Systematic Survey of Prompting Methods in Natural Language Processing",
+      "authors": [
+        "Pengfei Liu",
+        "Weizhe Yuan",
+        "Jinlan Fu",
+        "Zhengbao Jiang",
+        "Hiroaki Hayashi",
+        "Graham Neubig"
+      ],
+      "abstract": null,
+      "year": 2022,
+      "landing_page": "https://doi.org/10.1145/3560815",
+      "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3560815",
+      "primary_pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3560815",
+      "oa_url": "https://dl.acm.org/doi/pdf/10.1145/3560815",
+      "doi": "10.1145/3560815",
+      "arxiv_id": null,
+      "venue": "ACM Computing Surveys",
+      "is_open_access": true,
+      "rank": 5,
+      "paper_slug": "2022-pre-train-prompt-and-predict-a-systematic-survey-of-prompting-methods-in-na",
+      "local_pdf_path": null,
+      "pdf_status": "failed: 403 Client Error: Forbidden for url: https://dl.acm.org/doi/pdf/10.1145/3560815"
+    }
+  ]
+}
