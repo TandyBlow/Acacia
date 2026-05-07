@@ -1,5 +1,6 @@
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { apiFetch } from '../utils/api';
+import { useGlobalLoading } from './useGlobalLoading';
 
 export interface StatsNode {
   id: string;
@@ -14,12 +15,20 @@ export interface StatsNode {
 }
 
 export function useStats() {
+  const { registerLoadingSource, setLoading, unregisterLoadingSource } = useGlobalLoading();
+  registerLoadingSource('stats');
+
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
   const nodes = ref<StatsNode[]>([]);
 
+  onUnmounted(() => {
+    unregisterLoadingSource('stats');
+  });
+
   async function fetchStats(): Promise<void> {
     isBusy.value = true;
+    setLoading('stats', true);
     errorMessage.value = null;
     try {
       const data = await apiFetch<{ nodes: StatsNode[] }>('/quiz-stats');
@@ -28,6 +37,7 @@ export function useStats() {
       errorMessage.value = err instanceof Error ? err.message : '获取统计失败';
     } finally {
       isBusy.value = false;
+      setLoading('stats', false);
     }
   }
 
