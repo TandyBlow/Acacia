@@ -29,6 +29,18 @@ Pinia stores (`frontend/src/stores/`):
 - **`authStore`** — JWT auth session, login/register/logout.
 - **`nodeStore`** — All tree state: active node, children, path breadcrumbs, CRUD operations, view state machine (`display | add | move | delete | logout`).
 
+### 页面转换系统
+
+全局页面转换动画系统 (`usePageTransition`) 统一管理所有界面切换的动画：
+
+- **区域注册**：每个区域组件在挂载时注册自己的可见性判断函数
+- **转换流程**：下沉 → 加载 → 区域对比 → 升起
+- **触发点**：节点导航、布局切换、旋钮操作、窗口大小改变
+
+所有界面切换都会触发统一的加载动画，确保视觉体验一致。
+
+详细设计见 `docs/superpowers/specs/2026-05-07-unified-page-transition-design.md`。
+
 ### UI Structure
 
 `MainLayout.vue` is the single-page shell with a CSS Grid layout:
