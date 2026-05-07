@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, onMounted, onBeforeUnmount, watch, type Ref } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import LogoArea from '../components/layout/LogoArea.vue';
 import GlassWrapper from '../components/ui/GlassWrapper.vue';
@@ -74,7 +74,6 @@ import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch } from '../composables/useKnobDispatch';
-import { useGlobalLoading } from '../composables/useGlobalLoading';
 import { usePageTransition } from '../composables/usePageTransition';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
@@ -90,8 +89,7 @@ const {
 useAppInit();
 const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout, closeFeaturePanel } = useKnobDispatch();
 
-const { isLoading: globalLoading } = useGlobalLoading();
-const { registerRegion, unregisterRegion } = usePageTransition();
+const { registerRegion, unregisterRegion, startTransition } = usePageTransition();
 
 // Region refs for page transition system
 const logoRef = ref<HTMLElement | null>(null);
@@ -99,34 +97,40 @@ const breadcrumbsRef = ref<HTMLElement | null>(null);
 const navigationRef = ref<HTMLElement | null>(null);
 const contentRef = ref<HTMLElement | null>(null);
 const knobRef = ref<HTMLElement | null>(null);
-const injectedTreeResizing = inject<Ref<boolean> | null>('isTreeResizing', null);
-const isTreeResizing = computed(() => injectedTreeResizing?.value ?? false);
-const isLoading = computed(() => globalLoading.value || isTreeResizing.value);
-
-// 添加一个延迟状态，确保加载完成后有上升动画
-const isLoadingDelayed = ref(false);
-watch(isLoading, (loading) => {
-  if (loading) {
-    isLoadingDelayed.value = true;
-  } else {
-    // 加载完成后延迟移除 class，让上升动画播放
-    setTimeout(() => {
-      isLoadingDelayed.value = false;
-    }, 50);
-  }
-});
 
 // Compact layout tracking
 const isCompact = ref(false);
 const isTooSmall = ref(false);
+
+// Debounce utility
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
+  let timeoutId: number | null = null;
+  return ((...args: any[]) => {
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+    }
+    timeoutId = window.setTimeout(() => {
+      fn(...args);
+      timeoutId = null;
+    }, delay);
+  }) as T;
+}
 
 function updateCompactState(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
 
   isTooSmall.value = w <= MIN_SPACE_WIDTH && h <= MIN_SPACE_HEIGHT;
+  const wasCompact = isCompact.value;
   isCompact.value = w <= COMPACT_BREAKPOINT || h <= COMPACT_HEIGHT_BREAKPOINT;
   isCompactLayout.value = isCompact.value;
+
+  // Trigger transition if layout changed
+  if (wasCompact !== isCompact.value) {
+    const layout = isCompact.value ? 'small' : 'large';
+    startTransition({ type: 'layout', newLayout: layout }, layout);
+  }
+
   if (!isCompact.value) {
     compactMode.value = 'content';
     if (isFeaturePanel.value) {
@@ -137,9 +141,11 @@ function updateCompactState(): void {
   }
 }
 
+const handleResize = debounce(updateCompactState, 150);
+
 onMounted(() => {
   updateCompactState();
-  window.addEventListener('resize', updateCompactState);
+  window.addEventListener('resize', handleResize);
 
   // Register all main regions with the page transition system
   if (logoRef.value) {
@@ -213,7 +219,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateCompactState);
+  window.removeEventListener('resize', handleResize);
 
   // Unregister all regions
   unregisterRegion('logo');
@@ -230,7 +236,6 @@ watch(isFeaturePanel, (open) => {
 });
 
 const layoutClasses = computed(() => ({
-  'is-loading': isLoadingDelayed.value,
   'compact': isCompact.value,
   'compact-content': isCompact.value && compactMode.value === 'content',
   'compact-nav': isCompact.value && compactMode.value === 'nav',
@@ -460,53 +465,6 @@ watch(contentKey, () => {
 .feature-panel-leave-to {
   opacity: 0;
   transform: scale(0.98);
-}
-
-/* 加载状态：文字透明 */
-.is-loading .breadcrumbs-area,
-.is-loading .navigation-area,
-.is-loading .content-area,
-.is-loading .knob-area {
-  color: transparent;
-}
-
-.is-loading .breadcrumbs-area :deep(*),
-.is-loading .navigation-area :deep(*),
-.is-loading .content-area :deep(*),
-.is-loading .knob-area :deep(*) {
-  color: transparent !important;
-}
-
-.is-loading .content-area :deep(input),
-.is-loading .content-area :deep(textarea) {
-  caret-color: transparent;
-}
-
-/* 加载状态：所有玻璃区域下沉 */
-.is-loading .breadcrumbs-area :deep(.glass-raised),
-.is-loading .navigation-area :deep(.glass-raised),
-.is-loading .content-area :deep(.glass-raised),
-.is-loading .knob-area :deep(.glass-raised) {
-  box-shadow: none !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-}
-
-.is-loading .breadcrumbs-area :deep(.glass-raised .glass-content),
-.is-loading .navigation-area :deep(.glass-raised .glass-content),
-.is-loading .content-area :deep(.glass-raised .glass-content),
-.is-loading .knob-area :deep(.glass-raised .glass-content) {
-  background: transparent !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-/* Logo 区域不受影响 */
-.is-loading .logo-area {
-  color: inherit;
-}
-
-.is-loading .logo-area :deep(*) {
-  color: inherit !important;
 }
 
 @keyframes glass-rise {

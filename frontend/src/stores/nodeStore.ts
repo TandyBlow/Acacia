@@ -5,7 +5,7 @@ import * as nodeCache from '../services/nodeCache';
 import type { DataAdapter, NodeRecord, TreeNode, ViewState } from '../types/node';
 import { ViewStates } from '../types/node';
 import { UI } from '../constants/uiStrings';
-import { useGlobalLoading } from '../composables/useGlobalLoading';
+import { usePageTransition } from '../composables/usePageTransition';
 
 function formatError(error: unknown): string {
   if (error instanceof Error) {
@@ -40,8 +40,7 @@ function navigate(path: string, replace = false): void {
 }
 
 export const useNodeStore = defineStore('node', () => {
-  const { registerLoadingSource, setLoading } = useGlobalLoading();
-  registerLoadingSource('nodeStore');
+  const { startTransition } = usePageTransition();
 
   const viewState = ref<ViewState>(ViewStates.DISPLAY);
   const activeNode = ref<NodeRecord | null>(null);
@@ -127,8 +126,10 @@ export const useNodeStore = defineStore('node', () => {
       return;
     }
 
+    // Trigger page transition for navigation
+    startTransition({ type: 'navigate', nodeId }, 'large');
+
     isBusy.value = true;
-    setLoading('nodeStore', true);
     errorMessage.value = null;
     try {
       const context = await dataAdapter!.getNodeContext(nodeId);
@@ -147,7 +148,6 @@ export const useNodeStore = defineStore('node', () => {
       errorMessage.value = formatError(error);
     } finally {
       isBusy.value = false;
-      setLoading('nodeStore', false);
     }
   }
 
@@ -287,7 +287,6 @@ export const useNodeStore = defineStore('node', () => {
     }
 
     isBusy.value = true;
-    setLoading('nodeStore', true);
     errorMessage.value = null;
     try {
       if (viewState.value === ViewStates.ADD) {
@@ -321,7 +320,6 @@ export const useNodeStore = defineStore('node', () => {
       errorMessage.value = formatError(error);
     } finally {
       isBusy.value = false;
-      setLoading('nodeStore', false);
     }
   }
 
