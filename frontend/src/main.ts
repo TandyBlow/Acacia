@@ -7,6 +7,7 @@ import { setAuthAdapter } from './stores/authStore';
 import { setNavigator, setDataAdapter } from './stores/nodeStore';
 import { loadAdapters } from './adapters';
 import './style.css';
+import './styles/transition.css';
 
 // ── Keyboard-stable layout ──────────────────────────────────────────
 // Strategy: capture viewport height BEFORE keyboard appears (on focusin),
