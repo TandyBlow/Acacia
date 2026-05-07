@@ -241,7 +241,6 @@ const layoutClasses = computed(() => ({
   'compact-nav': isCompact.value && compactMode.value === 'nav',
   'compact-feature': isCompact.value && compactMode.value === 'feature',
   'is-too-small': isTooSmall.value,
-  'is-rising': isRising.value,
 }));
 
 const showTree = computed(() => {
@@ -279,26 +278,6 @@ const contentKey = computed(() => {
   }
   const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
-});
-
-// Rising animation for homepage navigation
-const isRising = ref(false);
-let risingTimer: number | null = null;
-
-watch(contentKey, () => {
-  const goingHome = isAuthenticated.value && !activeNode.value
-    && !nodeStore.isConfirmState && !isFeaturePanel.value
-    && !nodeStore.isQuizState && !nodeStore.isQuizHistoryState
-    && !nodeStore.isStatsState && !nodeStore.isReviewState;
-
-  if (goingHome) {
-    if (risingTimer !== null) window.clearTimeout(risingTimer);
-    isRising.value = true;
-    risingTimer = window.setTimeout(() => {
-      isRising.value = false;
-      risingTimer = null;
-    }, 650);
-  }
 });
 
 </script>
