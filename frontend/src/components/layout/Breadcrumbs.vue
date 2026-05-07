@@ -1,6 +1,6 @@
 <template>
   <div class="breadcrumbs-shell">
-    <TransitionGroup v-if="isAuthenticated" name="crumb" tag="div" class="crumb-track" ref="crumbTrackRef" @wheel.passive="onWheel">
+    <TransitionGroup v-if="isAuthenticated" name="crumb" tag="div" class="crumb-track" ref="crumbTrackRef" @wheel.passive="onWheel" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd">
       <GlassWrapper
         v-for="node in displayNodes"
         :key="node.id"
@@ -63,6 +63,11 @@ const currentSpeed = ref(0);
 const currentAnimMs = ref(BREADCRUMB_ANIM_MS);
 const crumbTrackRef = ref<HTMLElement | null>(null);
 let scrollCancelToken = 0;
+
+// Touch support state (Task 9)
+const touchStartX = ref(0);
+const touchStartTime = ref(0);
+const touchStartScrollLeft = ref(0);
 
 // [Bug6 fix] cancel token to invalidate stale animation callbacks
 let animToken = 0;
@@ -244,6 +249,54 @@ function onWheel(e: WheelEvent): void {
 
   if (!isAnimating.value) {
     processScrollQueue();
+  }
+}
+
+function onTouchStart(e: TouchEvent): void {
+  const container = crumbTrackRef.value;
+  if (!container || e.touches.length === 0) return;
+
+  touchStartX.value = e.touches[0]!.clientX;
+  touchStartTime.value = Date.now();
+  touchStartScrollLeft.value = container.scrollLeft;
+}
+
+function onTouchMove(e: TouchEvent): void {
+  const container = crumbTrackRef.value;
+  if (!container || e.touches.length === 0) return;
+
+  const touchX = e.touches[0]!.clientX;
+  const deltaX = touchStartX.value - touchX;
+
+  container.scrollLeft = touchStartScrollLeft.value + deltaX;
+}
+
+function onTouchEnd(e: TouchEvent): void {
+  const container = crumbTrackRef.value;
+  if (!container) return;
+
+  const now = Date.now();
+  const dt = now - touchStartTime.value;
+
+  if (dt > 0 && dt < 300 && e.changedTouches.length > 0) {
+    const touchEndX = e.changedTouches[0]!.clientX;
+    const deltaX = touchStartX.value - touchEndX;
+    const velocity = Math.abs(deltaX) / dt;
+
+    if (velocity > 0.5) {
+      const direction: 'left' | 'right' = deltaX > 0 ? 'right' : 'left';
+      const steps = Math.min(3, Math.ceil(velocity * 2));
+
+      for (let i = 0; i < steps; i++) {
+        if (scrollQueue.value.length < 20) {
+          scrollQueue.value.push({ direction });
+        }
+      }
+
+      if (!isAnimating.value) {
+        processScrollQueue();
+      }
+    }
   }
 }
 
