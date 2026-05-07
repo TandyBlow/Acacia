@@ -138,6 +138,18 @@ watch(pathNodes, (newPath, oldPath) => {
   }
 }, { immediate: true });
 
+// @ts-expect-error — used in subsequent tasks
+function calcAnimDuration(): number {
+  const speed = currentSpeed.value;
+  if (speed <= 0) return BREADCRUMB_ANIM_MS;
+
+  const clampedSpeed = Math.max(1, Math.min(speed, 12));
+  const duration = BREADCRUMB_SCROLL_MAX_ANIM_MS -
+    (clampedSpeed - 1) * (BREADCRUMB_SCROLL_MAX_ANIM_MS - BREADCRUMB_SCROLL_MIN_ANIM_MS) / 11;
+
+  return Math.round(duration);
+}
+
 async function goTo(nodeId: string): Promise<void> {
   if (phase.value !== 'idle') return;
   await store.loadNode(nodeId);
