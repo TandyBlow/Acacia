@@ -180,6 +180,24 @@ function findNextScrollTarget(direction: 'left' | 'right'): number {
   }
 }
 
+// @ts-expect-error — used in subsequent tasks
+async function animateSingleScroll(direction: 'left' | 'right', duration: number): Promise<void> {
+  const container = crumbTrackRef.value;
+  if (!container) return;
+
+  const targetScrollLeft = findNextScrollTarget(direction);
+  const token = ++scrollCancelToken;
+
+  container.style.scrollBehavior = 'smooth';
+  container.scrollLeft = targetScrollLeft;
+
+  await new Promise(resolve => setTimeout(resolve, duration));
+
+  if (token !== scrollCancelToken) return;
+
+  container.style.scrollBehavior = 'auto';
+}
+
 async function goTo(nodeId: string): Promise<void> {
   if (phase.value !== 'idle') return;
   await store.loadNode(nodeId);
