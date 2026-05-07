@@ -27,11 +27,9 @@
           <div class="inset-shell static-shell content-shell">
             <GlassWrapper class="content-surface">
               <template v-if="!isFeaturePanel">
-                <Transition name="tree-fade-in" mode="out-in">
-                  <div v-if="showTree" key="tree" class="content-host">
-                    <TreeCanvas :visible="showTree" />
-                  </div>
-                </Transition>
+                <div v-if="showTree" key="tree" class="content-host">
+                  <TreeCanvas :visible="showTree" />
+                </div>
                 <Transition v-if="!showTree" name="content-rise" mode="out-in">
                   <component :is="nonTreeContent" :key="contentKey" class="content-host" />
                 </Transition>
@@ -96,6 +94,19 @@ const injectedTreeResizing = inject<Ref<boolean> | null>('isTreeResizing', null)
 const isTreeResizing = computed(() => injectedTreeResizing?.value ?? false);
 const isLoading = computed(() => globalLoading.value || isTreeResizing.value);
 
+// 添加一个延迟状态，确保加载完成后有上升动画
+const isLoadingDelayed = ref(false);
+watch(isLoading, (loading) => {
+  if (loading) {
+    isLoadingDelayed.value = true;
+  } else {
+    // 加载完成后延迟移除 class，让上升动画播放
+    setTimeout(() => {
+      isLoadingDelayed.value = false;
+    }, 50);
+  }
+});
+
 // Compact layout tracking
 const isCompact = ref(false);
 const isTooSmall = ref(false);
@@ -133,7 +144,7 @@ watch(isFeaturePanel, (open) => {
 });
 
 const layoutClasses = computed(() => ({
-  'is-loading': isLoading.value,
+  'is-loading': isLoadingDelayed.value,
   'compact': isCompact.value,
   'compact-content': isCompact.value && compactMode.value === 'content',
   'compact-nav': isCompact.value && compactMode.value === 'nav',
@@ -326,14 +337,6 @@ const contentKey = computed(() => {
   transform: translateY(-8px) scale(0.99);
 }
 
-.tree-fade-in-enter-active {
-  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.tree-fade-in-enter-from {
-  opacity: 0;
-}
-
 .feature-panel-enter-active {
   transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -355,13 +358,15 @@ const contentKey = computed(() => {
 /* 加载状态：文字透明 */
 .is-loading .breadcrumbs-area,
 .is-loading .navigation-area,
-.is-loading .content-area {
+.is-loading .content-area,
+.is-loading .knob-area {
   color: transparent;
 }
 
 .is-loading .breadcrumbs-area :deep(*),
 .is-loading .navigation-area :deep(*),
-.is-loading .content-area :deep(*) {
+.is-loading .content-area :deep(*),
+.is-loading .knob-area :deep(*) {
   color: transparent !important;
 }
 
@@ -370,20 +375,22 @@ const contentKey = computed(() => {
   caret-color: transparent;
 }
 
-/* 加载状态：所有玻璃区域下沉（旋钮区域除外） */
+/* 加载状态：所有玻璃区域下沉 */
 .is-loading .breadcrumbs-area :deep(.glass-raised),
 .is-loading .navigation-area :deep(.glass-raised),
-.is-loading .content-area :deep(.glass-raised) {
-  box-shadow: none;
-  border-color: rgba(255, 255, 255, 0.12);
+.is-loading .content-area :deep(.glass-raised),
+.is-loading .knob-area :deep(.glass-raised) {
+  box-shadow: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 .is-loading .breadcrumbs-area :deep(.glass-raised .glass-content),
 .is-loading .navigation-area :deep(.glass-raised .glass-content),
-.is-loading .content-area :deep(.glass-raised .glass-content) {
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+.is-loading .content-area :deep(.glass-raised .glass-content),
+.is-loading .knob-area :deep(.glass-raised .glass-content) {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Logo 区域不受影响 */
