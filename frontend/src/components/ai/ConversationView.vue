@@ -91,12 +91,22 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   answer: [answer: string];
   skip: [];
+  'example-feedback': [payload: { action: string; feedback?: string }];
 }>();
 
 const messages = ref<Message[]>([]);
 const userInput = ref('');
 const isThinking = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
+
+// Example preview state
+const isShowingExample = ref(false);
+const currentExample = ref<{
+  content: string;
+  explanation: string;
+} | null>(null);
+const feedbackText = ref('');
+const showFeedbackInput = ref(false);
 
 const progressPercent = computed(() => {
   if (props.total === 0) return 0;
@@ -147,6 +157,45 @@ function addAiMessage(content: string, generatedContent?: string) {
   });
 }
 
+function showExample(content: string, explanation: string) {
+  currentExample.value = { content, explanation };
+  isShowingExample.value = true;
+  showFeedbackInput.value = false;
+  feedbackText.value = '';
+
+  nextTick(() => {
+    scrollToBottom();
+  });
+}
+
+function handleAcceptExample() {
+  if (isThinking.value) return;
+  isThinking.value = true;
+  isShowingExample.value = false;
+  emit('example-feedback', { action: 'accept' });
+}
+
+function handleRegenerateExample() {
+  if (!feedbackText.value.trim()) {
+    showFeedbackInput.value = true;
+    return;
+  }
+
+  if (isThinking.value) return;
+  isThinking.value = true;
+  isShowingExample.value = false;
+  emit('example-feedback', { action: 'regenerate', feedback: feedbackText.value.trim() });
+  feedbackText.value = '';
+  showFeedbackInput.value = false;
+}
+
+function handleSkipExample() {
+  if (isThinking.value) return;
+  isThinking.value = true;
+  isShowingExample.value = false;
+  emit('example-feedback', { action: 'skip' });
+}
+
 function scrollToBottom() {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
@@ -161,6 +210,7 @@ watch(() => props.currentIndex, () => {
 
 defineExpose({
   addAiMessage,
+  showExample,
 });
 </script>
 
