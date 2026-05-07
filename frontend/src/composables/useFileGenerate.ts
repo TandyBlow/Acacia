@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/vue-3';
 export interface KnowledgePoint {
   id: string;
   title: string;
-  type: 'concept' | 'principle' | 'application' | 'comparison';
+  type: 'concept' | 'principle' | 'application' | 'comparison' | 'procedure';
   brief: string;
   source_content?: string;
 }
