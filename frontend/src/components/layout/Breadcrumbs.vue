@@ -39,6 +39,15 @@ import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
 
+// Scroll animation constants
+const BREADCRUMB_ANIM_MS = 180;
+// @ts-expect-error — used in subsequent tasks
+const BREADCRUMB_SCROLL_MIN_ANIM_MS = 80;
+// @ts-expect-error — used in subsequent tasks
+const BREADCRUMB_SCROLL_MAX_ANIM_MS = 240;
+// @ts-expect-error — used in subsequent tasks
+const BREADCRUMB_SCROLL_INPUT_WINDOW_MS = 150;
+
 const store = useNodeStore();
 const authStore = useAuthStore();
 const { pathNodes, activeNode } = storeToRefs(store);
@@ -48,6 +57,22 @@ type Phase = 'idle' | 'collapsing' | 'expanding';
 const phase = ref<Phase>('idle');
 const displayNodes = ref<NodeRecord[]>([...pathNodes.value]);
 const showCurrentNode = ref(true);
+
+// Scroll engine state
+// @ts-expect-error — used in subsequent tasks
+const scrollQueue = ref<Array<{ direction: 'left' | 'right' }>>([]);
+// @ts-expect-error — used in subsequent tasks
+const isAnimating = ref(false);
+// @ts-expect-error — used in subsequent tasks
+const lastWheelTime = ref(0);
+// @ts-expect-error — used in subsequent tasks
+const currentSpeed = ref(0);
+// @ts-expect-error — used in subsequent tasks
+const currentAnimMs = ref(BREADCRUMB_ANIM_MS);
+// @ts-expect-error — used in subsequent tasks
+const crumbTrackRef = ref<HTMLElement | null>(null);
+// @ts-expect-error — used in subsequent tasks
+let scrollCancelToken = 0;
 
 // [Bug6 fix] cancel token to invalidate stale animation callbacks
 let animToken = 0;
