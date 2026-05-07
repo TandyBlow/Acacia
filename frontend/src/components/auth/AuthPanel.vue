@@ -1,5 +1,5 @@
 <template>
-  <div class="auth-shell">
+  <div ref="authRef" class="auth-shell">
     <div class="auth-card">
       <h2 class="auth-title">{{ isRegisterMode ? UI.auth.register : UI.auth.login }}</h2>
       <p class="auth-hint">
@@ -50,8 +50,10 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/authStore';
+import { usePageTransition } from '../../composables/usePageTransition';
 import { UI } from '../../constants/uiStrings';
 
 const authStore = useAuthStore();
@@ -63,6 +65,22 @@ const {
   errorMessage,
   isRegisterMode,
 } = storeToRefs(authStore);
+const { registerRegion, unregisterRegion } = usePageTransition();
+const authRef = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  registerRegion({
+    id: 'content-auth',
+    type: 'glass',
+    element: authRef,
+    shouldShow: (state) => !state.isAuthenticated,
+    parent: 'content',
+  });
+});
+
+onBeforeUnmount(() => {
+  unregisterRegion('content-auth');
+});
 </script>
 
 <style scoped>

@@ -14,6 +14,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useStyleStore } from '../../stores/styleStore';
 import { useTreeSkeleton, invalidateSkeleton } from '../../composables/useTreeSkeleton';
 import { useStats } from '../../composables/useStats';
+import { usePageTransition } from '../../composables/usePageTransition';
 import { SceneManager } from './scene/SceneManager';
 import { DebugGUI } from './scene/DebugGUI';
 import type { SkeletonData } from '../../types/tree';
@@ -21,6 +22,7 @@ import type { ThemeStyle } from '../../stores/styleStore';
 import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
+const { registerRegion, unregisterRegion } = usePageTransition();
 const props = defineProps<{ visible?: boolean }>();
 const authStore = useAuthStore();
 const { isAuthenticated } = storeToRefs(authStore);
@@ -142,6 +144,19 @@ watch(() => authStore.user, (user) => {
 });
 
 onMounted(() => {
+  registerRegion({
+    id: 'content-tree',
+    type: 'glass',
+    element: containerRef as any,
+    shouldShow: (state) => {
+      return state.isAuthenticated &&
+             !state.activeNode &&
+             state.viewState === 'display' &&
+             !state.isFeaturePanel;
+    },
+    parent: 'content',
+  });
+
   if (isAuthenticated.value && !treeLoaded) {
     loadTree();
   }
@@ -191,6 +206,7 @@ function cleanup() {
 }
 
 onBeforeUnmount(() => {
+  unregisterRegion('content-tree');
   cleanup();
 });
 </script>

@@ -1,5 +1,5 @@
 <template>
-  <div class="editor-shell">
+  <div ref="editorRef" class="editor-shell">
     <FileGenerateButton />
     <EditorContent :editor="editor" class="editor-input" spellcheck="false" />
     <FileGenerateDialog />
@@ -7,12 +7,13 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import FileGenerateButton from '../ai/FileGenerateButton.vue';
 import FileGenerateDialog from '../ai/FileGenerateDialog.vue';
 import { useFileGenerate } from '../../composables/useFileGenerate';
+import { usePageTransition } from '../../composables/usePageTransition';
 import type { Editor, JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -33,6 +34,8 @@ const store = useNodeStore();
 const { activeNode } = storeToRefs(store);
 const lowlight = createLowlight(all);
 const { setEditor } = useFileGenerate();
+const { registerRegion, unregisterRegion } = usePageTransition();
+const editorRef = ref<HTMLElement | null>(null);
 
 const draft = ref('');
 const lastSavedContent = ref('');
@@ -296,6 +299,20 @@ const editor = useEditor({
   },
 });
 
+onMounted(() => {
+  registerRegion({
+    id: 'content-editor',
+    type: 'glass',
+    element: editorRef,
+    shouldShow: (state) => {
+      return state.isAuthenticated &&
+             state.activeNode !== null &&
+             state.viewState === 'display';
+    },
+    parent: 'content',
+  });
+});
+
 watch(
   [() => editor.value, () => activeNode.value?.id],
   () => {
@@ -336,6 +353,7 @@ watch(draft, (value) => {
 });
 
 onBeforeUnmount(() => {
+  unregisterRegion('content-editor');
   clearAutoSaveTimer();
   editor.value?.destroy();
 });
