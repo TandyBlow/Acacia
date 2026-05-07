@@ -49,6 +49,7 @@
                 :is-completed="conversationState.isCompleted"
                 @answer="handleUserAnswer"
                 @skip="handleSkip"
+                @example-feedback="handleExampleFeedback"
               />
             </template>
 
@@ -102,6 +103,7 @@ const {
   extractKnowledgePoints,
   startConversation,
   sendAnswer,
+  sendExampleFeedback,
   insertGeneratedContent,
 } = useFileGenerate();
 
@@ -168,29 +170,35 @@ async function startConversationWithPoints(knowledgePoints: KnowledgePoint[]) {
 }
 
 async function handleUserAnswer(answer: string) {
+  if (!conversationView.value) return;
+
   try {
     const result = await sendAnswer(answer, false);
 
-    // Add AI response
-    conversationView.value?.addAiMessage(
-      result.ai_message,
-      result.generated_content
-    );
+    if (result.action === 'example_preview') {
+      // Show example preview for procedure-type knowledge point
+      conversationView.value.showExample(result.example_content, result.example_explanation || '');
+      conversationView.value.addAiMessage(result.ai_message);
+    } else if (result.action === 'follow_up' || result.action === 'hint') {
+      conversationView.value.addAiMessage(result.ai_message);
+    } else if (result.action === 'accept_and_next') {
+      conversationView.value.addAiMessage(result.ai_message, result.generated_content);
+      if (result.next_question) {
+        conversationView.value.addAiMessage(result.next_question);
+      }
+    } else if (result.action === 'completed') {
+      conversationView.value.addAiMessage(result.ai_message, result.generated_content);
+      insertGeneratedContent(result.total_content);
+      currentStep.value = 'completed';
+    }
 
-    // Insert generated content to editor if any
-    if (result.generated_content) {
+    // Legacy handling for backward compatibility
+    if (result.generated_content && result.action !== 'example_preview') {
       insertGeneratedContent(result.generated_content);
     }
 
-    // If there's a next question, add it
-    if (result.next_question) {
-      setTimeout(() => {
-        conversationView.value?.addAiMessage(result.next_question);
-      }, 500);
-    }
-
-    // Check if completed
-    if (result.action === 'completed' || conversationState.value.isCompleted) {
+    // Check if completed (legacy)
+    if (conversationState.value.isCompleted) {
       setTimeout(() => {
         currentStep.value = 'completed';
       }, 1000);
@@ -222,6 +230,37 @@ async function handleSkip() {
     }
   } catch (error) {
     console.error('Skip failed:', error);
+  }
+}
+
+async function handleExampleFeedback(payload: { action: string; feedback?: string }) {
+  if (!conversationView.value) return;
+
+  try {
+    const result = await sendExampleFeedback(payload.action as 'accept' | 'regenerate' | 'skip', payload.feedback);
+
+    if (result.action === 'example_preview') {
+      // Show new example (regenerated)
+      conversationView.value.showExample(result.example_content, result.example_explanation || '');
+      conversationView.value.addAiMessage(result.ai_message);
+    } else if (result.action === 'regeneration_limit') {
+      // Show regeneration limit message
+      conversationView.value.showExample(result.example_content, result.example_explanation || '');
+      conversationView.value.addAiMessage(result.ai_message);
+    } else if (result.action === 'next_question') {
+      // Move to next question
+      conversationView.value.addAiMessage(result.ai_message);
+      if (result.next_question) {
+        conversationView.value.addAiMessage(result.next_question);
+      }
+    } else if (result.action === 'completed') {
+      // All knowledge points completed
+      conversationView.value.addAiMessage(result.ai_message);
+      insertGeneratedContent(result.total_content);
+      currentStep.value = 'completed';
+    }
+  } catch (error) {
+    console.error('Example feedback failed:', error);
   }
 }
 
