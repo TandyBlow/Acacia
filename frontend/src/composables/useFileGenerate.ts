@@ -214,6 +214,58 @@ export function useFileGenerate() {
     }
   }
 
+  async function sendExampleFeedback(
+    action: 'accept' | 'regenerate' | 'skip',
+    feedback?: string
+  ): Promise<any> {
+    if (!sessionId.value) {
+      throw new Error('No active session');
+    }
+
+    isBusy.value = true;
+    errorMessage.value = '';
+
+    try {
+      const token = localStorage.getItem('acacia_backend_token');
+      const response = await fetch(`${backendUrl}/example-feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          session_id: sessionId.value,
+          action,
+          feedback,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || '例题反馈处理失败');
+      }
+
+      const result = await response.json();
+
+      // Update conversation state
+      if (result.progress) {
+        conversationState.value = {
+          currentIndex: result.progress.current,
+          total: result.progress.total,
+          currentKpTitle: result.progress.kp_title,
+          isCompleted: result.progress.completed || false,
+        };
+      }
+
+      return result;
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '例题反馈处理失败';
+      throw error;
+    } finally {
+      isBusy.value = false;
+    }
+  }
+
   function openDialog() {
     isOpen.value = true;
     uploadedFile.value = null;
@@ -262,6 +314,7 @@ export function useFileGenerate() {
     extractKnowledgePoints,
     startConversation,
     sendAnswer,
+    sendExampleFeedback,
     handleFileUploaded,
     setEditor,
     insertGeneratedContent,
