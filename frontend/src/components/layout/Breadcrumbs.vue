@@ -43,7 +43,8 @@ import { UI } from '../../constants/uiStrings';
 const BREADCRUMB_ANIM_MS = 180;
 const BREADCRUMB_SCROLL_MIN_ANIM_MS = 80;
 const BREADCRUMB_SCROLL_MAX_ANIM_MS = 240;
-// @ts-expect-error — used in subsequent tasks
+// Used by wheel event handler in Task 6
+// @ts-ignore - used in subsequent tasks
 const BREADCRUMB_SCROLL_INPUT_WINDOW_MS = 150;
 
 const store = useNodeStore();
@@ -57,17 +58,22 @@ const displayNodes = ref<NodeRecord[]>([...pathNodes.value]);
 const showCurrentNode = ref(true);
 
 // Scroll engine state
-// @ts-expect-error — used in subsequent tasks
+// Used by processScrollQueue in Task 5
+// @ts-ignore - used in subsequent tasks
 const scrollQueue = ref<Array<{ direction: 'left' | 'right' }>>([]);
-// @ts-expect-error — used in subsequent tasks
+// Used by processScrollQueue in Task 5
+// @ts-ignore - used in subsequent tasks
 const isAnimating = ref(false);
-// @ts-expect-error — used in subsequent tasks
+// Used by wheel event handler in Task 6
+// @ts-ignore - used in subsequent tasks
 const lastWheelTime = ref(0);
 const currentSpeed = ref(0);
-// @ts-expect-error — used in subsequent tasks
+// Used by calcAnimDuration in Task 5
+// @ts-ignore - used in subsequent tasks
 const currentAnimMs = ref(BREADCRUMB_ANIM_MS);
 const crumbTrackRef = ref<HTMLElement | null>(null);
-// @ts-expect-error — used in subsequent tasks
+// Used by animateSingleScroll in Task 5
+// @ts-ignore - used in subsequent tasks
 let scrollCancelToken = 0;
 
 // [Bug6 fix] cancel token to invalidate stale animation callbacks
@@ -134,7 +140,8 @@ watch(pathNodes, (newPath, oldPath) => {
   }
 }, { immediate: true });
 
-// @ts-expect-error — used in subsequent tasks
+// Used by processScrollQueue in Task 5
+// @ts-ignore - used in subsequent tasks
 function calcAnimDuration(): number {
   const speed = currentSpeed.value;
   if (speed <= 0) return BREADCRUMB_ANIM_MS;
@@ -146,7 +153,7 @@ function calcAnimDuration(): number {
   return Math.round(duration);
 }
 
-// @ts-expect-error — used in subsequent tasks
+// Used by animateSingleScroll in Task 4
 function findNextScrollTarget(direction: 'left' | 'right'): number {
   const container = crumbTrackRef.value;
   if (!container) return 0;
@@ -180,7 +187,8 @@ function findNextScrollTarget(direction: 'left' | 'right'): number {
   }
 }
 
-// @ts-expect-error — used in subsequent tasks
+// Used by processScrollQueue in Task 5
+// @ts-ignore - used in subsequent tasks
 async function animateSingleScroll(direction: 'left' | 'right', duration: number): Promise<void> {
   const container = crumbTrackRef.value;
   if (!container) return;
