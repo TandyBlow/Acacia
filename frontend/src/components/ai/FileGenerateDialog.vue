@@ -13,7 +13,24 @@
           <div class="dialog-content">
             <!-- Step 1: Upload -->
             <template v-if="currentStep === 'upload'">
+              <!-- Resume banner -->
+              <div v-if="showResumeChoice" class="resume-banner">
+                <div class="resume-info">
+                  <span class="resume-icon">↩</span>
+                  <span>检测到未完成的对话，是否继续？</span>
+                </div>
+                <div class="resume-actions">
+                  <button class="step-btn step-btn-primary" @click="handleResume">
+                    继续上次对话
+                  </button>
+                  <button class="step-btn step-btn-secondary" @click="handleStartFresh">
+                    重新开始
+                  </button>
+                </div>
+              </div>
+
               <FileUploadArea
+                v-else
                 @uploaded="handleFileUploaded"
                 @removed="handleFileRemoved"
               />
@@ -79,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useFileGenerate } from '../../composables/useFileGenerate';
@@ -100,10 +117,13 @@ const {
   sessionId,
   conversationState,
   needsOutlineSelection,
+  hasResumableSession,
   extractKnowledgePoints,
   startConversation,
   sendAnswer,
   sendExampleFeedback,
+  resumeConversation,
+  abandonSession,
   insertGeneratedContent,
 } = useFileGenerate();
 
@@ -111,6 +131,7 @@ type Step = 'upload' | 'extracting' | 'selecting' | 'conversing' | 'completed';
 const currentStep = ref<Step>('upload');
 const conversationView = ref<InstanceType<typeof ConversationView> | null>(null);
 const selectedKnowledgePoints = ref<KnowledgePoint[]>([]);
+const showResumeChoice = ref(false);
 
 function handleFileUploaded(file: UploadedFile) {
   uploadedFile.value = file;
@@ -166,6 +187,65 @@ async function startConversationWithPoints(knowledgePoints: KnowledgePoint[]) {
     }, 100);
   } catch (error) {
     console.error('Start conversation failed:', error);
+    currentStep.value = 'upload';
+  }
+}
+
+async function handleResume() {
+  const checkpoint = loadCheckpointRaw();
+  if (!checkpoint || !checkpoint.sessionId) {
+    handleStartFresh();
+    return;
+  }
+
+  try {
+    const result = await resumeConversation(checkpoint.sessionId);
+
+    // Restore dialog state
+    uploadedFile.value = checkpoint.file;
+    extractionResult.value = checkpoint.extractionResult;
+    selectedKnowledgePoints.value = checkpoint.selectedKnowledgePoints;
+    currentStep.value = 'conversing';
+
+    // Load message history into ConversationView
+    await nextTick();
+    if (result.messages && result.messages.length > 0) {
+      conversationView.value?.loadHistory(
+        result.messages.map((m: any) => ({
+          role: m.role,
+          content: m.content,
+          generatedContent: m.metadata?.generated_content || m.generatedContent,
+        }))
+      );
+    }
+    // Restore example preview if pending
+    if (result.pending_example) {
+      conversationView.value?.showExample(
+        result.pending_example.example_content,
+        result.pending_example.explanation || ''
+      );
+    }
+  } catch (err) {
+    console.error('Resume failed:', err);
+    handleStartFresh();
+    errorMessage.value = '之前的对话已过期，请重新开始。';
+  }
+}
+
+function handleStartFresh() {
+  showResumeChoice.value = false;
+  abandonSession();
+  currentStep.value = 'upload';
+  errorMessage.value = '';
+}
+
+function loadCheckpointRaw(): { sessionId: string; file: UploadedFile; extractionResult: any; selectedKnowledgePoints: KnowledgePoint[] } | null {
+  try {
+    const raw = localStorage.getItem('acacia_conversation_checkpoint_v1');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
 }
 
@@ -205,6 +285,7 @@ async function handleUserAnswer(answer: string) {
     }
   } catch (error) {
     console.error('Send answer failed:', error);
+    conversationView.value.resetThinking('出错了，请重试。如果多次失败，请关闭对话框后重新开始。');
   }
 }
 
@@ -230,6 +311,7 @@ async function handleSkip() {
     }
   } catch (error) {
     console.error('Skip failed:', error);
+    conversationView.value?.resetThinking('跳过失败，请重试。');
   }
 }
 
@@ -261,28 +343,37 @@ async function handleExampleFeedback(payload: { action: string; feedback?: strin
     }
   } catch (error) {
     console.error('Example feedback failed:', error);
+    conversationView.value.resetThinking('反馈处理失败，请重试。');
   }
 }
 
 function handleClose() {
   if (currentStep.value === 'conversing' && !conversationState.value.isCompleted) {
-    if (!confirm('对话尚未完成，确定要关闭吗？已生成的内容会保留。')) {
+    if (!confirm('对话尚未完成，确定要关闭吗？可以稍后继续。')) {
       return;
     }
   }
 
   isOpen.value = false;
-  currentStep.value = 'upload';
-  uploadedFile.value = null;
-  extractionResult.value = null;
-  selectedKnowledgePoints.value = [];
-  errorMessage.value = '';
+  // Only reset state for completed conversations
+  if (conversationState.value.isCompleted) {
+    currentStep.value = 'upload';
+    uploadedFile.value = null;
+    extractionResult.value = null;
+    selectedKnowledgePoints.value = [];
+    errorMessage.value = '';
+  }
 }
 
 // Reset step when dialog opens
 watch(isOpen, (newValue) => {
   if (newValue) {
-    currentStep.value = 'upload';
+    if (hasResumableSession.value) {
+      showResumeChoice.value = true;
+    } else {
+      currentStep.value = 'upload';
+      showResumeChoice.value = false;
+    }
   }
 });
 </script>
@@ -425,6 +516,45 @@ watch(isOpen, (newValue) => {
   color: #c0392b;
   font-size: 14px;
   text-align: center;
+}
+
+.resume-banner {
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(102, 255, 229, 0.08);
+  border: 1px solid rgba(102, 255, 229, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  text-align: center;
+}
+
+.resume-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+.resume-icon {
+  font-size: 20px;
+}
+
+.resume-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.step-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-primary);
+}
+
+.step-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .overlay-fade-enter-active,
