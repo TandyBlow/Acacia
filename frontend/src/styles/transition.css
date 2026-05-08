@@ -5,16 +5,16 @@
  * glass-raised (正常) → glass-sinking (下沉中) → glass-sunken (下沉完成) → glass-rising (升起中) → glass-raised (正常)
  *
  * 时序：
- * - 下沉动画：800ms
- * - 升起动画：400ms
+ * - 下沉动画：1000ms
+ * - 升起动画：1000ms
  */
 
 /* 玻璃区域转换状态 */
 .glass-sinking {
   box-shadow: none !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
-  transition: box-shadow 800ms cubic-bezier(0.22, 1, 0.36, 1),
-              border-color 800ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: box-shadow 1000ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 1000ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .glass-sinking .glass-content {
@@ -36,13 +36,13 @@
 }
 
 .glass-rising {
-  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: glass-rise 1000ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes glass-rise {
   from {
-    opacity: 0;
-    transform: translateY(24px) scale(0.97);
+    opacity: 0.85;
+    transform: translateY(4px) scale(0.99);
   }
   to {
     opacity: 1;
@@ -50,11 +50,19 @@
   }
 }
 
-/* 文字透明 */
-.region-transitioning {
-  color: transparent !important;
+/* Tree curtain: masks the tree area during tree-involving transitions */
+.tree-curtain {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1000ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.region-transitioning * {
-  color: transparent !important;
+.tree-curtain.drawn {
+  opacity: 1;
 }
+

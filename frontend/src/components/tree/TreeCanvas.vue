@@ -31,6 +31,7 @@ const { busy, fetchSkeleton, onTagNodes } = useTreeSkeleton();
 const { nodes: statsNodes, fetchStats } = useStats();
 const isDev = import.meta.env.DEV;
 const noTreeData = ref(false);
+const sceneReady = ref(false);
 
 let manager: SceneManager | null = null;
 let debugGUI: DebugGUI | null = null;
@@ -59,6 +60,7 @@ async function loadTree() {
 
     if (!skeleton.branches || skeleton.branches.length === 0) {
       noTreeData.value = true;
+      sceneReady.value = true;
       return;
     }
     lastSkeleton = skeleton;
@@ -74,6 +76,8 @@ async function loadTree() {
     manager.buildScene(skeleton);
 
     if (gen !== loadGeneration) return;
+
+    sceneReady.value = true;
 
     // Dev debug GUI
     if (isDev && manager) {
@@ -106,6 +110,7 @@ async function loadTree() {
   } catch (err) {
     if (gen !== loadGeneration) return;
     noTreeData.value = true;
+    sceneReady.value = true;
     console.error('Failed to load tree skeleton:', err);
   }
 }
@@ -183,7 +188,11 @@ function onBecameVisible() {
 }
 
 watch(() => props.visible, async (nowVisible, wasVisible) => {
-  if (!nowVisible || wasVisible) return;
+  if (!nowVisible) {
+    sceneReady.value = false;
+    return;
+  }
+  if (wasVisible) return;
   await nextTick();
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   onBecameVisible();
@@ -209,6 +218,8 @@ onBeforeUnmount(() => {
   unregisterRegion('content-tree');
   cleanup();
 });
+
+defineExpose({ sceneReady });
 </script>
 
 <style scoped>
