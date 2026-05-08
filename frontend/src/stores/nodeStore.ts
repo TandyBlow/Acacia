@@ -121,11 +121,12 @@ export const useNodeStore = defineStore('node', () => {
   async function loadNode(nodeId: string | null, options?: { replace?: boolean }): Promise<void> {
     const cached = nodeCache.getCached(nodeId);
     if (cached) {
-      activeNode.value = cached.nodeInfo;
-      pathNodes.value = cached.pathNodes;
-      childNodes.value = cached.children;
-      viewState.value = ViewStates.DISPLAY;
-      clearTransientState();
+      // 即使是缓存命中，也要触发转换动画
+      // 将缓存数据放入 pending，让转换系统在合适时机应用
+      pendingNodeContext.value = cached;
+
+      // 触发页面转换
+      startTransition({ type: 'navigate', nodeId }, 'large');
 
       syncRouteFromLoad = true;
       const targetPath = nodeId ? `/node/${nodeId}` : '/';
@@ -191,6 +192,11 @@ export const useNodeStore = defineStore('node', () => {
 
   function startAdd(): void {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'add' }, 'large');
+
     viewState.value = ViewStates.ADD;
     pendingNodeName.value = '';
     operationNode.value = null;
@@ -201,6 +207,11 @@ export const useNodeStore = defineStore('node', () => {
 
   async function startDelete(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'delete' }, 'large');
+
     viewState.value = ViewStates.DELETE;
     operationNode.value = node;
     deleteWithChildren.value = false;
@@ -211,6 +222,11 @@ export const useNodeStore = defineStore('node', () => {
 
   async function startMove(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'move' }, 'large');
+
     viewState.value = ViewStates.MOVE;
     operationNode.value = node;
     moveTargetParentId.value = node.parentId;
@@ -228,30 +244,54 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   function cancelOperation(): void {
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'display' }, 'large');
+
     viewState.value = ViewStates.DISPLAY;
     clearTransientState();
   }
 
   function startQuiz(): void {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'quiz' }, 'large');
+
     viewState.value = ViewStates.QUIZ;
     clearTransientState();
   }
 
   function startQuizHistory(): void {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'quiz_history' }, 'large');
+
     viewState.value = ViewStates.QUIZ_HISTORY;
     clearTransientState();
   }
 
   function startStats(): void {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'stats' }, 'large');
+
     viewState.value = ViewStates.STATS;
     clearTransientState();
   }
 
   function startReview(): void {
     errorMessage.value = null;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'review' }, 'large');
+
     viewState.value = ViewStates.REVIEW;
     clearTransientState();
   }

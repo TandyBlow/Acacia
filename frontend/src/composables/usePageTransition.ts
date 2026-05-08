@@ -38,8 +38,8 @@ async function sinkRegions(regionIds: Set<string>): Promise<void> {
     }
   }
 
-  // Wait for animation to complete (300ms as defined in CSS)
-  await new Promise(resolve => setTimeout(resolve, 300));
+  // Wait for animation to complete (1000ms as defined in CSS)
+  await new Promise(resolve => setTimeout(resolve, 1000));
 }
 
 /**
@@ -56,7 +56,19 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
     return;
   }
 
-  // Add rising class to all glass regions
+  // Remove sinking class first so glass-content starts transitioning
+  // from sunken (transparent) back to raised (frosted glass)
+  for (const reg of glassRegions) {
+    const el = reg.element.value;
+    if (el) {
+      el.classList.remove('glass-sinking');
+    }
+  }
+
+  // Force reflow so the browser registers the class removal before adding rising
+  void (glassRegions[0]?.element.value?.offsetHeight);
+
+  // Add rising class for the subtle pop-up animation
   for (const reg of glassRegions) {
     const el = reg.element.value;
     if (el) {
@@ -64,14 +76,14 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
     }
   }
 
-  // Wait for animation to complete (300ms as defined in CSS)
-  await new Promise(resolve => setTimeout(resolve, 300));
+  // Wait for animation to complete (1000ms as defined in CSS)
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Remove animation classes after completion
+  // Remove animation class after completion
   for (const reg of glassRegions) {
     const el = reg.element.value;
     if (el) {
-      el.classList.remove('glass-rising', 'glass-sinking');
+      el.classList.remove('glass-rising');
     }
   }
 }

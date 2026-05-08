@@ -23,12 +23,13 @@
           </div>
         </section>
 
-        <section ref="contentRef" class="content-area">
-          <div class="inset-shell static-shell content-shell">
+        <section class="content-area">
+          <div class="content-inset-frame" aria-hidden="true"></div>
+          <div ref="glassRef" class="content-glass-host">
             <GlassWrapper class="content-surface">
               <template v-if="!isFeaturePanel">
                 <div v-if="showTree" key="tree" class="content-host">
-                  <TreeCanvas :visible="showTree" />
+                  <TreeCanvas ref="treeCanvasRef" :visible="showTree" />
                 </div>
                 <Transition v-if="!showTree" name="content-rise" mode="out-in">
                   <component :is="nonTreeContent" :key="contentKey" class="content-host" />
@@ -37,6 +38,7 @@
               <Transition name="feature-panel" mode="out-in">
                 <FeaturePanel v-if="isFeaturePanel" key="feature" class="feature-host" />
               </Transition>
+              <div ref="treeCurtainRef" class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
             </GlassWrapper>
           </div>
         </section>
@@ -89,14 +91,19 @@ const {
 useAppInit();
 const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout, closeFeaturePanel } = useKnobDispatch();
 
-const { registerRegion, unregisterRegion, startTransition } = usePageTransition();
+const { registerRegion, unregisterRegion, startTransition, currentPhase } = usePageTransition();
 
 // Region refs for page transition system
 const logoRef = ref<HTMLElement | null>(null);
 const breadcrumbsRef = ref<HTMLElement | null>(null);
 const navigationRef = ref<HTMLElement | null>(null);
-const contentRef = ref<HTMLElement | null>(null);
+const glassRef = ref<HTMLElement | null>(null);
 const knobRef = ref<HTMLElement | null>(null);
+
+// Tree curtain: masks tree area during tree-involving transitions
+const treeCurtainDrawn = ref(false);
+const treeCurtainRef = ref<HTMLElement | null>(null);
+const treeCanvasRef = ref<{ sceneReady: boolean } | null>(null);
 
 // Compact layout tracking
 const isCompact = ref(false);
@@ -193,11 +200,11 @@ onMounted(() => {
     });
   }
 
-  if (contentRef.value) {
+  if (glassRef.value) {
     registerRegion({
       id: 'content',
       type: 'glass',
-      element: contentRef,
+      element: glassRef,
       shouldShow: () => {
         // Content is always visible in all modes
         return true;
@@ -280,6 +287,53 @@ const contentKey = computed(() => {
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
 });
 
+// Tree curtain: fades in during sink (tree disappearing) or draws instantly
+// (tree appearing), then fades out during rise to reveal the new content.
+const treeWasVisible = ref(false);
+
+watch(currentPhase, (phase) => {
+  if (phase === 'sinking') {
+    treeWasVisible.value = showTree.value;
+    if (showTree.value) {
+      treeCurtainDrawn.value = true;
+    }
+  } else if (phase === 'rising') {
+    if (!treeWasVisible.value && showTree.value) {
+      // Tree just appeared — draw curtain instantly so it masks while scene loads
+      const el = treeCurtainRef.value;
+      if (el) {
+        el.style.transition = 'none';
+        treeCurtainDrawn.value = true;
+        el.offsetHeight; // force reflow so browser paints opacity:1
+        el.style.transition = '';
+      }
+    }
+    // Undraw is handled by the tree-ready watcher below
+  } else if (phase === 'idle') {
+    // Only undraw if there's no tree to wait for
+    if (!showTree.value) {
+      treeCurtainDrawn.value = false;
+    }
+  }
+});
+
+// Undraw curtain when tree scene is ready, or when tree is no longer visible
+watch(
+  [() => treeCanvasRef.value?.sceneReady, () => showTree.value],
+  ([ready, treeVisible]) => {
+    if (!treeCurtainDrawn.value) return;
+
+    if (!treeVisible) {
+      treeCurtainDrawn.value = false;
+      return;
+    }
+
+    if (ready) {
+      treeCurtainDrawn.value = false;
+    }
+  },
+);
+
 </script>
 
 <style scoped>
@@ -343,6 +397,21 @@ const contentKey = computed(() => {
   grid-column: 2;
   grid-row: 2;
   position: relative;
+  padding: 1px;
+}
+
+.content-inset-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  border: 1px solid var(--color-glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 0 9px 18px var(--shadow-inset-a),
+    inset 0 -9px 18px var(--shadow-inset-b),
+    inset -9px 0 18px var(--shadow-inset-b);
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .knob-area {
@@ -374,13 +443,6 @@ const contentKey = computed(() => {
     inset 0 -9px 18px var(--shadow-inset-b);
 }
 
-.content-shell {
-  box-shadow:
-    inset 0 9px 18px var(--shadow-inset-a),
-    inset 0 -9px 18px var(--shadow-inset-b),
-    inset -9px 0 18px var(--shadow-inset-b);
-}
-
 /* 导航区 z-index 高于内容区，防止 outset shadow 覆盖导航边缘 */
 .navigation-area { z-index: 2; }
 .content-area { z-index: 1; }
@@ -401,6 +463,17 @@ const contentKey = computed(() => {
   height: 100%;
 }
 
+.content-glass-host {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.content-glass-host :deep(.glass-raised) {
+  box-shadow: none;
+}
+
 .feature-host {
   width: 100%;
   height: 100%;
@@ -419,8 +492,8 @@ const contentKey = computed(() => {
 }
 
 .content-rise-enter-from {
-  opacity: 0;
-  transform: translateY(24px) scale(0.97);
+  opacity: 0.7;
+  transform: translateY(6px) scale(0.99);
 }
 
 .content-rise-leave-to {
@@ -444,26 +517,6 @@ const contentKey = computed(() => {
 .feature-panel-leave-to {
   opacity: 0;
   transform: scale(0.98);
-}
-
-@keyframes glass-rise {
-  from {
-    opacity: 0;
-    transform: translateY(24px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.is-rising .content-area :deep(.content-surface) {
-  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.is-rising .knob-area :deep(.knob-well) {
-  animation: glass-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: 100ms;
 }
 
 @media (max-width: 900px) {
@@ -503,13 +556,20 @@ const contentKey = computed(() => {
     row-gap: 0;
   }
 
-  .navigation-shell,
-  .content-shell {
+  .navigation-shell {
     display: contents;
     border: none;
     background: transparent;
     box-shadow: none;
     overflow: visible;
+    padding: 0;
+  }
+
+  .content-inset-frame {
+    display: none;
+  }
+
+  .content-area {
     padding: 0;
   }
 
@@ -545,9 +605,16 @@ const contentKey = computed(() => {
     display: contents !important;
   }
 
-  .navigation-shell,
-  .content-shell {
+  .navigation-shell {
     display: contents !important;
+  }
+
+  .content-inset-frame {
+    display: none !important;
+  }
+
+  .content-area {
+    padding: 0;
   }
 
   /* Compact content mode: content + knob */

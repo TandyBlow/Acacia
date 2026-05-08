@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useLogoutFlow } from './useLogoutFlow';
+import { usePageTransition } from './usePageTransition';
 
 const isFeaturePanel = ref(false);
 
@@ -59,6 +60,11 @@ export function useKnobDispatch() {
       }
       return;
     }
+
+    // 触发页面转换（如果确认操作会改变界面）
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'knob', action: 'confirm' }, isCompactLayout.value ? 'small' : 'large');
+
     await nodeStore.confirmOperation();
   }
 
@@ -68,6 +74,10 @@ export function useKnobDispatch() {
       return;
     }
     if (isFeaturePanel.value) {
+      // 触发页面转换
+      const { startTransition } = usePageTransition();
+      startTransition({ type: 'knob', action: 'close-feature' }, isCompactLayout.value ? 'small' : 'large');
+
       closeFeaturePanel();
       return;
     }
@@ -75,26 +85,40 @@ export function useKnobDispatch() {
       cancelLogout();
       return;
     }
+
+    // 触发页面转换（如果点击会改变界面）
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'knob', action: 'click' }, isCompactLayout.value ? 'small' : 'large');
+
     await nodeStore.onKnobClick();
   }
 
   async function onDoubleClick(): Promise<void> {
     if (inAuthMode.value || isBusy.value) return;
+
+    // 触发页面转换
+    const { startTransition } = usePageTransition();
+
     if (isCompactLayout.value) {
       if (compactMode.value === 'content') {
+        startTransition({ type: 'knob', action: 'double-click' }, 'small');
         compactMode.value = 'nav';
       } else if (compactMode.value === 'nav') {
+        startTransition({ type: 'knob', action: 'double-click' }, 'small');
         compactMode.value = 'feature';
         openFeaturePanel();
       } else {
+        startTransition({ type: 'knob', action: 'double-click' }, 'small');
         compactMode.value = 'content';
         closeFeaturePanel();
       }
       return;
     }
     if (isFeaturePanel.value) {
+      startTransition({ type: 'knob', action: 'double-click' }, 'large');
       closeFeaturePanel();
     } else {
+      startTransition({ type: 'knob', action: 'double-click' }, 'large');
       openFeaturePanel();
     }
   }
