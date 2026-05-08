@@ -24,7 +24,9 @@ VITE_DATA_MODE=backend VITE_BACKEND_URL=/api npm run build
 # 4. Restart backend service
 sudo systemctl restart acacia
 
-# 5. Reload nginx (config might have changed)
+# 5. Update nginx config and reload
+sudo cp "$ACACIA_ROOT/deploy/nginx.conf" /etc/nginx/nginx.conf
+nginx -t
 sudo systemctl reload nginx
 
 # 6. Verify
