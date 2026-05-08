@@ -63,7 +63,7 @@ export function useKnobDispatch() {
 
     // 触发页面转换（如果确认操作会改变界面）
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'knob', action: 'confirm' }, isCompactLayout.value ? 'small' : 'large');
+    startTransition({ type: 'knob', action: 'hold' }, isCompactLayout.value ? 'small' : 'large');
 
     await nodeStore.confirmOperation();
   }
@@ -76,7 +76,7 @@ export function useKnobDispatch() {
     if (isFeaturePanel.value) {
       // 触发页面转换
       const { startTransition } = usePageTransition();
-      startTransition({ type: 'knob', action: 'close-feature' }, isCompactLayout.value ? 'small' : 'large');
+      startTransition({ type: 'knob', action: 'click' }, isCompactLayout.value ? 'small' : 'large');
 
       closeFeaturePanel();
       return;
@@ -101,24 +101,24 @@ export function useKnobDispatch() {
 
     if (isCompactLayout.value) {
       if (compactMode.value === 'content') {
-        startTransition({ type: 'knob', action: 'double-click' }, 'small');
+        startTransition({ type: 'knob', action: 'doubleClick' }, 'small');
         compactMode.value = 'nav';
       } else if (compactMode.value === 'nav') {
-        startTransition({ type: 'knob', action: 'double-click' }, 'small');
+        startTransition({ type: 'knob', action: 'doubleClick' }, 'small');
         compactMode.value = 'feature';
         openFeaturePanel();
       } else {
-        startTransition({ type: 'knob', action: 'double-click' }, 'small');
+        startTransition({ type: 'knob', action: 'doubleClick' }, 'small');
         compactMode.value = 'content';
         closeFeaturePanel();
       }
       return;
     }
     if (isFeaturePanel.value) {
-      startTransition({ type: 'knob', action: 'double-click' }, 'large');
+      startTransition({ type: 'knob', action: 'doubleClick' }, 'large');
       closeFeaturePanel();
     } else {
-      startTransition({ type: 'knob', action: 'double-click' }, 'large');
+      startTransition({ type: 'knob', action: 'doubleClick' }, 'large');
       openFeaturePanel();
     }
   }
