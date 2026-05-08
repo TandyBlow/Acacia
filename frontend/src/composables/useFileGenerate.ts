@@ -49,6 +49,17 @@ const conversationState = ref<{
 // Store reference to editor for content insertion
 let editorInstance: Editor | null = null;
 
+async function parseErrorDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const error = await response.json();
+    return error.detail || fallback;
+  } catch {
+    return response.status === 413
+      ? '文件大小超过限制'
+      : `${fallback} (HTTP ${response.status})`;
+  }
+}
+
 export function useFileGenerate() {
   const { registerLoadingSource, setLoading, unregisterLoadingSource } = useGlobalLoading();
   registerLoadingSource('fileGenerate');
@@ -110,8 +121,7 @@ export function useFileGenerate() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || '知识点提取失败');
+        throw new Error(await parseErrorDetail(response, '知识点提取失败'));
       }
 
       const result = await response.json();
@@ -151,8 +161,7 @@ export function useFileGenerate() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || '启动对话失败');
+        throw new Error(await parseErrorDetail(response, '启动对话失败'));
       }
 
       const result = await response.json();
@@ -202,8 +211,7 @@ export function useFileGenerate() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || '对话处理失败');
+        throw new Error(await parseErrorDetail(response, '对话处理失败'));
       }
 
       const result = await response.json();
@@ -256,8 +264,7 @@ export function useFileGenerate() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || '例题反馈处理失败');
+        throw new Error(await parseErrorDetail(response, '例题反馈处理失败'));
       }
 
       const result = await response.json();

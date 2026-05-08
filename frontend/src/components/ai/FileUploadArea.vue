@@ -141,8 +141,16 @@ async function uploadFile(file: File) {
     uploadProgress.value = 100;
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || '上传失败');
+      let errorDetail = '上传失败';
+      try {
+        const error = await response.json();
+        errorDetail = error.detail || '上传失败';
+      } catch {
+        errorDetail = response.status === 413
+          ? '文件大小超过限制'
+          : `服务器错误 (${response.status})`;
+      }
+      throw new Error(errorDetail);
     }
 
     const result = await response.json();
