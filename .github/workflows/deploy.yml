@@ -48,6 +48,10 @@ jobs:
               sudo journalctl -u acacia --no-pager -n 20 2>&1 | tee -a "$LOG"
             fi
 
+            echo ">>> update nginx config" | tee -a "$LOG"
+            cp /opt/acacia/deploy/nginx.conf /etc/nginx/nginx.conf
+            nginx -t 2>&1 | tee -a "$LOG"
+
             echo ">>> systemctl reload nginx" | tee -a "$LOG"
             sudo systemctl reload nginx 2>&1 | tee -a "$LOG"
 
