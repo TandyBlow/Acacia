@@ -144,16 +144,43 @@ def call_deepseek(messages: List[Dict[str, str]]) -> str:
     return data["choices"][0]["message"]["content"]
 
 
+def _sanitize_control_chars(text: str) -> str:
+    """Replace JSON-invalid control characters (except whitespace: \\t, \\n, \\r)."""
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text)
+
+
+def _clean_dict_strings(obj: Any) -> Any:
+    """Recursively sanitize control characters in all string values of a dict/list."""
+    if isinstance(obj, str):
+        return _sanitize_control_chars(obj)
+    if isinstance(obj, dict):
+        return {k: _clean_dict_strings(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_dict_strings(v) for v in obj]
+    return obj
+
+
 def parse_json_response(raw: str) -> dict:
-    """Parse JSON from LLM response, handling code blocks."""
+    """Parse JSON from LLM response, handling code blocks and control characters."""
+    # Always sanitize first — LLM responses may contain stray control characters
+    # that Python's json.loads(strict=False) accepts but the browser's strict
+    # JSON.parse rejects when the backend re-serializes the dict.
+    sanitized = _sanitize_control_chars(raw)
+
     try:
-        return json.loads(raw)
+        return json.loads(sanitized, strict=False)
     except json.JSONDecodeError:
-        # Try to extract JSON from code block
-        match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", raw, re.DOTALL)
-        if match:
-            return json.loads(match.group(1))
-        raise ValueError("LLM response is not valid JSON")
+        pass
+
+    # Try to extract JSON from code block
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", sanitized, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1), strict=False)
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("LLM response is not valid JSON")
 
 
 def extract_knowledge_points(file_id: str, owner_id: str) -> Dict[str, Any]:
