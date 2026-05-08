@@ -153,10 +153,34 @@ const emit = defineEmits<{
   'example-feedback': [payload: { action: string; feedback?: string }];
 }>();
 
+const THINKING_SAFETY_TIMEOUT = 120_000; // 2 minutes, backend timeout is 60s
+
 const messages = ref<Message[]>([]);
 const userInput = ref('');
 const isThinking = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
+let thinkingSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+
+function startThinking() {
+  isThinking.value = true;
+  thinkingSafetyTimer = setTimeout(() => {
+    if (isThinking.value) {
+      isThinking.value = false;
+      messages.value.push({
+        role: 'ai',
+        content: '请求超时，请重试。如果多次出现此问题，请刷新页面后重新开始。',
+      });
+    }
+  }, THINKING_SAFETY_TIMEOUT);
+}
+
+function stopThinking() {
+  isThinking.value = false;
+  if (thinkingSafetyTimer) {
+    clearTimeout(thinkingSafetyTimer);
+    thinkingSafetyTimer = null;
+  }
+}
 
 // Example preview state
 const isShowingExample = ref(false);
@@ -186,7 +210,7 @@ function sendAnswer() {
   });
 
   userInput.value = '';
-  isThinking.value = true;
+  startThinking();
 
   emit('answer', answer);
 }
@@ -199,7 +223,7 @@ function skipCurrent() {
     content: '[已跳过]',
   });
 
-  isThinking.value = true;
+  startThinking();
   emit('skip');
 }
 
@@ -209,7 +233,7 @@ function addAiMessage(content: string, generatedContent?: string) {
     content,
     generatedContent,
   });
-  isThinking.value = false;
+  stopThinking();
 
   nextTick(() => {
     scrollToBottom();
@@ -229,7 +253,7 @@ function showExample(content: string, explanation: string) {
 
 function handleAcceptExample() {
   if (isThinking.value) return;
-  isThinking.value = true;
+  startThinking();
   isShowingExample.value = false;
   emit('example-feedback', { action: 'accept' });
 }
@@ -241,7 +265,7 @@ function handleRegenerateExample() {
   }
 
   if (isThinking.value) return;
-  isThinking.value = true;
+  startThinking();
   isShowingExample.value = false;
   emit('example-feedback', { action: 'regenerate', feedback: feedbackText.value.trim() });
   feedbackText.value = '';
@@ -250,7 +274,7 @@ function handleRegenerateExample() {
 
 function handleSkipExample() {
   if (isThinking.value) return;
-  isThinking.value = true;
+  startThinking();
   isShowingExample.value = false;
   emit('example-feedback', { action: 'skip' });
 }
@@ -267,9 +291,28 @@ watch(() => props.currentIndex, () => {
   });
 });
 
+function resetThinking(errorMessage?: string) {
+  stopThinking();
+  if (errorMessage) {
+    messages.value.push({
+      role: 'ai',
+      content: errorMessage,
+    });
+  }
+}
+
+function loadHistory(historyMessages: Message[]) {
+  messages.value = historyMessages;
+  nextTick(() => {
+    scrollToBottom();
+  });
+}
+
 defineExpose({
   addAiMessage,
   showExample,
+  resetThinking,
+  loadHistory,
 });
 </script>
 

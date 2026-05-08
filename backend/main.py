@@ -730,6 +730,27 @@ def example_feedback_endpoint(
         )
 
 
+@app.get("/conversation-sessions/{session_id}")
+def get_conversation_session_for_resume(
+    session_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Get full conversation session state for resume."""
+    from file_knowledge_service import get_session_for_resume
+    try:
+        return get_session_for_resume(session_id, user["sub"])
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="会话不存在或已过期"
+        )
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+
+
 # --- Quiz ---
 
 class QuizAnswerRequest(BaseModel):

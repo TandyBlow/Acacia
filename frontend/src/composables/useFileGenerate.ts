@@ -2,6 +2,19 @@ import { ref, computed, onUnmounted } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
 import { useGlobalLoading } from './useGlobalLoading';
 
+const FETCH_TIMEOUT = 90_000; // 90s, backend LLM timeout is 60s
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = FETCH_TIMEOUT): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface KnowledgePoint {
   id: string;
   title: string;
@@ -27,6 +40,44 @@ export interface UploadedFile {
   extension: string;
   text_length: number;
   text_preview: string;
+}
+
+interface SessionCheckpoint {
+  sessionId: string;
+  file: UploadedFile;
+  extractionResult: ExtractionResult;
+  selectedKnowledgePoints: KnowledgePoint[];
+  timestamp: number;
+}
+
+const CHECKPOINT_KEY = 'acacia_conversation_checkpoint_v1';
+
+function saveCheckpoint(kps: KnowledgePoint[]) {
+  if (!sessionId.value || !uploadedFile.value || !extractionResult.value) return;
+  const checkpoint: SessionCheckpoint = {
+    sessionId: sessionId.value,
+    file: uploadedFile.value,
+    extractionResult: extractionResult.value,
+    selectedKnowledgePoints: kps,
+    timestamp: Date.now(),
+  };
+  try {
+    localStorage.setItem(CHECKPOINT_KEY, JSON.stringify(checkpoint));
+  } catch { /* localStorage full or unavailable */ }
+}
+
+function loadCheckpoint(): SessionCheckpoint | null {
+  try {
+    const raw = localStorage.getItem(CHECKPOINT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SessionCheckpoint;
+  } catch {
+    return null;
+  }
+}
+
+function clearCheckpoint() {
+  localStorage.removeItem(CHECKPOINT_KEY);
 }
 
 const isOpen = ref(false);
@@ -58,6 +109,16 @@ async function parseErrorDetail(response: Response, fallback: string): Promise<s
       ? '文件大小超过限制'
       : `${fallback} (HTTP ${response.status})`;
   }
+}
+
+function friendlyError(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') {
+      return '请求超时，AI服务响应较慢，请重试';
+    }
+    return error.message || fallback;
+  }
+  return fallback;
 }
 
 export function useFileGenerate() {
@@ -111,7 +172,7 @@ export function useFileGenerate() {
 
     try {
       const token = localStorage.getItem('acacia_backend_token');
-      const response = await fetch(`${backendUrl}/extract-knowledge-points`, {
+      const response = await fetchWithTimeout(`${backendUrl}/extract-knowledge-points`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +189,7 @@ export function useFileGenerate() {
       extractionResult.value = result;
       return result;
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '知识点提取失败';
+      errorMessage.value = friendlyError(error, '知识点提取失败');
       throw error;
     } finally {
       isBusy.value = false;
@@ -147,7 +208,7 @@ export function useFileGenerate() {
 
     try {
       const token = localStorage.getItem('acacia_backend_token');
-      const response = await fetch(`${backendUrl}/start-conversation`, {
+      const response = await fetchWithTimeout(`${backendUrl}/start-conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -166,6 +227,7 @@ export function useFileGenerate() {
 
       const result = await response.json();
       sessionId.value = result.session_id;
+      saveCheckpoint(knowledgePoints);
       conversationState.value = {
         currentIndex: result.current_kp.index,
         total: result.current_kp.total,
@@ -175,7 +237,7 @@ export function useFileGenerate() {
 
       return result;
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '启动对话失败';
+      errorMessage.value = friendlyError(error, '启动对话失败');
       throw error;
     } finally {
       isBusy.value = false;
@@ -197,7 +259,7 @@ export function useFileGenerate() {
 
     try {
       const token = localStorage.getItem('acacia_backend_token');
-      const response = await fetch(`${backendUrl}/conversation-turn`, {
+      const response = await fetchWithTimeout(`${backendUrl}/conversation-turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -228,7 +290,7 @@ export function useFileGenerate() {
 
       return result;
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '对话处理失败';
+      errorMessage.value = friendlyError(error, '对话处理失败');
       throw error;
     } finally {
       isBusy.value = false;
@@ -250,7 +312,7 @@ export function useFileGenerate() {
 
     try {
       const token = localStorage.getItem('acacia_backend_token');
-      const response = await fetch(`${backendUrl}/example-feedback`, {
+      const response = await fetchWithTimeout(`${backendUrl}/example-feedback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -281,7 +343,7 @@ export function useFileGenerate() {
 
       return result;
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '例题反馈处理失败';
+      errorMessage.value = friendlyError(error, '例题反馈处理失败');
       throw error;
     } finally {
       isBusy.value = false;
@@ -300,19 +362,86 @@ export function useFileGenerate() {
       total: 0,
       isCompleted: false,
     };
+    // Don't clear checkpoint on open — user may want to resume
   }
 
   function closeDialog() {
     isOpen.value = false;
+    // Only clear state if conversation was completed
+    if (conversationState.value.isCompleted) {
+      clearCheckpoint();
+      uploadedFile.value = null;
+      extractionResult.value = null;
+      sessionId.value = null;
+      conversationState.value = { currentIndex: 0, total: 0, isCompleted: false };
+    }
+    errorMessage.value = '';
+  }
+
+  const hasResumableSession = computed(() => {
+    return loadCheckpoint() !== null;
+  });
+
+  async function resumeConversation(resumeSessionId: string) {
+    isBusy.value = true;
+    setLoading('fileGenerate', true);
+    errorMessage.value = '';
+
+    try {
+      const token = localStorage.getItem('acacia_backend_token');
+      const response = await fetchWithTimeout(
+        `${backendUrl}/conversation-sessions/${resumeSessionId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          clearCheckpoint();
+          throw new Error('会话已过期，请重新开始');
+        }
+        throw new Error(await parseErrorDetail(response, '加载会话失败'));
+      }
+
+      const result = await response.json();
+
+      // Restore state from backend response + checkpoint
+      const checkpoint = loadCheckpoint();
+      sessionId.value = result.session_id;
+      if (checkpoint) {
+        uploadedFile.value = checkpoint.file;
+        extractionResult.value = checkpoint.extractionResult;
+      }
+
+      conversationState.value = {
+        currentIndex: result.current_index,
+        total: result.progress.total,
+        currentKpTitle: result.progress.kp_title,
+        isCompleted: result.status === 'completed',
+      };
+
+      return result;
+    } catch (error) {
+      errorMessage.value = friendlyError(error, '加载会话失败');
+      throw error;
+    } finally {
+      isBusy.value = false;
+      setLoading('fileGenerate', false);
+    }
+  }
+
+  async function abandonSession() {
+    clearCheckpoint();
     uploadedFile.value = null;
     extractionResult.value = null;
     sessionId.value = null;
+    conversationState.value = { currentIndex: 0, total: 0, isCompleted: false };
     errorMessage.value = '';
-    conversationState.value = {
-      currentIndex: 0,
-      total: 0,
-      isCompleted: false,
-    };
   }
 
   function handleFileUploaded(file: UploadedFile) {
@@ -334,6 +463,9 @@ export function useFileGenerate() {
     needsOutlineSelection,
     openDialog,
     closeDialog,
+    hasResumableSession,
+    resumeConversation,
+    abandonSession,
     extractKnowledgePoints,
     startConversation,
     sendAnswer,

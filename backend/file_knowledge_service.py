@@ -480,6 +480,44 @@ def get_conversation_session(session_id: str) -> Dict[str, Any]:
     return session
 
 
+def get_session_for_resume(session_id: str, owner_id: str) -> Dict[str, Any]:
+    """Get full session state for resume, with ownership validation."""
+    session = _conversation_sessions.get(session_id)
+    if not session:
+        raise ValueError(f"Session not found: {session_id}")
+
+    if session["owner_id"] != owner_id:
+        raise PermissionError("无权访问此会话")
+
+    session["last_activity_at"] = time.time()
+
+    knowledge_points = session["knowledge_points"]
+    current_index = session["current_index"]
+    current_kp = knowledge_points[current_index] if current_index < len(knowledge_points) else {}
+
+    return {
+        "session_id": session["session_id"],
+        "node_id": session["node_id"],
+        "file_id": session["file_id"],
+        "knowledge_points": knowledge_points,
+        "current_index": current_index,
+        "messages": session["messages"],
+        "generated_content": session["generated_content"],
+        "status": session["status"],
+        "created_at": session["created_at"],
+        "last_activity_at": session["last_activity_at"],
+        "follow_up_count": session["follow_up_count"],
+        "pending_example": session.get("pending_example"),
+        "example_history": session.get("example_history", []),
+        "progress": {
+            "current": current_index,
+            "total": len(knowledge_points),
+            "kp_title": current_kp.get("title", ""),
+            "kp_type": current_kp.get("type", ""),
+        },
+    }
+
+
 def start_conversation(
     node_id: str,
     owner_id: str,
