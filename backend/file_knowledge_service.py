@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import httpx
 
+from database import get_db_ctx
 from file_parser import parse_file
 
 # DeepSeek API configuration
@@ -605,9 +606,67 @@ def generate_example_for_procedure(
     return result
 
 
-# In-memory conversation session storage
-# In production, consider using Redis or SQLite for persistence
-_conversation_sessions: Dict[str, Dict[str, Any]] = {}
+# Conversation session persistence via SQLite.
+# Sessions survive server restarts and hot-reloads.
+
+def _load_session(session_id: str) -> dict | None:
+    """Load a conversation session from SQLite. Returns None if not found."""
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            "SELECT * FROM conversation_sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "session_id": row["id"],
+        "node_id": row["node_id"],
+        "owner_id": row["owner_id"],
+        "file_id": row["file_id"],
+        "knowledge_points": json.loads(row["knowledge_points"]),
+        "current_index": row["current_index"],
+        "messages": json.loads(row["messages"]),
+        "generated_content": row["generated_content"],
+        "status": row["status"],
+        "follow_up_count": row["follow_up_count"],
+        "self_correction_count": row["self_correction_count"],
+        "uncertainty_count": row["uncertainty_count"],
+        "pending_example": json.loads(row["pending_example"]) if row["pending_example"] else None,
+        "example_history": json.loads(row["example_history"]),
+        "created_at": row["created_at"],
+        "last_activity_at": row["last_activity_at"],
+    }
+
+
+def _save_session(session: dict):
+    """Persist a conversation session to SQLite (INSERT OR REPLACE)."""
+    with get_db_ctx() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO conversation_sessions
+               (id, owner_id, node_id, file_id, knowledge_points, current_index,
+                messages, generated_content, status, follow_up_count,
+                self_correction_count, uncertainty_count, pending_example,
+                example_history, created_at, last_activity_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                session["session_id"],
+                session["owner_id"],
+                session["node_id"],
+                session["file_id"],
+                json.dumps(session["knowledge_points"], ensure_ascii=False),
+                session["current_index"],
+                json.dumps(session["messages"], ensure_ascii=False),
+                session["generated_content"],
+                session["status"],
+                session["follow_up_count"],
+                session["self_correction_count"],
+                session["uncertainty_count"],
+                json.dumps(session["pending_example"], ensure_ascii=False) if session.get("pending_example") else None,
+                json.dumps(session.get("example_history", []), ensure_ascii=False),
+                session["created_at"],
+                session["last_activity_at"],
+            ),
+        )
 
 
 def create_conversation_session(
@@ -630,7 +689,7 @@ def create_conversation_session(
     """
     session_id = str(uuid4())
 
-    _conversation_sessions[session_id] = {
+    session = {
         "session_id": session_id,
         "node_id": node_id,
         "owner_id": owner_id,
@@ -645,16 +704,17 @@ def create_conversation_session(
         "follow_up_count": 0,
         "self_correction_count": 0,
         "uncertainty_count": 0,
-        "pending_example": None,  # NEW: Store pending example for confirmation
-        "example_history": [],    # NEW: Track previous examples
+        "pending_example": None,
+        "example_history": [],
     }
 
+    _save_session(session)
     return session_id
 
 
 def get_conversation_session(session_id: str) -> Dict[str, Any]:
     """Get conversation session by ID."""
-    session = _conversation_sessions.get(session_id)
+    session = _load_session(session_id)
     if not session:
         raise ValueError(f"Session not found: {session_id}")
 
@@ -665,7 +725,7 @@ def get_conversation_session(session_id: str) -> Dict[str, Any]:
 
 def get_session_for_resume(session_id: str, owner_id: str) -> Dict[str, Any]:
     """Get full session state for resume, with ownership validation."""
-    session = _conversation_sessions.get(session_id)
+    session = _load_session(session_id)
     if not session:
         raise ValueError(f"Session not found: {session_id}")
 
@@ -723,34 +783,37 @@ def start_conversation(
         raise ValueError("No knowledge points provided")
 
     session_id = create_conversation_session(node_id, owner_id, file_id, knowledge_points)
-    session = _conversation_sessions[session_id]
+    session = _load_session(session_id)
 
-    # Generate first question
-    current_kp = knowledge_points[0]
-    question_data = generate_question_for_knowledge_point(current_kp)
+    try:
+        # Generate first question
+        current_kp = knowledge_points[0]
+        question_data = generate_question_for_knowledge_point(current_kp)
 
-    # Add to message history
-    session["messages"].append({
-        "role": "ai",
-        "content": question_data["question"],
-        "timestamp": time.time(),
-        "metadata": {
-            "kp_id": current_kp["id"],
-            "hints": question_data.get("hints", [])
+        # Add to message history
+        session["messages"].append({
+            "role": "ai",
+            "content": question_data["question"],
+            "timestamp": time.time(),
+            "metadata": {
+                "kp_id": current_kp["id"],
+                "hints": question_data.get("hints", [])
+            }
+        })
+
+        return {
+            "session_id": session_id,
+            "question": question_data["question"],
+            "hints": question_data.get("hints", []),
+            "current_kp": {
+                "index": 0,
+                "total": len(knowledge_points),
+                "title": current_kp["title"],
+                "type": current_kp["type"],
+            }
         }
-    })
-
-    return {
-        "session_id": session_id,
-        "question": question_data["question"],
-        "hints": question_data.get("hints", []),
-        "current_kp": {
-            "index": 0,
-            "total": len(knowledge_points),
-            "title": current_kp["title"],
-            "type": current_kp["type"],
-        }
-    }
+    finally:
+        _save_session(session)
 
 
 def process_conversation_turn(
@@ -790,6 +853,7 @@ def process_conversation_turn(
         # Check if all knowledge points completed
         if session["current_index"] >= len(knowledge_points):
             session["status"] = "completed"
+            _save_session(session)
             return {
                 "action": "completed",
                 "ai_message": "所有知识点已完成！",
@@ -815,6 +879,7 @@ def process_conversation_turn(
             }
         })
 
+        _save_session(session)
         return {
             "action": "next_question",
             "ai_message": question_data["question"],
@@ -888,6 +953,7 @@ def process_conversation_turn(
             }
 
             # Return example for user confirmation
+            _save_session(session)
             return {
                 "action": "example_preview",
                 "ai_message": ai_message,
@@ -923,6 +989,7 @@ def process_conversation_turn(
         # Check if all completed
         if session["current_index"] >= len(knowledge_points):
             session["status"] = "completed"
+            _save_session(session)
             return {
                 "action": "completed",
                 "ai_message": ai_message,
@@ -949,6 +1016,7 @@ def process_conversation_turn(
             }
         })
 
+        _save_session(session)
         return {
             "action": "accept_and_next",
             "ai_message": ai_message,
@@ -965,6 +1033,7 @@ def process_conversation_turn(
 
     elif action == "follow_up":
         session["follow_up_count"] += 1
+        _save_session(session)
         return {
             "action": "follow_up",
             "ai_message": ai_message,
@@ -977,6 +1046,7 @@ def process_conversation_turn(
         }
 
     elif action == "hint":
+        _save_session(session)
         return {
             "action": "hint",
             "ai_message": ai_message,
@@ -990,6 +1060,7 @@ def process_conversation_turn(
 
     elif action == "show_source":
         # User can't see source material — provide it, don't count as follow-up
+        _save_session(session)
         return {
             "action": "show_source",
             "ai_message": ai_message,
@@ -1006,6 +1077,7 @@ def process_conversation_turn(
 
     elif action == "progressive_hint":
         session["follow_up_count"] += 1
+        _save_session(session)
         return {
             "action": "hint",
             "ai_message": ai_message,
@@ -1028,6 +1100,7 @@ def process_conversation_turn(
             session["uncertainty_count"] = 0
             if session["current_index"] >= len(knowledge_points):
                 session["status"] = "completed"
+                _save_session(session)
                 return {
                     "action": "completed",
                     "ai_message": ai_message + "\n\n（已自动跳过，让我们继续下一个知识点。）",
@@ -1046,6 +1119,7 @@ def process_conversation_turn(
                 "timestamp": time.time(),
                 "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
             })
+            _save_session(session)
             return {
                 "action": "accept_and_next",
                 "ai_message": ai_message,
@@ -1058,6 +1132,7 @@ def process_conversation_turn(
                     "kp_type": next_kp["type"],
                 }
             }
+        _save_session(session)
         return {
             "action": "correct_self",
             "ai_message": ai_message,
@@ -1074,6 +1149,7 @@ def process_conversation_turn(
         session["uncertainty_count"] += 1
         # After 1 uncertainty, suggest user to skip
         can_skip = session["uncertainty_count"] >= 1
+        _save_session(session)
         return {
             "action": "admit_uncertainty",
             "ai_message": ai_message,
@@ -1096,6 +1172,7 @@ def process_conversation_turn(
 
         if session["current_index"] >= len(knowledge_points):
             session["status"] = "completed"
+            _save_session(session)
             return {
                 "action": "completed",
                 "ai_message": ai_message,
@@ -1116,6 +1193,7 @@ def process_conversation_turn(
             "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
         })
 
+        _save_session(session)
         return {
             "action": "accept_and_next",
             "ai_message": ai_message,
@@ -1129,6 +1207,7 @@ def process_conversation_turn(
             }
         }
 
+    _save_session(session)
     return {
         "action": "unknown",
         "ai_message": ai_message,
@@ -1141,17 +1220,13 @@ def process_conversation_turn(
 
 def cleanup_old_sessions(max_age_seconds: int = 1800):
     """Clean up sessions older than max_age_seconds (default 30 minutes)."""
-    current_time = time.time()
-    to_delete = []
-
-    for session_id, session in _conversation_sessions.items():
-        if current_time - session["last_activity_at"] > max_age_seconds:
-            to_delete.append(session_id)
-
-    for session_id in to_delete:
-        del _conversation_sessions[session_id]
-
-    return len(to_delete)
+    cutoff = time.time() - max_age_seconds
+    with get_db_ctx() as conn:
+        cursor = conn.execute(
+            "DELETE FROM conversation_sessions WHERE last_activity_at < ?",
+            (cutoff,),
+        )
+        return cursor.rowcount
 
 
 def process_example_feedback(
@@ -1204,6 +1279,7 @@ def process_example_feedback(
         # Check if all completed
         if session["current_index"] >= len(knowledge_points):
             session["status"] = "completed"
+            _save_session(session)
             return {
                 "action": "completed",
                 "ai_message": "所有知识点已完成！",
@@ -1230,6 +1306,7 @@ def process_example_feedback(
             }
         })
 
+        _save_session(session)
         return {
             "action": "accept_and_next",
             "ai_message": "很好！让我们继续下一个知识点。",
@@ -1250,6 +1327,7 @@ def process_example_feedback(
         regeneration_count = len([e for e in example_history if e.get("kp_id") == current_kp["id"]])
 
         if regeneration_count >= 3:
+            _save_session(session)
             return {
                 "action": "regeneration_limit_reached",
                 "ai_message": "已达到重新生成次数上限（3次）。您可以选择接受当前例题或跳过。",
@@ -1295,6 +1373,7 @@ def process_example_feedback(
             "kp_messages": kp_messages
         }
 
+        _save_session(session)
         return {
             "action": "example_regenerated",
             "ai_message": "我根据您的反馈重新生成了例题，请查看。",
@@ -1344,6 +1423,7 @@ def process_example_feedback(
         # Check if all completed
         if session["current_index"] >= len(knowledge_points):
             session["status"] = "completed"
+            _save_session(session)
             return {
                 "action": "completed",
                 "ai_message": "所有知识点已完成！",
@@ -1370,6 +1450,7 @@ def process_example_feedback(
             }
         })
 
+        _save_session(session)
         return {
             "action": "skip_and_next",
             "ai_message": "好的，我们跳过例题，继续下一个知识点。",

@@ -93,6 +93,27 @@ def init_db():
             );
 
             CREATE INDEX IF NOT EXISTS idx_quiz_records_node_owner ON quiz_records(node_id, owner_id, answered_at DESC);
+
+            CREATE TABLE IF NOT EXISTS conversation_sessions (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                file_id TEXT NOT NULL DEFAULT '',
+                knowledge_points TEXT NOT NULL DEFAULT '[]',
+                current_index INTEGER NOT NULL DEFAULT 0,
+                messages TEXT NOT NULL DEFAULT '[]',
+                generated_content TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                follow_up_count INTEGER NOT NULL DEFAULT 0,
+                self_correction_count INTEGER NOT NULL DEFAULT 0,
+                uncertainty_count INTEGER NOT NULL DEFAULT 0,
+                pending_example TEXT,
+                example_history TEXT NOT NULL DEFAULT '[]',
+                created_at REAL NOT NULL DEFAULT 0,
+                last_activity_at REAL NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_conversation_sessions_owner ON conversation_sessions(owner_id, last_activity_at DESC);
         """)
 
         # Migration: add missing columns
