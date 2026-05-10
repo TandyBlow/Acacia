@@ -21,6 +21,9 @@ export interface KnowledgePoint {
   type: 'concept' | 'principle' | 'application' | 'comparison' | 'procedure';
   brief: string;
   source_content?: string;
+  correct_definition?: string;
+  common_misconceptions?: string[];
+  key_example?: string;
 }
 
 export interface KnowledgeGroup {

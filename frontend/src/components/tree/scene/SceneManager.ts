@@ -154,6 +154,7 @@ export class SceneManager {
     // this.createGround();
     // this.createParticleMesh();
     this.setupCameraAndRenderer();
+    if (!this.camera || !this.renderer) return;
 
     // 在相机创建后初始化背景
     this.initBackground();
@@ -724,8 +725,9 @@ export class SceneManager {
   }
 
   private setupCameraAndRenderer() {
-    const containerW = this.container.clientWidth;
-    const containerH = this.container.clientHeight;
+    if (!this.container) return;
+    const containerW = this.container.clientWidth || 1;
+    const containerH = this.container.clientHeight || 1;
     this.refContainerW = containerW;
     this.refContainerH = containerH;
     this.lastContainerW = containerW;

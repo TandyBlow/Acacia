@@ -17,6 +17,8 @@ frontend/dist/
 frontend/.vite/
 
 # Env and secrets
+connect.sh
+connect.bat
 .env
 .env.*
 !.env.example

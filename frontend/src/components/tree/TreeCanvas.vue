@@ -46,6 +46,7 @@ let treeLoaded = false;
 let loadGeneration = 0;
 
 async function loadTree() {
+  console.log('[TreeCanvas] loadTree called', { hasContainer: !!containerRef.value, treeLoaded, cw: containerRef.value?.clientWidth, ch: containerRef.value?.clientHeight });
   if (!containerRef.value || treeLoaded) return;
 
   const gen = ++loadGeneration;
@@ -54,9 +55,20 @@ async function loadTree() {
     const cw = containerRef.value.clientWidth;
     const ch = containerRef.value.clientHeight;
     const skeleton = await fetchSkeleton(cw || undefined, ch || undefined);
+    console.log('[TreeCanvas] fetchSkeleton returned', { branches: skeleton.branches?.length, hasTrunk: !!skeleton.trunk });
 
     // Abort if a newer loadTree was triggered while we awaited
     if (gen !== loadGeneration) return;
+
+    // containerRef may have become null during async fetch (component unmounted)
+    if (!containerRef.value) {
+      console.warn('[TreeCanvas] containerRef became null after fetch — component likely unmounted, aborting');
+      return;
+    }
+    if (containerRef.value.clientWidth === 0 || containerRef.value.clientHeight === 0) {
+      console.warn('[TreeCanvas] container has zero dimensions, tree may not render correctly',
+        { w: containerRef.value.clientWidth, h: containerRef.value.clientHeight });
+    }
 
     if (!skeleton.branches || skeleton.branches.length === 0) {
       noTreeData.value = true;
@@ -72,8 +84,10 @@ async function loadTree() {
         console.log('Clicked branch, node_id:', nodeId);
       },
     });
+    console.log('[TreeCanvas] SceneManager created, building scene...');
 
     manager.buildScene(skeleton);
+    console.log('[TreeCanvas] buildScene completed');
 
     if (gen !== loadGeneration) return;
 

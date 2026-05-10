@@ -11,18 +11,45 @@
       </div>
     </div>
 
+    <!-- Source content panel -->
+    <div v-if="props.currentKpData" class="source-panel">
+      <button class="source-toggle" @click="showSource = !showSource">
+        <span class="source-toggle-icon">{{ showSource ? '▾' : '▸' }}</span>
+        查看原文
+      </button>
+      <div v-if="showSource" class="source-content">
+        <div v-if="props.currentKpData.source_content" class="source-section">
+          <div class="source-label">原文内容</div>
+          <div class="source-text">{{ props.currentKpData.source_content }}</div>
+        </div>
+        <div v-if="props.currentKpData.correct_definition" class="source-section">
+          <div class="source-label">标准定义</div>
+          <div class="source-text">{{ props.currentKpData.correct_definition }}</div>
+        </div>
+        <div v-if="props.currentKpData.key_example" class="source-section">
+          <div class="source-label">关键示例</div>
+          <div class="source-text">{{ props.currentKpData.key_example }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Messages -->
     <div ref="messagesContainer" class="messages-container">
       <div
         v-for="(message, index) in messages"
         :key="index"
         class="message"
-        :class="'message-' + message.role"
+        :class="[
+          'message-' + message.role,
+          message.messageType ? 'message-' + message.messageType : ''
+        ]"
       >
         <div class="message-avatar">
-          {{ message.role === 'ai' ? '🤖' : '👤' }}
+          {{ message.messageType === 'correct_self' ? '⚠️' : message.messageType === 'admit_uncertainty' ? '🤔' : message.role === 'ai' ? '🤖' : '👤' }}
         </div>
         <div class="message-content">
+          <div v-if="message.messageType === 'correct_self'" class="message-type-label">纠正</div>
+          <div v-if="message.messageType === 'admit_uncertainty'" class="message-type-label">不确定</div>
           <div class="message-text">{{ message.content }}</div>
           <div v-if="message.generatedContent" class="message-generated">
             <div class="generated-label">✓ 已生成内容</div>
@@ -126,6 +153,7 @@ interface Message {
   role: 'user' | 'ai';
   content: string;
   generatedContent?: string;
+  messageType?: 'correct_self' | 'admit_uncertainty';
 }
 
 function renderMarkdown(content: string): string {
@@ -137,11 +165,18 @@ function renderMarkdown(content: string): string {
     .replace(/\*(.*?)\*/g, '<em>$1</em>');
 }
 
+interface KpData {
+  source_content?: string;
+  correct_definition?: string;
+  key_example?: string;
+}
+
 interface Props {
   sessionId: string;
   currentIndex: number;
   total: number;
   currentKpTitle?: string;
+  currentKpData?: KpData | null;
   isCompleted: boolean;
 }
 
@@ -159,6 +194,7 @@ const messages = ref<Message[]>([]);
 const userInput = ref('');
 const isThinking = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
+const showSource = ref(false);
 let thinkingSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 function startThinking() {
@@ -227,11 +263,12 @@ function skipCurrent() {
   emit('skip');
 }
 
-function addAiMessage(content: string, generatedContent?: string) {
+function addAiMessage(content: string, generatedContent?: string, messageType?: 'correct_self' | 'admit_uncertainty') {
   messages.value.push({
     role: 'ai',
     content,
     generatedContent,
+    messageType,
   });
   stopThinking();
 
@@ -286,6 +323,7 @@ function scrollToBottom() {
 }
 
 watch(() => props.currentIndex, () => {
+  showSource.value = false;
   nextTick(() => {
     scrollToBottom();
   });
@@ -358,6 +396,67 @@ defineExpose({
   transition: width 0.3s ease;
 }
 
+.source-panel {
+  border: 1px solid var(--color-glass-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.source-toggle {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.2s ease;
+}
+
+.source-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.source-toggle-icon {
+  font-size: 12px;
+  width: 14px;
+  text-align: center;
+}
+
+.source-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px solid var(--color-glass-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.source-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.source-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(102, 255, 229, 0.75);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.source-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-primary);
+  opacity: 0.8;
+}
+
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -417,6 +516,32 @@ defineExpose({
 
 .message-user .message-text {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* Self-correction message — yellow/warning style */
+.message-correct_self .message-text {
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.35);
+}
+
+.message-correct_self .message-type-label {
+  font-size: 12px;
+  color: #ffc107;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+/* Admit uncertainty message — softer style */
+.message-admit_uncertainty .message-text {
+  background: rgba(158, 158, 158, 0.1);
+  border: 1px solid rgba(158, 158, 158, 0.25);
+}
+
+.message-admit_uncertainty .message-type-label {
+  font-size: 12px;
+  color: #9e9e9e;
+  margin-bottom: 4px;
+  font-weight: 600;
 }
 
 .message-thinking {
