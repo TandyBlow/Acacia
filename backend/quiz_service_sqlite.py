@@ -77,15 +77,77 @@ def call_llm(user_input: str, system_prompt: str, temperature: float = 0.8) -> s
     return data["choices"][0]["message"]["content"]
 
 
+def _sanitize_control_chars(text: str) -> str:
+    """Replace JSON-invalid control characters (except whitespace: \\t, \\n, \\r)."""
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text)
+
+
+def _find_json_boundary(text: str, opener: str, closer: str) -> tuple | None:
+    """Find outermost JSON object/array boundary, skipping string contents."""
+    start = text.find(opener)
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i, ch in enumerate(text[start:], start):
+        if escape_next:
+            escape_next = False
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == opener:
+            depth += 1
+        elif ch == closer:
+            depth -= 1
+            if depth == 0:
+                return (start, i + 1)
+
+    return None
+
+
 def extract_json(raw: str) -> dict:
-    """Extract JSON from LLM response, handling markdown fences."""
+    """Extract JSON from LLM response, handling markdown fences and malformed responses."""
+    sanitized = _sanitize_control_chars(raw)
+
     try:
-        return json.loads(raw)
+        return json.loads(sanitized, strict=False)
     except json.JSONDecodeError:
-        match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", raw, re.DOTALL)
-        if not match:
-            raise ValueError("LLM response is not valid JSON")
-        return json.loads(match.group(1))
+        pass
+
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", sanitized, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1), strict=False)
+        except json.JSONDecodeError:
+            pass
+
+    for opener, closer in [("{", "}"), ("[", "]")]:
+        boundary = _find_json_boundary(sanitized, opener, closer)
+        if boundary is None:
+            continue
+        start, end = boundary
+        candidate = sanitized[start:end]
+        candidate = re.sub(r",(\s*[}\]])", r"\1", candidate)
+        try:
+            return json.loads(candidate, strict=False)
+        except json.JSONDecodeError:
+            pass
+
+    preview = raw[:500] if len(raw) > 500 else raw
+    raise ValueError(f"LLM response is not valid JSON. Raw response preview: {preview}")
 
 
 # ── Parse helpers ─────────────────────────────────────────────────
