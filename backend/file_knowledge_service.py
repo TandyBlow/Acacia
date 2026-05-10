@@ -225,6 +225,73 @@ def _clean_dict_strings(obj: Any) -> Any:
     return obj
 
 
+def _fix_newlines_in_strings(text: str) -> str:
+    """Replace literal newlines inside JSON string values with \\n."""
+    result = []
+    in_string = False
+    escape_next = False
+
+    for ch in text:
+        if escape_next:
+            escape_next = False
+            result.append(ch)
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            result.append(ch)
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            result.append(ch)
+            continue
+
+        if in_string and ch in ('\n', '\r'):
+            result.append('\\n')
+            continue
+
+        result.append(ch)
+
+    return ''.join(result)
+
+
+def _find_json_boundary(text: str, opener: str, closer: str) -> tuple | None:
+    """Find outermost JSON object/array boundary, skipping string contents."""
+    start = text.find(opener)
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i, ch in enumerate(text[start:], start):
+        if escape_next:
+            escape_next = False
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == opener:
+            depth += 1
+        elif ch == closer:
+            depth -= 1
+            if depth == 0:
+                return (start, i + 1)
+
+    return None
+
+
 def parse_json_response(raw: str) -> dict:
     """Parse JSON from LLM response, handling code blocks and control characters."""
     sanitized = _sanitize_control_chars(raw)
@@ -242,31 +309,39 @@ def parse_json_response(raw: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Strategy 2: Extract outermost JSON object/array via brace matching
+    # Strategy 2: Extract outermost JSON object/array via string-aware brace matching
     for opener, closer in [("{", "}"), ("[", "]")]:
-        start = sanitized.find(opener)
-        if start == -1:
+        boundary = _find_json_boundary(sanitized, opener, closer)
+        if boundary is None:
             continue
-        depth = 0
-        end = -1
-        for i, ch in enumerate(sanitized[start:], start):
-            if ch == opener:
-                depth += 1
-            elif ch == closer:
-                depth -= 1
-                if depth == 0:
-                    end = i + 1
-                    break
-        if end != -1:
-            candidate = sanitized[start:end]
-            # Fix trailing commas before closing braces/brackets
-            candidate = re.sub(r",(\s*[}\]])", r"\1", candidate)
-            try:
-                return json.loads(candidate, strict=False)
-            except json.JSONDecodeError:
-                pass
+        start, end = boundary
+        candidate = sanitized[start:end]
+        # Fix trailing commas before closing braces/brackets
+        candidate = re.sub(r",(\s*[}\]])", r"\1", candidate)
+        try:
+            return json.loads(candidate, strict=False)
+        except json.JSONDecodeError:
+            pass
 
-    raise ValueError("LLM response is not valid JSON")
+    # Strategy 3: Try to fix unescaped newlines in string values
+    # LLMs sometimes put real newlines inside JSON string values
+    for opener, closer in [("{", "}"), ("[", "]")]:
+        boundary = _find_json_boundary(sanitized, opener, closer)
+        if boundary is None:
+            continue
+        start, end = boundary
+        candidate = sanitized[start:end]
+        # Replace literal newlines inside quoted strings with \\n
+        candidate = _fix_newlines_in_strings(candidate)
+        candidate = re.sub(r",(\s*[}\]])", r"\1", candidate)
+        try:
+            return json.loads(candidate, strict=False)
+        except json.JSONDecodeError:
+            pass
+
+    # Log the raw response for debugging before raising
+    preview = raw[:500] if len(raw) > 500 else raw
+    raise ValueError(f"LLM response is not valid JSON. Raw response preview: {preview}")
 
 
 def extract_knowledge_points(file_id: str, owner_id: str) -> Dict[str, Any]:
