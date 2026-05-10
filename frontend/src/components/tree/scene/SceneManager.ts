@@ -64,6 +64,9 @@ export class SceneManager {
   private callbacks: SceneManagerCallbacks;
   private userId = '';
   private lastUserOverrides: Partial<EzTreeOptions> | null = null;
+  private lastNodeCount: number | null = null;
+  private lastMaxDepth: number | null = null;
+  private lastUserId: string | null = null;
 
   // Tree bounds for camera fitting
   private treeBounds: THREE.Box3 | null = null;
@@ -189,6 +192,9 @@ export class SceneManager {
   preloadUserOverrides(nodeCount: number, maxDepth: number, userId: string, growth?: GrowthMetrics | null) {
     const widthDepthRatio = maxDepth > 0 ? nodeCount / maxDepth : 1;
     this.userId = userId;
+    this.lastNodeCount = nodeCount;
+    this.lastMaxDepth = maxDepth;
+    this.lastUserId = userId;
     this.lastUserOverrides = mapUserDataToEzTreeParams(nodeCount, maxDepth, widthDepthRatio, userId, growth) as any;
   }
 
@@ -200,6 +206,17 @@ export class SceneManager {
     const widthDepthRatio = maxDepth > 0 ? nodeCount / maxDepth : 1;
 
     const overrides = mapUserDataToEzTreeParams(nodeCount, maxDepth, widthDepthRatio, this.userId, growth);
+
+    // Skip if these overrides were already applied by preloadUserOverrides
+    if (this.lastUserOverrides) {
+      const currentKey = `${nodeCount}:${maxDepth}:${this.userId}`;
+      const lastKey = `${this.lastNodeCount ?? ''}:${this.lastMaxDepth ?? ''}:${this.lastUserId ?? ''}`;
+      if (currentKey === lastKey) return;
+    }
+
+    this.lastNodeCount = nodeCount;
+    this.lastMaxDepth = maxDepth;
+    this.lastUserId = this.userId;
     this.lastUserOverrides = overrides;
     this.applyOverrides(overrides);
   }
