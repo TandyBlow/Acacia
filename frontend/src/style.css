@@ -100,7 +100,10 @@ body,
   position: relative;
 }
 
+/* Push content above the virtual navigation bar (iOS Home Indicator / Android gesture bar).
+   Only takes effect when viewport-fit=cover is set and the device has a software nav bar. */
 body {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   min-width: 320px;
   background:
     linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%);
