@@ -1,9 +1,6 @@
 <template>
   <div ref="containerRef" class="tree-canvas">
     <div v-if="noTreeData" class="no-tree-msg">{{ UI.tree.noBackend }}</div>
-    <div v-if="isDev && !noTreeData" class="dev-buttons">
-      <button class="dev-btn" :disabled="busy" @click="onTagNodes">{{ UI.tree.devTagNodes }}</button>
-    </div>
   </div>
 </template>
 
@@ -27,7 +24,7 @@ const props = defineProps<{ visible?: boolean }>();
 const authStore = useAuthStore();
 const { isAuthenticated } = storeToRefs(authStore);
 const styleStore = useStyleStore();
-const { busy, fetchSkeleton, onTagNodes } = useTreeSkeleton();
+const { busy, fetchSkeleton } = useTreeSkeleton();
 const { nodes: statsNodes, fetchStats } = useStats();
 const isDev = import.meta.env.DEV;
 const noTreeData = ref(false);
@@ -50,17 +47,30 @@ async function loadTree() {
   if (!containerRef.value || treeLoaded) return;
 
   const gen = ++loadGeneration;
+  const userId = authStore.user?.id;
 
   try {
     const cw = containerRef.value.clientWidth;
     const ch = containerRef.value.clientHeight;
-    const skeleton = await fetchSkeleton(cw || undefined, ch || undefined);
-    console.log('[TreeCanvas] fetchSkeleton returned', { branches: skeleton.branches?.length, hasTrunk: !!skeleton.trunk });
 
-    // Abort if a newer loadTree was triggered while we awaited
+    // Fetch skeleton and stats in parallel. Stats may fail (backend not
+    // available, endpoint missing, etc.) — we log the error and fall back
+    // to applyUserData() below.
+    let statsOk = false;
+    const [skeleton] = await Promise.all([
+      fetchSkeleton(cw || undefined, ch || undefined),
+      userId
+        ? fetchStats()
+            .then(() => { statsOk = true; })
+            .catch((err) => {
+              console.warn('[TreeCanvas] fetchStats failed, will retry via applyUserData:', err?.message ?? err);
+            })
+        : Promise.resolve(),
+    ]);
+    console.log('[TreeCanvas] fetchSkeleton returned', { branches: skeleton.branches?.length, hasTrunk: !!skeleton.trunk, statsOk, statsNodes: statsNodes.value.length });
+
     if (gen !== loadGeneration) return;
 
-    // containerRef may have become null during async fetch (component unmounted)
     if (!containerRef.value) {
       console.warn('[TreeCanvas] containerRef became null after fetch — component likely unmounted, aborting');
       return;
@@ -84,6 +94,15 @@ async function loadTree() {
         console.log('Clicked branch, node_id:', nodeId);
       },
     });
+
+    // Preload user overrides BEFORE buildScene so the tree is generated
+    // with user-specific parameters from the very first frame.
+    const preloaded = !!(userId && statsOk && statsNodes.value.length > 0);
+    if (preloaded) {
+      const maxDepth = statsNodes.value.reduce((m, n) => Math.max(m, n.depth), 0);
+      manager.preloadUserOverrides(statsNodes.value.length, maxDepth, userId, skeleton.growth);
+      console.log('[TreeCanvas] user overrides preloaded,', { nodeCount: statsNodes.value.length, maxDepth });
+    }
     console.log('[TreeCanvas] SceneManager created, building scene...');
 
     manager.buildScene(skeleton);
@@ -117,8 +136,11 @@ async function loadTree() {
     });
     resizeObserver.observe(containerRef.value);
 
-    // Apply user data (may be deferred if user not yet available)
-    applyUserData();
+    // If stats were preloaded successfully, skip applyUserData (tree already
+    // built with correct user params). Otherwise try again via applyUserData.
+    if (!preloaded) {
+      applyUserData();
+    }
 
     treeLoaded = true;
   } catch (err) {
