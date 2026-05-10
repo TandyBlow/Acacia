@@ -31,19 +31,6 @@ export function useTreeSkeleton() {
     return result;
   }
 
-  async function onTagNodes(): Promise<void> {
-    const userId = authStore.user?.id;
-    if (!userId) return;
-    busy.value = true;
-    try {
-      const adapter = getDataAdapter();
-      await adapter.tagNodes?.(userId);
-      await styleStore.fetchStyle(userId);
-    } finally {
-      busy.value = false;
-    }
-  }
-
   async function onTestSakura(): Promise<void> {
     const userId = authStore.user?.id;
     if (!userId) return;
@@ -57,7 +44,7 @@ export function useTreeSkeleton() {
     }
   }
 
-  return { busy, fetchSkeleton, onTagNodes, onTestSakura, skeletonData, skeletonLoaded };
+  return { busy, fetchSkeleton, onTestSakura, skeletonData, skeletonLoaded };
 }
 
 export function invalidateSkeleton(): void {
