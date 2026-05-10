@@ -95,13 +95,17 @@ async function loadTree() {
       },
     });
 
-    // Preload user overrides BEFORE buildScene so the tree is generated
-    // with user-specific parameters from the very first frame.
-    const preloaded = !!(userId && statsOk && statsNodes.value.length > 0);
-    if (preloaded) {
-      const maxDepth = statsNodes.value.reduce((m, n) => Math.max(m, n.depth), 0);
-      manager.preloadUserOverrides(statsNodes.value.length, maxDepth, userId, skeleton.growth);
-      console.log('[TreeCanvas] user overrides preloaded,', { nodeCount: statsNodes.value.length, maxDepth });
+    // Always preload user overrides when userId is available, even if stats
+    // are empty. Using nodeCount=0 maps to tier-0 (seedling) params, which
+    // is the correct visual for a new user. This avoids the two-phase flash:
+    // default Oak Medium (64u) → seedling (6u) when applyUserData retries.
+    if (userId) {
+      const nodeCount = statsOk ? statsNodes.value.length : 0;
+      const maxDepth = statsOk
+        ? statsNodes.value.reduce((m, n) => Math.max(m, n.depth), 0)
+        : 0;
+      manager.preloadUserOverrides(nodeCount, maxDepth, userId, skeleton.growth);
+      console.log('[TreeCanvas] user overrides preloaded,', { nodeCount, maxDepth, statsOk });
     }
     console.log('[TreeCanvas] SceneManager created, building scene...');
 
@@ -136,11 +140,9 @@ async function loadTree() {
     });
     resizeObserver.observe(containerRef.value);
 
-    // If stats were preloaded successfully, skip applyUserData (tree already
-    // built with correct user params). Otherwise try again via applyUserData.
-    if (!preloaded) {
-      applyUserData();
-    }
+    // Overrides were preloaded before buildScene (always, if userId was
+    // available). No need for applyUserData() fallback — the tree was
+    // generated with user-appropriate params from frame 1.
 
     treeLoaded = true;
   } catch (err) {
