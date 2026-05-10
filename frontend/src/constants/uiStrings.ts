@@ -50,7 +50,6 @@ export const UI = {
   tree: {
     moveNode: '移动节点',
     home: '主页',
-    devTagNodes: '打标签',
     devTestSakura: '测试樱花',
     sakuraDomainTag: '日本文化',
     noBackend: '树可视化需要后端连接',
