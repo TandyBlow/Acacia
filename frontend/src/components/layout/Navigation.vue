@@ -122,12 +122,18 @@ function calcAnimDuration(): number {
   return Math.round(duration);
 }
 
+// --- interaction state ---
+const actionNodeId = ref<string | null>(null);
+const addPressed = computed(() => store.viewState === 'add');
+const pressedNodeId = ref<string | null>(null);
+
 // [Bug2 fix] reset when child nodes change — cancel any in-flight scroll
 watch(childNodes, (list) => {
   scrollCancelToken++;
   scrollQueue.value = [];
   isAnimating.value = false;
   scrollOffset.value = 0;
+  pressedNodeId.value = null;
   scrollingTopId.value = null;
   scrollingBottomId.value = null;
   scrollDirection.value = null;
@@ -146,11 +152,6 @@ watch(maxVisible, (mv) => {
   }
 });
 
-// --- interaction state ---
-const actionNodeId = ref<string | null>(null);
-const addPressed = computed(() => store.viewState === 'add');
-const pressedNodeId = ref<string | null>(null);
-
 function onRowClick(nodeId: string): void {
   if (isAnimating.value) return;
   if (actionNodeId.value === nodeId) return;
@@ -167,9 +168,16 @@ function openNode(nodeId: string): void {
   actionNodeId.value = null;
   pressedNodeId.value = nodeId;
   transitionName.value = 'none';
-  setTimeout(async () => {
-    await store.loadNode(nodeId);
-    pressedNodeId.value = null;
+  setTimeout(() => {
+    store.loadNode(nodeId).catch(() => {
+      pressedNodeId.value = null;
+    });
+    // 安全超时：若 childNodes 未变化（watcher 未触发），3s 后强制重置
+    setTimeout(() => {
+      if (pressedNodeId.value === nodeId) {
+        pressedNodeId.value = null;
+      }
+    }, 3000);
   }, 200);
 }
 

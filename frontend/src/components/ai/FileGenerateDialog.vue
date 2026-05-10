@@ -63,6 +63,7 @@
                 :current-index="conversationState.currentIndex"
                 :total="conversationState.total"
                 :current-kp-title="conversationState.currentKpTitle"
+                :current-kp-data="currentKpData"
                 :is-completed="conversationState.isCompleted"
                 @answer="handleUserAnswer"
                 @skip="handleSkip"
@@ -96,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useFileGenerate } from '../../composables/useFileGenerate';
@@ -132,6 +133,11 @@ const currentStep = ref<Step>('upload');
 const conversationView = ref<InstanceType<typeof ConversationView> | null>(null);
 const selectedKnowledgePoints = ref<KnowledgePoint[]>([]);
 const showResumeChoice = ref(false);
+
+const currentKpData = computed(() => {
+  const idx = conversationState.value.currentIndex;
+  return selectedKnowledgePoints.value[idx] || null;
+});
 
 function handleFileUploaded(file: UploadedFile) {
   uploadedFile.value = file;
@@ -259,7 +265,15 @@ async function handleUserAnswer(answer: string) {
       // Show example preview for procedure-type knowledge point
       conversationView.value.showExample(result.example_content, result.example_explanation || '');
       conversationView.value.addAiMessage(result.ai_message);
+    } else if (result.action === 'correct_self') {
+      // AI corrected itself — show the correction prominently
+      conversationView.value.addAiMessage(result.ai_message, undefined, 'correct_self');
+    } else if (result.action === 'admit_uncertainty') {
+      // AI admitted it doesn't know — show gently
+      conversationView.value.addAiMessage(result.ai_message, undefined, 'admit_uncertainty');
     } else if (result.action === 'follow_up' || result.action === 'hint') {
+      conversationView.value.addAiMessage(result.ai_message);
+    } else if (result.action === 'show_source') {
       conversationView.value.addAiMessage(result.ai_message);
     } else if (result.action === 'accept_and_next') {
       conversationView.value.addAiMessage(result.ai_message, result.generated_content);

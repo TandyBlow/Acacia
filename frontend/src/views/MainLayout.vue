@@ -26,20 +26,18 @@
         <section class="content-area">
           <div class="content-inset-frame" aria-hidden="true"></div>
           <div ref="glassRef" class="content-glass-host">
-            <GlassWrapper class="content-surface">
-              <template v-if="!isFeaturePanel">
-                <div v-if="showTree" key="tree" class="content-host">
-                  <TreeCanvas ref="treeCanvasRef" :visible="showTree" />
-                </div>
-                <Transition v-if="!showTree" name="content-rise" mode="out-in">
-                  <component :is="nonTreeContent" :key="contentKey" class="content-host" />
-                </Transition>
-              </template>
-              <Transition name="feature-panel" mode="out-in">
-                <FeaturePanel v-if="isFeaturePanel" key="feature" class="feature-host" />
+            <GlassWrapper v-if="!isFeaturePanel" class="content-surface">
+              <div v-if="showTree" key="tree" class="content-host">
+                <TreeCanvas ref="treeCanvasRef" :visible="showTree" />
+              </div>
+              <Transition v-if="!showTree" name="content-rise" mode="out-in">
+                <component :is="nonTreeContent" :key="contentKey" class="content-host" />
               </Transition>
               <div ref="treeCurtainRef" class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
             </GlassWrapper>
+            <Transition name="feature-panel" mode="out-in">
+              <FeaturePanel v-if="isFeaturePanel" key="feature" class="feature-host" />
+            </Transition>
           </div>
         </section>
       </div>
@@ -475,8 +473,8 @@ watch(
 }
 
 .feature-host {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
 }
 
 .content-rise-enter-active {

@@ -17,24 +17,24 @@ const oldRegions = ref<Set<string>>(new Set());
 const newRegions = ref<Set<string>>(new Set());
 
 /**
- * Helper: Sink glass regions with animation
+ * Helper: Sink all regions (glass + inset) with animation
  */
 async function sinkRegions(regionIds: Set<string>): Promise<void> {
-  const glassRegions = Array.from(regionIds)
+  const matched = Array.from(regionIds)
     .map(id => regions.get(id))
-    .filter((reg): reg is RegionRegistration =>
-      reg !== undefined && reg.type === 'glass'
-    );
+    .filter((reg): reg is RegionRegistration => reg !== undefined);
 
-  if (glassRegions.length === 0) {
+  if (matched.length === 0) {
     return;
   }
 
-  // Add sinking class to all glass regions
-  for (const reg of glassRegions) {
+  for (const reg of matched) {
     const el = reg.element.value;
-    if (el) {
+    if (!el) continue;
+    if (reg.type === 'glass') {
       el.classList.add('glass-sinking');
+    } else {
+      el.classList.add('inset-sinking');
     }
   }
 
@@ -43,36 +43,39 @@ async function sinkRegions(regionIds: Set<string>): Promise<void> {
 }
 
 /**
- * Helper: Rise glass regions with animation
+ * Helper: Rise all regions (glass + inset) with animation
  */
 async function riseRegions(regionIds: Set<string>): Promise<void> {
-  const glassRegions = Array.from(regionIds)
+  const matched = Array.from(regionIds)
     .map(id => regions.get(id))
-    .filter((reg): reg is RegionRegistration =>
-      reg !== undefined && reg.type === 'glass'
-    );
+    .filter((reg): reg is RegionRegistration => reg !== undefined);
 
-  if (glassRegions.length === 0) {
+  if (matched.length === 0) {
     return;
   }
 
-  // Remove sinking class first so glass-content starts transitioning
-  // from sunken (transparent) back to raised (frosted glass)
-  for (const reg of glassRegions) {
+  // Remove sinking class from all regions
+  for (const reg of matched) {
     const el = reg.element.value;
-    if (el) {
+    if (!el) continue;
+    if (reg.type === 'glass') {
       el.classList.remove('glass-sinking');
+    } else {
+      el.classList.remove('inset-sinking');
     }
   }
 
   // Force reflow so the browser registers the class removal before adding rising
-  void (glassRegions[0]?.element.value?.offsetHeight);
+  void (matched[0]?.element.value?.offsetHeight);
 
-  // Add rising class for the subtle pop-up animation
-  for (const reg of glassRegions) {
+  // Add rising class to all regions
+  for (const reg of matched) {
     const el = reg.element.value;
-    if (el) {
+    if (!el) continue;
+    if (reg.type === 'glass') {
       el.classList.add('glass-rising');
+    } else {
+      el.classList.add('inset-rising');
     }
   }
 
@@ -80,10 +83,13 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 1000));
 
   // Remove animation class after completion
-  for (const reg of glassRegions) {
+  for (const reg of matched) {
     const el = reg.element.value;
-    if (el) {
+    if (!el) continue;
+    if (reg.type === 'glass') {
       el.classList.remove('glass-rising');
+    } else {
+      el.classList.remove('inset-rising');
     }
   }
 }
@@ -158,7 +164,7 @@ export function usePageTransition() {
       }
       oldRegions.value = oldVisibleRegions;
 
-      // Phase 2: Sink old glass regions
+      // Phase 2: Sink all visible regions (glass + inset)
       phase.value = 'sinking';
       await sinkRegions(oldVisibleRegions);
 
@@ -201,7 +207,7 @@ export function usePageTransition() {
         }
       }
 
-      // Phase 5: Rise new glass regions
+      // Phase 5: Rise all visible regions (glass + inset)
       phase.value = 'rising';
       await riseRegions(newVisibleRegions);
 
