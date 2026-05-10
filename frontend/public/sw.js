@@ -33,7 +33,28 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // Network-first for navigation (HTML) so the user always gets the latest
+  // index.html pointing at fresh content-hashed assets. Cache-first for
+  // everything else (immutable JS/CSS/fonts/images — new build = new hash).
+  const isNav = event.request.mode === 'navigate'
+
   event.respondWith((async () => {
+    if (isNav) {
+      try {
+        const networkResponse = await fetch(event.request)
+        if (networkResponse && networkResponse.status === 200) {
+          const cache = await caches.open(APP_SHELL_CACHE)
+          await cache.put(event.request, networkResponse.clone())
+        }
+        return networkResponse
+      } catch {
+        const cachedResponse = await caches.match(event.request)
+        if (cachedResponse) return cachedResponse
+        return caches.match('/index.html')
+      }
+    }
+
+    // Cache-first for non-navigation requests
     const cachedResponse = await caches.match(event.request)
     if (cachedResponse) {
       return cachedResponse
@@ -51,9 +72,6 @@ self.addEventListener('fetch', (event) => {
       }
       return networkResponse
     } catch {
-      if (event.request.mode === 'navigate') {
-        return caches.match('/index.html')
-      }
       return new Response('Offline', {
         status: 503,
         statusText: 'Service Unavailable',
