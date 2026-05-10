@@ -184,6 +184,14 @@ export class SceneManager {
     this.userId = id;
   }
 
+  /** Compute and store user overrides BEFORE buildScene, so the initial tree
+   *  generation uses the correct user-specific parameters (one-shot render). */
+  preloadUserOverrides(nodeCount: number, maxDepth: number, userId: string, growth?: GrowthMetrics | null) {
+    const widthDepthRatio = maxDepth > 0 ? nodeCount / maxDepth : 1;
+    this.userId = userId;
+    this.lastUserOverrides = mapUserDataToEzTreeParams(nodeCount, maxDepth, widthDepthRatio, userId, growth) as any;
+  }
+
   updateUserData(statsNodes: StatsNode[], _distribution: Record<string, number>, growth?: GrowthMetrics | null) {
     if (!this.ezTree || !this.userId) return;
 
@@ -364,6 +372,25 @@ export class SceneManager {
     this.treeBounds.getSize(size);
     this.treeHeight = size.y;
 
+    // Debug: log raw ez-tree mesh bounds
+    if (this.ezTree) {
+      const branchBox = new THREE.Box3().setFromObject(this.ezTree.branchesMesh);
+      const leafBox = new THREE.Box3().setFromObject(this.ezTree.leavesMesh);
+      const combinedBox = new THREE.Box3().copy(branchBox).union(leafBox);
+      console.log('[SceneManager] buildTreeMeshes bounds', {
+        branchMinY: branchBox.min.y.toFixed(3),
+        branchMaxY: branchBox.max.y.toFixed(3),
+        leafMinY: leafBox.min.y.toFixed(3),
+        leafMaxY: leafBox.max.y.toFixed(3),
+        combinedMinY: combinedBox.min.y.toFixed(2),
+        combinedMaxY: combinedBox.max.y.toFixed(2),
+        combinedHeight: (combinedBox.max.y - combinedBox.min.y).toFixed(2),
+        treeGroupMinY: this.treeBounds.min.y.toFixed(2),
+        treeGroupMaxY: this.treeBounds.max.y.toFixed(2),
+        treeGroupHeight: size.y.toFixed(2),
+      });
+    }
+
     // Build outline meshes (inverted-hull, default hidden)
     this.buildOutlineMeshes();
 
@@ -523,6 +550,19 @@ export class SceneManager {
       this.treeCenter.z + 10,
     );
     this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
+
+    console.log('[SceneManager] refitCamera', {
+      treeBoundsMinY: this.treeBounds.min.y.toFixed(2),
+      treeBoundsMaxY: this.treeBounds.max.y.toFixed(2),
+      treeCenterY: this.treeCenter.y.toFixed(2),
+      treeHeight: (this.treeBounds.max.y - this.treeBounds.min.y).toFixed(2),
+      frustumHalfH: halfH.toFixed(2),
+      camY: camY.toFixed(2),
+      frustumBottom: (camY - halfH).toFixed(2),
+      frustumTop: (camY + halfH).toFixed(2),
+      containerW: w,
+      containerH: h,
+    });
 
     // 更新背景位置以跟随相机
     if (this.backgroundPlane) {
@@ -924,10 +964,27 @@ export class SceneManager {
         this.treeCenter.z + 10,
       );
       this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
+
+      console.log('[SceneManager] onResizeDebounced refitCamera', {
+        treeBoundsMinY: this.treeBounds.min.y.toFixed(2),
+        treeBoundsMaxY: this.treeBounds.max.y.toFixed(2),
+        treeCenterY: this.treeCenter.y.toFixed(2),
+        treeHeight: (this.treeBounds.max.y - this.treeBounds.min.y).toFixed(2),
+        frustumHalfH: halfH.toFixed(2),
+        camY: camY.toFixed(2),
+        frustumBottom: (camY - halfH).toFixed(2),
+        frustumTop: (camY + halfH).toFixed(2),
+        w, h,
+      });
     }
 
     // this.updateGroundLineY();
     // this.updateParticleSpawnArea();
+
+    // Reposition background to follow the updated camera
+    if (this.backgroundPlane) {
+      this.backgroundPlane.updateSize();
+    }
 
     // Set sunk position for rise animation
     this.treeGroup.position.y = this.sinkTargetY;
