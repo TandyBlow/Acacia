@@ -1,18 +1,32 @@
 <template>
-  <div ref="editorRef" class="editor-shell">
-    <FileGenerateButton />
-    <EditorContent :editor="editor" class="editor-input" spellcheck="false" />
-    <FileGenerateDialog />
+  <div ref="editorRef" class="editor-root">
+    <!-- Chat: NodeChatPanel manages its own glass areas -->
+    <NodeChatPanel v-if="showChat" class="chat-full" />
+
+    <!-- Editor: single glass area -->
+    <div v-else class="activity-layout">
+      <div class="activity-glass-host">
+        <GlassWrapper>
+          <div class="activity-scroll">
+            <EditorContent
+              :editor="editor"
+              class="editor-input"
+              spellcheck="false"
+            />
+          </div>
+        </GlassWrapper>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch, computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
-import FileGenerateButton from '../ai/FileGenerateButton.vue';
-import FileGenerateDialog from '../ai/FileGenerateDialog.vue';
-import { useFileGenerate } from '../../composables/useFileGenerate';
+import NodeChatPanel from '../ai/NodeChatPanel.vue';
+import GlassWrapper from '../ui/GlassWrapper.vue';
+import { useNodeChat } from '../../composables/useNodeChat';
 import { usePageTransition } from '../../composables/usePageTransition';
 import type { Editor, JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -33,7 +47,18 @@ const PROSEMIRROR_SLICE_MIME = 'application/x-prosemirror-slice';
 const store = useNodeStore();
 const { activeNode } = storeToRefs(store);
 const lowlight = createLowlight(all);
-const { setEditor } = useFileGenerate();
+const { setEditor, hasActiveConversation } = useNodeChat();
+
+const hasUserEdited = ref(false);
+
+const showChat = computed(() => {
+  if (!activeNode.value) return false;
+  if (hasActiveConversation.value) return true;
+  if (hasUserEdited.value) return false;
+  const content = activeNode.value.content || '';
+  return content.trim().length === 0;
+});
+
 const { registerRegion, unregisterRegion } = usePageTransition();
 const editorRef = ref<HTMLElement | null>(null);
 
@@ -56,8 +81,8 @@ function sanitizeMarkdownSource(content: string): string {
 function normalizePastedText(content: string): string {
   return content
     .replace(/\r\n?/g, '\n')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\u00A0/g, ' ');
+    .replace(/[​-‍﻿]/g, '')
+    .replace(/ /g, ' ');
 }
 
 function buildPlainTextDoc(content: string): JSONContent {
@@ -113,7 +138,6 @@ function parseMarkdownDoc(instance: Editor, content: string): JSONContent | null
     return null;
   }
 }
-
 
 function clearAutoSaveTimer(): void {
   if (autoSaveTimer !== null) {
@@ -285,6 +309,10 @@ const editor = useEditor({
       return;
     }
 
+    if (!hasUserEdited.value && instance.state.doc.textContent.length > 0) {
+      hasUserEdited.value = true;
+    }
+
     if (!isMigratingMath.value) {
       const textContent = instance.state.doc.textContent;
       mathMigrationRegex.lastIndex = 0;
@@ -324,7 +352,7 @@ watch(
     lastSavedContent.value = content;
     draft.value = content;
 
-    // Set editor instance for file generate feature
+    hasUserEdited.value = false;
     setEditor(editor.value || null);
 
     if (activeNode.value && editor.value) {
@@ -360,18 +388,20 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.editor-shell {
-  position: relative;
+.editor-root {
   width: 100%;
   height: 100%;
-  color: var(--color-primary);
+}
+
+.chat-full {
+  width: 100%;
+  height: 100%;
 }
 
 .editor-input {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   padding: 44px 16px 14px;
-  overflow: auto;
 }
 
 .editor-input :deep(.editor-prose) {
@@ -547,5 +577,4 @@ onBeforeUnmount(() => {
   border-top: 1px solid rgba(102, 128, 255, 0.28);
   margin: 0.9em 0;
 }
-
 </style>

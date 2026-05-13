@@ -9,6 +9,8 @@ import type {
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useKnobDispatch } from './useKnobDispatch';
+import { useDevStore } from '../stores/devStore';
+import { ViewStates } from '../types/node';
 
 const regions = new Map<string, RegionRegistration>();
 const isTransitioning = ref(false);
@@ -17,7 +19,7 @@ const oldRegions = ref<Set<string>>(new Set());
 const newRegions = ref<Set<string>>(new Set());
 
 /**
- * Helper: Sink all regions (glass + inset) with animation
+ * Helper: Sink all regions (glass + inset) — content fades, then frame snaps
  */
 async function sinkRegions(regionIds: Set<string>): Promise<void> {
   const matched = Array.from(regionIds)
@@ -38,12 +40,26 @@ async function sinkRegions(regionIds: Set<string>): Promise<void> {
     }
   }
 
-  // Wait for animation to complete (1000ms as defined in CSS)
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // Wait for content fade to complete (240ms as defined in CSS)
+  await new Promise(resolve => setTimeout(resolve, 240));
+
+  // Switch to static sunken state — add sunken BEFORE removing sinking
+  // to prevent content from flashing visible between class changes
+  for (const reg of matched) {
+    const el = reg.element.value;
+    if (!el) continue;
+    if (reg.type === 'glass') {
+      el.classList.add('glass-sunken');
+      el.classList.remove('glass-sinking');
+    } else {
+      el.classList.add('inset-sunken');
+      el.classList.remove('inset-sinking');
+    }
+  }
 }
 
 /**
- * Helper: Rise all regions (glass + inset) with animation
+ * Helper: Rise all regions (glass + inset) — slide up, fade in, scale in
  */
 async function riseRegions(regionIds: Set<string>): Promise<void> {
   const matched = Array.from(regionIds)
@@ -54,21 +70,7 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
     return;
   }
 
-  // Remove sinking class from all regions
-  for (const reg of matched) {
-    const el = reg.element.value;
-    if (!el) continue;
-    if (reg.type === 'glass') {
-      el.classList.remove('glass-sinking');
-    } else {
-      el.classList.remove('inset-sinking');
-    }
-  }
-
-  // Force reflow so the browser registers the class removal before adding rising
-  void (matched[0]?.element.value?.offsetHeight);
-
-  // Add rising class to all regions
+  // Step 1: Add rising class — enables 240ms transitions on opacity and transform
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
@@ -79,10 +81,24 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
     }
   }
 
-  // Wait for animation to complete (1000ms as defined in CSS)
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // Step 2: Force reflow so transitions are registered before removing sunken
+  void (matched[0]?.element.value?.offsetHeight);
 
-  // Remove animation class after completion
+  // Step 3: Remove sunken class — opacity and transform transition to normal
+  for (const reg of matched) {
+    const el = reg.element.value;
+    if (!el) continue;
+    if (reg.type === 'glass') {
+      el.classList.remove('glass-sunken');
+    } else {
+      el.classList.remove('inset-sunken');
+    }
+  }
+
+  // Step 4: Wait for transitions to complete (240ms)
+  await new Promise(resolve => setTimeout(resolve, 240));
+
+  // Step 5: Clean up rising class
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
@@ -119,15 +135,27 @@ async function executeDataLoading(trigger: TransitionTrigger): Promise<void> {
   const nodeStore = useNodeStore();
 
   if (trigger.type === 'navigate') {
-    // Navigation trigger: load node data
-    await nodeStore.loadNode(trigger.nodeId);
+    await nodeStore.loadNode(trigger.nodeId, { skipTransition: true });
   } else if (trigger.type === 'viewState') {
-    // View state change: may need to load tree data
-    if (trigger.newState === 'tree' || trigger.newState === 'move') {
-      await nodeStore.refreshTree();
-    }
+    const stateMap = {
+      'delete': ViewStates.DELETE,
+      'move': ViewStates.MOVE,
+      'add': ViewStates.ADD,
+      'tree': ViewStates.TREE,
+      'quiz': ViewStates.QUIZ,
+      'quiz_history': ViewStates.QUIZ_HISTORY,
+      'stats': ViewStates.STATS,
+      'review': ViewStates.REVIEW,
+      'display': ViewStates.DISPLAY,
+    } as Record<string, string>;
+    const vs = stateMap[trigger.newState] || ViewStates.DISPLAY;
+    nodeStore.setViewState(vs);
   }
-  // Other trigger types (layout, knob) don't require data loading
+
+  // Run setup callback during loading phase while regions are sunken
+  if (trigger.setup) {
+    await trigger.setup();
+  }
 }
 
 export function usePageTransition() {
@@ -150,15 +178,56 @@ export function usePageTransition() {
       return; // Prevent concurrent transitions
     }
 
+    const devStore = useDevStore();
+
+    // Fast path: transitions fully disabled — load data and swap visibility instantly
+    if (!devStore.enableTransition) {
+      isTransitioning.value = true;
+      try {
+        await executeDataLoading(trigger);
+        const nodeStore = useNodeStore();
+        nodeStore.applyPendingData();
+
+        const newState = getCurrentPageState(layout);
+        for (const [, reg] of regions.entries()) {
+          const el = reg.element.value;
+          if (!el) continue;
+          const shouldBeVisible = reg.shouldShow(newState);
+          const currentDisplay = window.getComputedStyle(el).display;
+          if (shouldBeVisible && currentDisplay === 'none') {
+            el.style.display = '';
+            el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking',
+              'inset-sunken', 'inset-rising', 'inset-sinking');
+          } else if (!shouldBeVisible && currentDisplay !== 'none') {
+            el.style.display = 'none';
+          } else if (shouldBeVisible) {
+            // Region stays visible — clean up any lingering transition classes
+            // that may be stuck from an interrupted prior transition
+            el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking',
+              'inset-sunken', 'inset-rising', 'inset-sinking');
+          }
+        }
+      } catch (error) {
+        console.error('Page transition failed:', error);
+      } finally {
+        isTransitioning.value = false;
+      }
+      return;
+    }
+
     isTransitioning.value = true;
 
     try {
-      // Phase 1: Capture old state
-      const oldState = getCurrentPageState(layout);
+      // Phase 1: Capture actually-visible regions via computed style.
+      // shouldShow alone is insufficient: state may have changed
+      // synchronously right before startTransition (e.g. closeFeaturePanel
+      // called immediately before an action's startTransition in card handlers).
       const oldVisibleRegions = new Set<string>();
 
       for (const [id, reg] of regions.entries()) {
-        if (reg.shouldShow(oldState)) {
+        const el = reg.element.value;
+        if (!el) continue;
+        if (window.getComputedStyle(el).display !== 'none') {
           oldVisibleRegions.add(id);
         }
       }
@@ -166,7 +235,9 @@ export function usePageTransition() {
 
       // Phase 2: Sink all visible regions (glass + inset)
       phase.value = 'sinking';
-      await sinkRegions(oldVisibleRegions);
+      if (devStore.enableRiseSink) {
+        await sinkRegions(oldVisibleRegions);
+      }
 
       // Phase 3: Data loading
       phase.value = 'loading';
@@ -201,15 +272,36 @@ export function usePageTransition() {
         if (shouldBeVisible && !wasVisible) {
           // Show new region
           el.style.display = '';
+          if (devStore.enableRiseSink) {
+            if (reg.type === 'glass') {
+              el.classList.add('glass-sunken');
+            } else {
+              el.classList.add('inset-sunken');
+            }
+          } else {
+            // No rise animation: clean up any lingering transition classes
+            // from a previous transition, so the region appears in normal state
+            el.classList.remove(
+              'glass-sunken', 'glass-rising', 'glass-sinking',
+              'inset-sunken', 'inset-rising', 'inset-sinking',
+            );
+          }
         } else if (!shouldBeVisible && wasVisible) {
           // Hide old region
           el.style.display = 'none';
+        } else if (shouldBeVisible && wasVisible && !devStore.enableRiseSink) {
+          // Region stays visible but rise is disabled — clean up any lingering
+          // transition classes stuck from an interrupted prior transition
+          el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking',
+            'inset-sunken', 'inset-rising', 'inset-sinking');
         }
       }
 
       // Phase 5: Rise all visible regions (glass + inset)
       phase.value = 'rising';
-      await riseRegions(newVisibleRegions);
+      if (devStore.enableRiseSink) {
+        await riseRegions(newVisibleRegions);
+      }
 
       // Phase 6: Complete
       phase.value = 'idle';

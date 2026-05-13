@@ -61,10 +61,7 @@ export function useKnobDispatch() {
       return;
     }
 
-    // 触发页面转换（如果确认操作会改变界面）
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'knob', action: 'hold' }, isCompactLayout.value ? 'small' : 'large');
-
+    // 确认操作 — confirmOperation 内部会通过 loadNode 触发转场
     await nodeStore.confirmOperation();
   }
 
@@ -74,11 +71,9 @@ export function useKnobDispatch() {
       return;
     }
     if (isFeaturePanel.value) {
-      // 触发页面转换
-      const { startTransition } = usePageTransition();
-      startTransition({ type: 'knob', action: 'click' }, isCompactLayout.value ? 'small' : 'large');
-
+      // 关闭功能面板 — onKnobClick 内部会触发自己的转场
       closeFeaturePanel();
+      await nodeStore.onKnobClick();
       return;
     }
     if (isLoggingOut.value) {
@@ -86,40 +81,44 @@ export function useKnobDispatch() {
       return;
     }
 
-    // 触发页面转换（如果点击会改变界面）
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'knob', action: 'click' }, isCompactLayout.value ? 'small' : 'large');
-
+    // 展示模式 — 直接委托给 onKnobClick，它内部通过 loadNode 触发转场
     await nodeStore.onKnobClick();
   }
 
   async function onDoubleClick(): Promise<void> {
     if (inAuthMode.value || isBusy.value) return;
 
-    // 触发页面转换
     const { startTransition } = usePageTransition();
 
     if (isCompactLayout.value) {
       if (compactMode.value === 'content') {
-        startTransition({ type: 'knob', action: 'doubleClick' }, 'small');
-        compactMode.value = 'nav';
+        startTransition({
+          type: 'knob', action: 'doubleClick',
+          setup: async () => { compactMode.value = 'nav'; },
+        }, 'small');
       } else if (compactMode.value === 'nav') {
-        startTransition({ type: 'knob', action: 'doubleClick' }, 'small');
-        compactMode.value = 'feature';
-        openFeaturePanel();
+        startTransition({
+          type: 'knob', action: 'doubleClick',
+          setup: async () => { compactMode.value = 'feature'; openFeaturePanel(); },
+        }, 'small');
       } else {
-        startTransition({ type: 'knob', action: 'doubleClick' }, 'small');
-        compactMode.value = 'content';
-        closeFeaturePanel();
+        startTransition({
+          type: 'knob', action: 'doubleClick',
+          setup: async () => { compactMode.value = 'content'; closeFeaturePanel(); },
+        }, 'small');
       }
       return;
     }
     if (isFeaturePanel.value) {
-      startTransition({ type: 'knob', action: 'doubleClick' }, 'large');
-      closeFeaturePanel();
+      startTransition({
+        type: 'knob', action: 'doubleClick',
+        setup: async () => { closeFeaturePanel(); },
+      }, 'large');
     } else {
-      startTransition({ type: 'knob', action: 'doubleClick' }, 'large');
-      openFeaturePanel();
+      startTransition({
+        type: 'knob', action: 'doubleClick',
+        setup: async () => { openFeaturePanel(); },
+      }, 'large');
     }
   }
 

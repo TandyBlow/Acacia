@@ -3,8 +3,8 @@
     <template v-if="isAuthenticated">
       <TransitionGroup
         ref="nodeListRef"
-        :name="transitionName"
-        :style="{ '--nav-anim-ms': `${currentAnimMs}ms` }"
+        :name="effectiveTransitionName"
+        :style="{ '--cell-anim-ms': `${currentAnimMs}ms` }"
         tag="div"
         class="node-list"
         :class="{ 'scroll-dir-up': scrollDirection === 'up' }"
@@ -60,6 +60,8 @@ import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useDevStore } from '../../stores/devStore';
+import { usePageTransition } from '../../composables/usePageTransition';
 import type { NodeRecord } from '../../types/node';
 import {
   NAV_ROW_H,
@@ -89,7 +91,13 @@ const displayNodes = ref<NodeRecord[]>([]);
 const scrollingTopId = ref<string | null>(null);
 const scrollingBottomId = ref<string | null>(null);
 const scrollDirection = ref<'up' | 'down' | null>(null);
-const transitionName = ref('nav-row');
+const transitionName = ref('cell');
+const devStore = useDevStore();
+const { isTransitioning } = usePageTransition();
+const effectiveTransitionName = computed(() => {
+  if (!devStore.enableRiseSink || isTransitioning.value) return 'none';
+  return transitionName.value;
+});
 
 // Animation queue
 interface ScrollEntry {
@@ -142,7 +150,7 @@ watch(childNodes, (list) => {
   displayNodes.value = list.slice(0, maxVisible.value);
   // 禁用初始动画，直接显示
   transitionName.value = 'none';
-  nextTick(() => { transitionName.value = 'nav-row'; });
+  nextTick(() => { transitionName.value = 'cell'; });
 }, { immediate: true });
 
 // [Bug4 fix] update visible window when container resizes
@@ -529,29 +537,21 @@ onUnmounted(() => ro?.disconnect());
   color: var(--color-primary);
 }
 
-.nav-row-enter-active,
-.nav-row-move {
-  transition:
-    opacity var(--nav-anim-ms, 240ms) ease,
-    transform var(--nav-anim-ms, 240ms) ease;
+/* TransitionGroup layout overrides: enter/move rows stay in flow and above leaving rows */
+.cell-enter-active,
+.cell-move {
+  position: relative;
+  z-index: 2;
 }
 
-.nav-row-leave-active {
+/* TransitionGroup layout override: leaving row exits flow so others can fill its space */
+.cell-leave-active {
   position: absolute;
-  transition:
-    opacity var(--nav-anim-ms, 240ms) ease;
+  z-index: 1;
 }
 
-.nav-row-enter-from {
-  opacity: 0;
-  transform: translateY(12px) scale(0.97);
-}
-
-.nav-row-leave-to {
-  opacity: 0;
-}
-
-.scroll-dir-up .nav-row-enter-from {
+/* Upward scroll: entering row comes from above instead of below */
+.scroll-dir-up .cell-enter-from {
   opacity: 0;
   transform: translateY(-12px) scale(0.97);
 }
@@ -565,24 +565,5 @@ onUnmounted(() => ro?.disconnect());
 .none-leave-to {
   opacity: 1 !important;
   transform: none !important;
-}
-
-.nav-rise-enter-active {
-  transition:
-    opacity 400ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.nav-rise-leave-active {
-  transition: opacity 200ms ease;
-}
-
-.nav-rise-enter-from {
-  opacity: 0;
-  transform: translateY(24px) scale(0.97);
-}
-
-.nav-rise-leave-to {
-  opacity: 0;
 }
 </style>

@@ -118,44 +118,41 @@ export const useNodeStore = defineStore('node', () => {
 
   let syncRouteFromLoad = false;
 
-  async function loadNode(nodeId: string | null, options?: { replace?: boolean }): Promise<void> {
-    const cached = nodeCache.getCached(nodeId);
-    if (cached) {
-      // 即使是缓存命中，也要触发转换动画
-      // 将缓存数据放入 pending，让转换系统在合适时机应用
-      pendingNodeContext.value = cached;
-
-      // 触发页面转换
-      startTransition({ type: 'navigate', nodeId }, 'large');
-
-      syncRouteFromLoad = true;
-      const targetPath = nodeId ? `/node/${nodeId}` : '/';
-      navigate(targetPath, options?.replace ?? false);
+  async function loadNode(nodeId: string | null, options?: { replace?: boolean; skipTransition?: boolean }): Promise<void> {
+    // When called from executeDataLoading, skip the transition and just fetch data
+    if (options?.skipTransition) {
+      const cached = nodeCache.getCached(nodeId);
+      if (cached) {
+        pendingNodeContext.value = cached;
+        return;
+      }
+      isBusy.value = true;
+      errorMessage.value = null;
+      try {
+        const context = await dataAdapter!.getNodeContext(nodeId);
+        pendingNodeContext.value = context;
+        nodeCache.setCache(nodeId, context);
+      } catch (error) {
+        errorMessage.value = formatError(error);
+      } finally {
+        isBusy.value = false;
+      }
       return;
     }
 
-    // Trigger page transition for navigation
+    // Entry point: trigger page transition, which will fetch data via executeDataLoading.
+    // Pre-set cached data so if startTransition is blocked by an in-progress transition,
+    // the pending context is still available for applyPendingData.
+    const cached = nodeCache.getCached(nodeId);
+    if (cached) {
+      pendingNodeContext.value = cached;
+    }
+
     startTransition({ type: 'navigate', nodeId }, 'large');
 
-    isBusy.value = true;
-    errorMessage.value = null;
-    try {
-      const context = await dataAdapter!.getNodeContext(nodeId);
-
-      // 缓存数据，但不立即更新响应式状态
-      // 等待转换系统在合适的时机调用 applyPendingData
-      pendingNodeContext.value = context;
-
-      nodeCache.setCache(nodeId, context);
-
-      syncRouteFromLoad = true;
-      const targetPath = nodeId ? `/node/${nodeId}` : '/';
-      navigate(targetPath, options?.replace ?? false);
-    } catch (error) {
-      errorMessage.value = formatError(error);
-    } finally {
-      isBusy.value = false;
-    }
+    syncRouteFromLoad = true;
+    const targetPath = nodeId ? `/node/${nodeId}` : '/';
+    navigate(targetPath, options?.replace ?? false);
   }
 
   // 应用待处理的数据（由转换系统调用）
@@ -190,13 +187,13 @@ export const useNodeStore = defineStore('node', () => {
     syncRouteFromLoad = false;
   }
 
+  function setViewState(state: string): void {
+    viewState.value = state as ViewState;
+    clearTransientState();
+  }
+
   function startAdd(): void {
     errorMessage.value = null;
-
-    // 触发页面转换
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'add' }, 'large');
-
     viewState.value = ViewStates.ADD;
     pendingNodeName.value = '';
     operationNode.value = null;
@@ -208,35 +205,40 @@ export const useNodeStore = defineStore('node', () => {
   async function startDelete(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
 
-    // 触发页面转换
+    // 触发页面转换 — setup 在 loading 阶段（sunken）执行
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'delete' }, 'large');
-
-    viewState.value = ViewStates.DELETE;
-    operationNode.value = node;
-    deleteWithChildren.value = false;
-    await refreshTree();
-    const hit = findTreeNode(treeNodes.value, node.id);
-    operationHasChildren.value = Boolean(hit && hit.children.length > 0);
+    startTransition({
+      type: 'viewState',
+      newState: 'delete',
+      setup: async () => {
+        operationNode.value = node;
+        deleteWithChildren.value = false;
+        await refreshTree();
+        const hit = findTreeNode(treeNodes.value, node.id);
+        operationHasChildren.value = Boolean(hit && hit.children.length > 0);
+      },
+    }, 'large');
   }
 
   async function startMove(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
 
-    // 触发页面转换
+    // 触发页面转换 — setup 在 loading 阶段（sunken）执行
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'move' }, 'large');
-
-    viewState.value = ViewStates.MOVE;
-    operationNode.value = node;
-    moveTargetParentId.value = node.parentId;
-    deleteWithChildren.value = false;
-
-    await refreshTree();
-    const hit = findTreeNode(treeNodes.value, node.id);
-    const blocked = new Set<string>([node.id]);
-    collectTreeDescendantIds(hit, blocked);
-    blockedParentIds.value = Array.from(blocked);
+    startTransition({
+      type: 'viewState',
+      newState: 'move',
+      setup: async () => {
+        operationNode.value = node;
+        moveTargetParentId.value = node.parentId;
+        deleteWithChildren.value = false;
+        await refreshTree();
+        const hit = findTreeNode(treeNodes.value, node.id);
+        const blocked = new Set<string>([node.id]);
+        collectTreeDescendantIds(hit, blocked);
+        blockedParentIds.value = Array.from(blocked);
+      },
+    }, 'large');
   }
 
   function setMoveTargetParent(id: string | null): void {
@@ -244,10 +246,6 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   function cancelOperation(): void {
-    // 触发页面转换
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'display' }, 'large');
-
     viewState.value = ViewStates.DISPLAY;
     clearTransientState();
   }
@@ -255,45 +253,29 @@ export const useNodeStore = defineStore('node', () => {
   function startQuiz(): void {
     errorMessage.value = null;
 
-    // 触发页面转换
     const { startTransition } = usePageTransition();
     startTransition({ type: 'viewState', newState: 'quiz' }, 'large');
-
-    viewState.value = ViewStates.QUIZ;
-    clearTransientState();
   }
 
   function startQuizHistory(): void {
     errorMessage.value = null;
 
-    // 触发页面转换
     const { startTransition } = usePageTransition();
     startTransition({ type: 'viewState', newState: 'quiz_history' }, 'large');
-
-    viewState.value = ViewStates.QUIZ_HISTORY;
-    clearTransientState();
   }
 
   function startStats(): void {
     errorMessage.value = null;
 
-    // 触发页面转换
     const { startTransition } = usePageTransition();
     startTransition({ type: 'viewState', newState: 'stats' }, 'large');
-
-    viewState.value = ViewStates.STATS;
-    clearTransientState();
   }
 
   function startReview(): void {
     errorMessage.value = null;
 
-    // 触发页面转换
     const { startTransition } = usePageTransition();
     startTransition({ type: 'viewState', newState: 'review' }, 'large');
-
-    viewState.value = ViewStates.REVIEW;
-    clearTransientState();
   }
 
   function resetAfterLogout(): void {
@@ -407,6 +389,7 @@ export const useNodeStore = defineStore('node', () => {
     initialize,
     loadNode,
     applyPendingData,
+    setViewState,
     startAdd,
     startDelete,
     startMove,
