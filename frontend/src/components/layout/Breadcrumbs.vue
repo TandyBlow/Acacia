@@ -1,6 +1,6 @@
 <template>
   <div class="breadcrumbs-shell">
-    <TransitionGroup v-if="isAuthenticated" name="crumb" tag="div" class="crumb-track" ref="crumbTrackRef" @wheel.passive="onWheel" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd">
+    <TransitionGroup v-if="isAuthenticated" :name="transitionName" tag="div" class="crumb-track" ref="crumbTrackRef" @wheel.passive="onWheel" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd">
       <GlassWrapper
         v-for="node in displayNodes"
         :key="node.id"
@@ -31,11 +31,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useDevStore } from '../../stores/devStore';
+import { usePageTransition } from '../../composables/usePageTransition';
 import type { NodeRecord } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
 
@@ -49,6 +51,13 @@ const store = useNodeStore();
 const authStore = useAuthStore();
 const { pathNodes, activeNode } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
+const devStore = useDevStore();
+const { isTransitioning } = usePageTransition();
+
+const transitionName = computed(() => {
+  if (!devStore.enableRiseSink || isTransitioning.value) return 'none';
+  return 'cell';
+});
 
 type Phase = 'idle' | 'collapsing' | 'expanding';
 const phase = ref<Phase>('idle');
@@ -390,38 +399,8 @@ async function goTo(nodeId: string): Promise<void> {
   box-shadow: none;
 }
 
-.crumb-enter-active,
-.crumb-move {
-  transition:
-    opacity 240ms ease,
-    transform 240ms ease;
-}
-
-.crumb-leave-active {
+/* TransitionGroup layout: leaving crumb exits flow so others can slide into place */
+.cell-leave-active {
   position: absolute;
-  transition:
-    opacity 240ms ease,
-    transform 240ms ease;
-}
-
-.crumb-enter-from {
-  opacity: 0;
-  transform: translateX(18px) scale(0.96);
-}
-
-.crumb-leave-to {
-  opacity: 0;
-  transform: translateX(-18px) scale(0.96);
-}
-
-.current-wrap.crumb-enter-from {
-  opacity: 0;
-  transform: translateY(6px) scale(0.97);
-}
-
-.current-wrap.crumb-enter-active {
-  transition:
-    opacity 280ms ease,
-    transform 280ms ease;
 }
 </style>

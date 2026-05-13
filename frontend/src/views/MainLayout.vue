@@ -24,21 +24,33 @@
         </section>
 
         <section class="content-area">
-          <div class="content-inset-frame" aria-hidden="true"></div>
-          <div ref="glassRef" class="content-glass-host">
-            <GlassWrapper v-if="!isFeaturePanel" class="content-surface">
-              <div v-if="showTree" key="tree" class="content-host">
-                <TreeCanvas ref="treeCanvasRef" :visible="showTree" />
+          <div class="content-inset">
+            <div ref="contentGlassRef" class="content-glass">
+              <div class="glass-content" style="width:100%;height:100%">
+                <div v-if="showTree" key="tree" class="content-host">
+                  <TreeCanvas ref="treeCanvasRef" :visible="showTree" />
+                </div>
+                <template v-if="!showTree">
+                  <component
+                    v-if="nonTreeContent === MarkdownEditor"
+                    :is="nonTreeContent"
+                    :key="contentKey"
+                  />
+                  <div v-else class="activity-layout">
+                    <div class="activity-glass-host">
+                      <GlassWrapper>
+                        <div class="activity-scroll">
+                          <component :is="nonTreeContent" :key="contentKey" />
+                        </div>
+                      </GlassWrapper>
+                    </div>
+                  </div>
+                </template>
               </div>
-              <Transition v-if="!showTree" name="content-rise" mode="out-in">
-                <component :is="nonTreeContent" :key="contentKey" class="content-host" />
-              </Transition>
               <div ref="treeCurtainRef" class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
-            </GlassWrapper>
-            <Transition name="feature-panel" mode="out-in">
-              <FeaturePanel v-if="isFeaturePanel" key="feature" class="feature-host" />
-            </Transition>
+            </div>
           </div>
+          <FeaturePanel key="feature" class="feature-host" style="display: none" />
         </section>
       </div>
     </section>
@@ -47,7 +59,7 @@
       <Knob />
     </section>
 
-    <AiGeneratePopup v-if="isAuthenticated" />
+    <DevPanel v-if="isDev" />
   </main>
 </template>
 
@@ -55,31 +67,35 @@
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import LogoArea from '../components/layout/LogoArea.vue';
-import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
 import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
 import FeaturePanel from '../components/ui/FeaturePanel.vue';
+import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
 import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
-import AiGeneratePopup from '../components/ai/AiGeneratePopup.vue';
 import QuizPanel from '../components/quiz/QuizPanel.vue';
 import QuizHistoryPanel from '../components/quiz/QuizHistoryPanel.vue';
 import StatsPanel from '../components/stats/StatsPanel.vue';
 import ReviewPanel from '../components/review/ReviewPanel.vue';
+import DevPanel from '../components/dev/DevPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
+import { useDevStore } from '../stores/devStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch } from '../composables/useKnobDispatch';
 import { usePageTransition } from '../composables/usePageTransition';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
 
+const isDev = import.meta.env.DEV;
+
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
+const devStore = useDevStore();
 const { activeNode } = storeToRefs(nodeStore);
 const {
   mode: authMode,
@@ -95,7 +111,7 @@ const { registerRegion, unregisterRegion, startTransition, currentPhase } = useP
 const logoRef = ref<HTMLElement | null>(null);
 const breadcrumbsRef = ref<HTMLElement | null>(null);
 const navigationRef = ref<HTMLElement | null>(null);
-const glassRef = ref<HTMLElement | null>(null);
+const contentGlassRef = ref<HTMLElement | null>(null);
 const knobRef = ref<HTMLElement | null>(null);
 
 // Tree curtain: masks tree area during tree-involving transitions
@@ -198,15 +214,12 @@ onMounted(() => {
     });
   }
 
-  if (glassRef.value) {
+  if (contentGlassRef.value) {
     registerRegion({
       id: 'content',
       type: 'glass',
-      element: glassRef,
-      shouldShow: () => {
-        // Content is always visible in all modes
-        return true;
-      },
+      element: contentGlassRef,
+      shouldShow: (state) => !state.isFeaturePanel,
     });
   }
 
@@ -239,6 +252,25 @@ watch(isFeaturePanel, (open) => {
     compactMode.value = 'feature';
   }
 });
+
+// Sync dev animation toggles to :root for CSS-level control of GlassWrapper transitions
+watch(
+  () => [devStore.enableRiseSink, devStore.enableTransition] as const,
+  ([riseSink, transition]) => {
+    const root = document.documentElement;
+    if (!transition) {
+      root.setAttribute('data-no-transition', '');
+    } else {
+      root.removeAttribute('data-no-transition');
+    }
+    if (!riseSink) {
+      root.setAttribute('data-no-rise-sink', '');
+    } else {
+      root.removeAttribute('data-no-rise-sink');
+    }
+  },
+  { immediate: true },
+);
 
 const layoutClasses = computed(() => ({
   'compact': isCompact.value,
@@ -398,20 +430,6 @@ watch(
   padding: 1px;
 }
 
-.content-inset-frame {
-  position: absolute;
-  inset: 0;
-  border-radius: 24px;
-  border: 1px solid var(--color-glass-border);
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow:
-    inset 0 9px 18px var(--shadow-inset-a),
-    inset 0 -9px 18px var(--shadow-inset-b),
-    inset -9px 0 18px var(--shadow-inset-b);
-  overflow: hidden;
-  pointer-events: none;
-}
-
 .knob-area {
   grid-column: 3;
   grid-row: 1 / span 2;
@@ -453,68 +471,47 @@ watch(
 .content-host {
   width: 100%;
   height: 100%;
-  overflow: auto;
 }
 
-.content-surface {
-  width: 100%;
-  height: 100%;
-}
-
-.content-glass-host {
+.content-inset {
   position: relative;
-  z-index: 1;
   width: 100%;
   height: 100%;
+  padding: 1px;
+  border-radius: 24px;
+  overflow: hidden;
 }
 
-.content-glass-host :deep(.glass-raised) {
-  box-shadow: none;
+.content-inset::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  border: 1px solid var(--color-glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 0 9px 18px var(--shadow-inset-a),
+    inset 0 -9px 18px var(--shadow-inset-b),
+    inset -9px 0 18px var(--shadow-inset-b);
+  pointer-events: none;
+}
+
+.content-glass {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  overflow: hidden;
 }
 
 .feature-host {
   position: absolute;
   inset: 0;
-}
-
-.content-rise-enter-active {
-  transition:
-    opacity 300ms ease,
-    transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.content-rise-leave-active {
-  transition:
-    opacity 200ms ease,
-    transform 200ms ease;
-}
-
-.content-rise-enter-from {
-  opacity: 0.7;
-  transform: translateY(6px) scale(0.99);
-}
-
-.content-rise-leave-to {
-  opacity: 0;
-  transform: translateY(-8px) scale(0.99);
-}
-
-.feature-panel-enter-active {
-  transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.feature-panel-leave-active {
-  transition: opacity 200ms ease, transform 200ms ease;
-}
-
-.feature-panel-enter-from {
-  opacity: 0;
-  transform: scale(0.95);
-}
-
-.feature-panel-leave-to {
-  opacity: 0;
-  transform: scale(0.98);
+  z-index: 3;
+  border-radius: 24px;
+  overflow: hidden;
 }
 
 @media (max-width: 900px) {
@@ -536,49 +533,14 @@ watch(
     grid-row: 1;
   }
 
-  .merged-area {
-    display: block;
-    grid-column: 1 / span 2;
-    grid-row: 2;
-    min-width: 0;
-    min-height: 0;
-  }
-
-  .merged-shell {
-    display: grid;
-    width: 100%;
-    height: 100%;
-    grid-template-columns: 241px minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    column-gap: 0;
-    row-gap: 0;
-  }
-
-  .navigation-shell {
-    display: contents;
-    border: none;
-    background: transparent;
-    box-shadow: none;
-    overflow: visible;
-    padding: 0;
-  }
-
-  .content-inset-frame {
-    display: none;
-  }
-
-  .content-area {
-    padding: 0;
-  }
-
   .navigation-area {
     grid-column: 1;
-    grid-row: 1;
+    grid-row: 2;
   }
 
   .content-area {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 2;
   }
 
   .knob-area {
@@ -607,7 +569,7 @@ watch(
     display: contents !important;
   }
 
-  .content-inset-frame {
+  .content-inset::after {
     display: none !important;
   }
 
@@ -687,5 +649,31 @@ watch(
     justify-self: center;
     width: min(100%, 260px);
   }
+}
+</style>
+
+<style>
+/* Shared activity area pattern — used by content components inside the inset frame.
+   Each activity area is a glass-raised panel that tiles the available space.
+   Layout: flex column (优先上下), each area flex:1 to divide equally. */
+
+.activity-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  padding: 1px;
+}
+
+.activity-glass-host {
+  flex: 1;
+  min-height: 0;
+}
+
+.activity-scroll {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
 }
 </style>

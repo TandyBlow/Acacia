@@ -2,25 +2,25 @@
   <div class="knob-panel">
     <!-- Hint columns (desktop) -->
     <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-left">
-      <Transition name="hint-fade">
+      <Transition name="cell">
         <span v-if="showClickHintLocal" class="knob-hint">{{ UI.knob.clickToHome }}</span>
       </Transition>
-      <Transition name="hint-fade">
+      <Transition name="cell">
         <span v-if="showHoldHintLocal" class="knob-hint">{{ UI.knob.holdToConfirm }}</span>
       </Transition>
     </div>
     <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-right">
-      <Transition name="hint-fade">
+      <Transition name="cell">
         <span v-if="showDblClickHintLocal" class="knob-hint">{{ UI.knob.dblClickFeature }}</span>
       </Transition>
     </div>
 
     <!-- Compact hints (mobile, stacked above/below) -->
     <div v-if="isAuthenticated && isCompactLayout && (showClickHintLocal || showHoldHintLocal)" class="hint-compact hint-compact-top">
-      <Transition name="hint-fade">
+      <Transition name="cell">
         <span v-if="showClickHintLocal" class="knob-hint-compact">{{ UI.knob.clickToHome }}</span>
       </Transition>
-      <Transition name="hint-fade">
+      <Transition name="cell">
         <span v-if="showHoldHintLocal" class="knob-hint-compact">{{ UI.knob.holdToConfirm }}</span>
       </Transition>
     </div>
@@ -50,7 +50,7 @@
 
     <!-- Compact hint below (mobile) -->
     <div v-if="isAuthenticated && isCompactLayout && showDblClickHintLocal" class="hint-compact hint-compact-bottom">
-      <Transition name="hint-fade">
+      <Transition name="cell">
         <span class="knob-hint-compact">{{ UI.knob.dblClickFeature }}</span>
       </Transition>
     </div>
@@ -244,16 +244,6 @@ function onPressCancel(): void {
 
 .hint-compact-bottom {
   margin-top: 2px;
-}
-
-.hint-fade-enter-active,
-.hint-fade-leave-active {
-  transition: opacity 300ms ease;
-}
-
-.hint-fade-enter-from,
-.hint-fade-leave-to {
-  opacity: 0;
 }
 
 .knob-stage {

@@ -53,7 +53,7 @@ export interface RegionRegistration {
  * Events that can trigger a page transition.
  */
 export type TransitionTrigger =
-  | { type: 'navigate'; nodeId: string | null }
-  | { type: 'viewState'; newState: string }
-  | { type: 'layout'; newLayout: LayoutType }
-  | { type: 'knob'; action: 'click' | 'doubleClick' | 'hold' };
+  | { type: 'navigate'; nodeId: string | null; setup?: () => Promise<void> }
+  | { type: 'viewState'; newState: string; setup?: () => Promise<void> }
+  | { type: 'layout'; newLayout: LayoutType; setup?: () => Promise<void> }
+  | { type: 'knob'; action: 'click' | 'doubleClick' | 'hold'; setup?: () => Promise<void> };

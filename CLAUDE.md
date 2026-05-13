@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 权威设计文档
+
+项目设计以飞书文档为唯一权威来源，代码实现必须符合文档规范。
+
+**飞书文档 URL**: https://ecnvi3wy83vn.feishu.cn/wiki/Uxe0wPonbiy6Ntk0HOucBRKhnxf
+
+**何时必须查阅此文档**：
+- 任何涉及 UI 布局、区域、动画的修改
+- 任何涉及页面状态机（展示/添加/移动/删除/确认）的修改
+- 任何涉及旋钮交互逻辑的修改
+- 任何涉及面包屑、导航栏行为的修改
+- 任何涉及设计系统（底部区域/活动区域/下沉区域/玻璃区域）的修改
+- 不确定某个交互行为应该如何表现时
+
+**查阅方式**: 使用飞书 MCP 工具 `feishu_read_doc` 读取文档内容。
+
+文档涵盖：区域定义（底部区域/活动区域/下沉区域）、3种布局（大/中/小）、5个部分（LOGO/面包屑/导航栏/内容区/旋钮）、切换动画、各状态下的交互行为、专有名词定义。
+
 ## Project Overview
 
 **Acacia** is a hierarchical note-taking web app. Users organize notes in a tree structure (parent-child nodes), navigate via breadcrumbs/sidebar, and edit content with a TipTap rich-text editor. Auth is username/password-based with JWT tokens, backed by SQLite.
@@ -39,7 +57,6 @@ Pinia stores (`frontend/src/stores/`):
 
 所有界面切换都会触发统一的加载动画，确保视觉体验一致。
 
-详细设计见 `docs/superpowers/specs/2026-05-07-unified-page-transition-design.md`。
 
 ### UI Structure
 

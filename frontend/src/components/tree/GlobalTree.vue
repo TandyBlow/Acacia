@@ -14,7 +14,7 @@
       </button>
     </div>
 
-    <TransitionGroup name="tree-fade" tag="ul" class="tree-root">
+    <TransitionGroup :name="transitionName" tag="ul" class="tree-root">
       <TreeNodeItem
         v-for="node in treeNodes"
         :key="node.id"
@@ -31,19 +31,22 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import TreeNodeItem from './TreeNodeItem.vue';
 import { useNodeStore } from '../../stores/nodeStore';
+import { useDevStore } from '../../stores/devStore';
 import { usePageTransition } from '../../composables/usePageTransition';
 import type { TreeNode } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
 
 const store = useNodeStore();
+const devStore = useDevStore();
 const { treeNodes, moveTargetParentId, blockedParentIds } = storeToRefs(store);
 const { registerRegion, unregisterRegion } = usePageTransition();
 const treeRef = ref<HTMLElement | null>(null);
 const expandedIds = ref<string[]>([]);
+const transitionName = computed(() => devStore.enableRiseSink ? 'cell' : 'none');
 
 function collectAllIds(nodes: TreeNode[], result: string[]): void {
   for (const node of nodes) {
@@ -128,19 +131,5 @@ onBeforeUnmount(() => {
   padding: 0;
   min-height: 0;
   overflow: auto;
-}
-
-.tree-fade-enter-active,
-.tree-fade-leave-active,
-.tree-fade-move {
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
-}
-
-.tree-fade-enter-from,
-.tree-fade-leave-to {
-  opacity: 0;
-  transform: translateY(10px);
 }
 </style>

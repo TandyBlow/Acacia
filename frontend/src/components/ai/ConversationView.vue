@@ -11,138 +11,120 @@
       </div>
     </div>
 
-    <!-- Source content panel -->
-    <div v-if="props.currentKpData" class="source-panel">
-      <button class="source-toggle" @click="showSource = !showSource">
-        <span class="source-toggle-icon">{{ showSource ? '▾' : '▸' }}</span>
-        查看原文
-      </button>
-      <div v-if="showSource" class="source-content">
-        <div v-if="props.currentKpData.source_content" class="source-section">
-          <div class="source-label">原文内容</div>
-          <div class="source-text">{{ props.currentKpData.source_content }}</div>
+    <!-- Scrollable messages area -->
+    <div ref="messagesScroll" class="messages-scroll">
+      <div class="messages-container">
+        <div
+          v-for="(message, index) in messages"
+          :key="index"
+          class="message"
+          :class="[
+            'message-' + message.role,
+            message.messageType ? 'message-' + message.messageType : ''
+          ]"
+        >
+          <div class="message-avatar">
+            {{ message.messageType === 'correct_self' ? '⚠️' : message.messageType === 'admit_uncertainty' ? '🤔' : message.role === 'ai' ? '🤖' : '👤' }}
+          </div>
+          <div class="message-content">
+            <div v-if="message.messageType === 'correct_self'" class="message-type-label">纠正</div>
+            <div v-if="message.messageType === 'admit_uncertainty'" class="message-type-label">不确定</div>
+            <div class="message-text">{{ message.content }}</div>
+            <div v-if="message.generatedContent" class="message-generated">
+              <div class="generated-label">✓ 已生成内容</div>
+              <div class="generated-preview">{{ message.generatedContent.substring(0, 100) }}...</div>
+            </div>
+          </div>
         </div>
-        <div v-if="props.currentKpData.correct_definition" class="source-section">
-          <div class="source-label">标准定义</div>
-          <div class="source-text">{{ props.currentKpData.correct_definition }}</div>
-        </div>
-        <div v-if="props.currentKpData.key_example" class="source-section">
-          <div class="source-label">关键示例</div>
-          <div class="source-text">{{ props.currentKpData.key_example }}</div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Messages -->
-    <div ref="messagesContainer" class="messages-container">
-      <div
-        v-for="(message, index) in messages"
-        :key="index"
-        class="message"
-        :class="[
-          'message-' + message.role,
-          message.messageType ? 'message-' + message.messageType : ''
-        ]"
-      >
-        <div class="message-avatar">
-          {{ message.messageType === 'correct_self' ? '⚠️' : message.messageType === 'admit_uncertainty' ? '🤔' : message.role === 'ai' ? '🤖' : '👤' }}
-        </div>
-        <div class="message-content">
-          <div v-if="message.messageType === 'correct_self'" class="message-type-label">纠正</div>
-          <div v-if="message.messageType === 'admit_uncertainty'" class="message-type-label">不确定</div>
-          <div class="message-text">{{ message.content }}</div>
-          <div v-if="message.generatedContent" class="message-generated">
-            <div class="generated-label">✓ 已生成内容</div>
-            <div class="generated-preview">{{ message.generatedContent.substring(0, 100) }}...</div>
+        <div v-if="isThinking" class="message message-ai">
+          <div class="message-avatar">🤖</div>
+          <div class="message-content">
+            <div class="message-thinking">思考中...</div>
           </div>
         </div>
       </div>
 
-      <div v-if="isThinking" class="message message-ai">
-        <div class="message-avatar">🤖</div>
-        <div class="message-content">
-          <div class="message-thinking">思考中...</div>
+      <!-- Example preview card -->
+      <div v-if="isShowingExample && currentExample" class="example-preview-card">
+        <div class="example-header">
+          <span class="example-icon">💡</span>
+          <span class="example-title">示例答案预览</span>
+        </div>
+
+        <div class="example-content">
+          <div class="example-answer" v-html="renderMarkdown(currentExample.content)"></div>
+        </div>
+
+        <div class="example-explanation">
+          <div class="explanation-label">解释</div>
+          <div class="explanation-text">{{ currentExample.explanation }}</div>
+        </div>
+
+        <div v-if="showFeedbackInput" class="example-feedback-input">
+          <textarea
+            v-model="feedbackText"
+            class="feedback-textarea"
+            placeholder="请说明需要改进的地方..."
+            rows="2"
+          />
+        </div>
+
+        <div class="example-actions">
+          <button
+            class="example-btn example-btn-skip"
+            :disabled="isThinking"
+            @click="handleSkipExample"
+          >
+            跳过示例
+          </button>
+          <button
+            class="example-btn example-btn-regenerate"
+            :disabled="isThinking"
+            @click="handleRegenerateExample"
+          >
+            {{ showFeedbackInput ? '提交反馈并重新生成' : '重新生成' }}
+          </button>
+          <button
+            class="example-btn example-btn-accept"
+            :disabled="isThinking"
+            @click="handleAcceptExample"
+          >
+            接受示例
+          </button>
+        </div>
+      </div>
+
+      <!-- Input area — sticky at bottom of scroll area -->
+      <div class="input-area">
+        <textarea
+          v-model="userInput"
+          class="input-textarea"
+          placeholder="输入你的回答..."
+          rows="3"
+          :disabled="isThinking || isCompleted"
+          @keydown.enter.ctrl="sendAnswer"
+        />
+        <div class="input-actions">
+          <button
+            class="input-btn input-btn-skip"
+            :disabled="isThinking || isCompleted"
+            @click="skipCurrent"
+          >
+            跳过
+          </button>
+          <button
+            class="input-btn input-btn-send"
+            :disabled="!canSend || isThinking || isCompleted"
+            @click="sendAnswer"
+          >
+            {{ isThinking ? '发送中...' : '发送 (Ctrl+Enter)' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Example preview card -->
-    <div v-if="isShowingExample && currentExample" class="example-preview-card">
-      <div class="example-header">
-        <span class="example-icon">💡</span>
-        <span class="example-title">示例答案预览</span>
-      </div>
-
-      <div class="example-content">
-        <div class="example-answer" v-html="renderMarkdown(currentExample.content)"></div>
-      </div>
-
-      <div class="example-explanation">
-        <div class="explanation-label">解释</div>
-        <div class="explanation-text">{{ currentExample.explanation }}</div>
-      </div>
-
-      <div v-if="showFeedbackInput" class="example-feedback-input">
-        <textarea
-          v-model="feedbackText"
-          class="feedback-textarea"
-          placeholder="请说明需要改进的地方..."
-          rows="2"
-        />
-      </div>
-
-      <div class="example-actions">
-        <button
-          class="example-btn example-btn-skip"
-          :disabled="isThinking"
-          @click="handleSkipExample"
-        >
-          跳过示例
-        </button>
-        <button
-          class="example-btn example-btn-regenerate"
-          :disabled="isThinking"
-          @click="handleRegenerateExample"
-        >
-          {{ showFeedbackInput ? '提交反馈并重新生成' : '重新生成' }}
-        </button>
-        <button
-          class="example-btn example-btn-accept"
-          :disabled="isThinking"
-          @click="handleAcceptExample"
-        >
-          接受示例
-        </button>
-      </div>
-    </div>
-
-    <!-- Input area -->
-    <div class="input-area">
-      <textarea
-        v-model="userInput"
-        class="input-textarea"
-        placeholder="输入你的回答..."
-        rows="3"
-        :disabled="isThinking || isCompleted"
-        @keydown.enter.ctrl="sendAnswer"
-      />
-      <div class="input-actions">
-        <button
-          class="input-btn input-btn-skip"
-          :disabled="isThinking || isCompleted"
-          @click="skipCurrent"
-        >
-          跳过
-        </button>
-        <button
-          class="input-btn input-btn-send"
-          :disabled="!canSend || isThinking || isCompleted"
-          @click="sendAnswer"
-        >
-          {{ isThinking ? '发送中...' : '发送 (Ctrl+Enter)' }}
-        </button>
-      </div>
-    </div>
+    <slot name="extra-actions" />
   </div>
 </template>
 
@@ -157,18 +139,10 @@ interface Message {
 }
 
 function renderMarkdown(content: string): string {
-  // Simple markdown to HTML conversion for preview
-  // Note: KaTeX rendering will happen automatically via TipTap's Mathematics extension
   return content
     .replace(/\n/g, '<br>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>');
-}
-
-interface KpData {
-  source_content?: string;
-  correct_definition?: string;
-  key_example?: string;
 }
 
 interface Props {
@@ -176,7 +150,6 @@ interface Props {
   currentIndex: number;
   total: number;
   currentKpTitle?: string;
-  currentKpData?: KpData | null;
   isCompleted: boolean;
 }
 
@@ -188,13 +161,12 @@ const emit = defineEmits<{
   'example-feedback': [payload: { action: string; feedback?: string }];
 }>();
 
-const THINKING_SAFETY_TIMEOUT = 120_000; // 2 minutes, backend timeout is 60s
+const THINKING_SAFETY_TIMEOUT = 120_000;
 
 const messages = ref<Message[]>([]);
 const userInput = ref('');
 const isThinking = ref(false);
-const messagesContainer = ref<HTMLElement | null>(null);
-const showSource = ref(false);
+const messagesScroll = ref<HTMLElement | null>(null);
 let thinkingSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 function startThinking() {
@@ -218,7 +190,6 @@ function stopThinking() {
   }
 }
 
-// Example preview state
 const isShowingExample = ref(false);
 const currentExample = ref<{
   content: string;
@@ -317,13 +288,12 @@ function handleSkipExample() {
 }
 
 function scrollToBottom() {
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-  }
+  const el = messagesScroll.value;
+  if (!el) return;
+  el.scrollTop = el.scrollHeight;
 }
 
 watch(() => props.currentIndex, () => {
-  showSource.value = false;
   nextTick(() => {
     scrollToBottom();
   });
@@ -341,6 +311,7 @@ function resetThinking(errorMessage?: string) {
 
 function loadHistory(historyMessages: Message[]) {
   messages.value = historyMessages;
+  stopThinking();
   nextTick(() => {
     scrollToBottom();
   });
@@ -360,13 +331,15 @@ defineExpose({
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  min-height: 0;
 }
 
 .progress-bar {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px 16px 8px;
 }
 
 .progress-text {
@@ -396,74 +369,18 @@ defineExpose({
   transition: width 0.3s ease;
 }
 
-.source-panel {
-  border: 1px solid var(--color-glass-border);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.source-toggle {
-  width: 100%;
-  padding: 10px 16px;
-  border: none;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-primary);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: background 0.2s ease;
-}
-
-.source-toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.source-toggle-icon {
-  font-size: 12px;
-  width: 14px;
-  text-align: center;
-}
-
-.source-content {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  border-top: 1px solid var(--color-glass-border);
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.source-section {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.source-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(102, 255, 229, 0.75);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.source-text {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--color-primary);
-  opacity: 0.8;
+/* Scrollable area: messages + sticky input */
+.messages-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .messages-container {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 4px;
+  padding: 4px 16px;
 }
 
 .message {
@@ -500,6 +417,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .message-text {
@@ -518,7 +436,6 @@ defineExpose({
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* Self-correction message — yellow/warning style */
 .message-correct_self .message-text {
   background: rgba(255, 193, 7, 0.12);
   border: 1px solid rgba(255, 193, 7, 0.35);
@@ -531,7 +448,6 @@ defineExpose({
   font-weight: 600;
 }
 
-/* Admit uncertainty message — softer style */
 .message-admit_uncertainty .message-text {
   background: rgba(158, 158, 158, 0.1);
   border: 1px solid rgba(158, 158, 158, 0.25);
@@ -580,10 +496,18 @@ defineExpose({
   line-height: 1.4;
 }
 
+/* Input area — sticky at bottom of scroll container */
 .input-area {
+  position: sticky;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 8px 16px 12px;
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--color-glass-border);
 }
 
 .input-textarea {
@@ -647,7 +571,9 @@ defineExpose({
   cursor: not-allowed;
 }
 
+/* Example preview card */
 .example-preview-card {
+  margin: 0 16px;
   border: 1px solid rgba(102, 255, 229, 0.3);
   border-radius: 16px;
   background: rgba(102, 255, 229, 0.08);

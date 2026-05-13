@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Area Transition Demo</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+:root {
+  --color-primary: #FFAA00;
+  --color-glass-bg: rgba(255, 255, 255, 0.08);
+  --color-glass-border: rgba(255, 255, 255, 0.18);
+  --shadow-raised-a: rgba(49, 78, 151, 0.16);
+  --shadow-raised-b: rgba(255, 255, 255, 0.25);
+  --shadow-inset-a: rgba(0, 0, 0, 0.10);
+  --shadow-inset-b: rgba(255, 255, 255, 0.06);
+  --anim-speed: 1;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #66ccff;
+  font-family: system-ui, -apple-system, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.demo-container {
+  width: 900px;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+}
+
+/* ---- Controls ---- */
+.controls {
+  background: rgba(255,255,255,0.15);
+  border-radius: 24px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.2);
+  height: fit-content;
+}
+
+.controls h2 {
+  color: #fff;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.controls .phase-indicator {
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.15);
+  text-align: center;
+}
+
+.controls .phase-indicator b {
+  color: #FFAA00;
+}
+
+.controls button {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.controls button:hover {
+  background: rgba(255,255,255,0.22);
+}
+
+.controls button:active {
+  background: rgba(0,0,0,0.15);
+}
+
+.controls .divider {
+  border-top: 1px solid rgba(255,255,255,0.15);
+  margin: 4px 0;
+}
+
+/* ---- Content Area ---- */
+.content-area {
+  position: relative;
+  min-height: 500px;
+}
+
+/* Bottom area: inset shell */
+.content-inset {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  padding: 1px;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+/* Inset visual via ::after — same as production */
+.content-inset::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  border: 1px solid var(--color-glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 0 9px 18px var(--shadow-inset-a),
+    inset 0 -9px 18px var(--shadow-inset-b),
+    inset -9px 0 18px var(--shadow-inset-b);
+  pointer-events: none;
+}
+
+/* Glass region — sits ABOVE the inset ::after shadow */
+.content-glass {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+/* ---- Glass transition states ---- */
+.glass-sinking .glass-content {
+  opacity: 0;
+  transition: opacity calc(240ms * var(--anim-speed)) ease;
+}
+
+.glass-sunken {
+  box-shadow: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  opacity: 0 !important;
+  transform: translateY(12px) scale(0.97) !important;
+}
+
+.glass-rising {
+  transition: opacity calc(240ms * var(--anim-speed)) ease,
+              transform calc(240ms * var(--anim-speed)) ease !important;
+}
+
+/* ---- Glass content wrapper ---- */
+.glass-content {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--color-glass-border);
+  box-shadow:
+    5px 5px 10px var(--shadow-raised-a),
+    -5px -5px 10px var(--shadow-raised-b);
+  transition:
+    box-shadow 240ms ease,
+    border-color 240ms ease,
+    background 240ms ease;
+}
+
+/* ---- Activity layout: internal glass panels ---- */
+.activity-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  padding: 1px;
+}
+
+.activity-glass {
+  flex: 1;
+  min-height: 0;
+  border-radius: 24px;
+  border: 1px solid var(--color-glass-border);
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    5px 5px 10px var(--shadow-raised-a),
+    -5px -5px 10px var(--shadow-raised-b);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-inner {
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- Content type visual distinction ---- */
+.page-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.page-body {
+  font-size: 14px;
+  color: rgba(255,255,255,0.7);
+  line-height: 1.6;
+}
+
+.mock-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.12);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+
+.mock-input::placeholder {
+  color: rgba(255,255,255,0.35);
+}
+
+.mock-btn {
+  padding: 10px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Markdown editor mock */
+.editor-area {
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  color: rgba(255,255,255,0.8);
+  font-size: 15px;
+  line-height: 1.8;
+  outline: none;
+  overflow-y: auto;
+}
+
+.editor-area h1 {
+  color: var(--color-primary);
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+.editor-area p {
+  margin-bottom: 12px;
+}
+
+/* Tree mock */
+.tree-mock {
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.tree-node {
+  padding: 8px 12px 8px 20px;
+  border-left: 2px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.7);
+  font-size: 14px;
+  cursor: default;
+}
+
+.tree-node.root {
+  border-left: none;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 15px;
+}
+
+/* Confirm panel mock */
+.confirm-mock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  height: 100%;
+}
+
+.confirm-mock .warning {
+  font-size: 18px;
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.confirm-mock .hint {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+}
+
+/* Phase debug overlay */
+.phase-debug {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="demo-container">
+    <!-- Controls -->
+    <div class="controls">
+      <h2>Content Area Transition</h2>
+      <div class="phase-indicator">
+        Phase: <b>{{ phase }}</b> &nbsp;|&nbsp; Content: <b>{{ contentType }}</b>
+      </div>
+
+      <button @click="switchContent('editor')">Markdown Editor</button>
+      <button @click="switchContent('auth')">Auth (Login)</button>
+      <button @click="switchContent('confirm')">Confirm Delete</button>
+      <button @click="switchContent('tree')">Global Tree</button>
+
+      <div class="divider"></div>
+
+      <button @click="switchContent('add-node')">Add Node</button>
+      <button @click="switchContent('quiz')">Quiz Panel</button>
+      <button @click="switchContent('stats')">Stats Panel</button>
+
+      <div class="divider"></div>
+
+      <label style="display:flex;align-items:center;gap:8px;color:#fff;font-size:13px;cursor:pointer;">
+        <input type="checkbox" v-model="enableRiseSink" />
+        Enable Rise/Sink
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;color:#fff;font-size:13px;cursor:pointer;">
+        <input type="checkbox" v-model="enableTransition" />
+        Enable Transition
+      </label>
+
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;justify-content:space-between;color:#fff;font-size:13px;">
+          <span>Animation Speed</span>
+          <span style="color:#FFAA00;font-weight:700;">{{ speedMultiplier }}x</span>
+        </div>
+        <input type="range" v-model.number="speedMultiplier" min="0.1" max="10" step="0.1"
+          style="width:100%;accent-color:#FFAA00;" />
+        <div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.35);font-size:11px;">
+          <span>0.1x</span><span>1x</span><span>10x</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <p style="color:rgba(255,255,255,0.45);font-size:12px;line-height:1.5;">
+        Each switch triggers: sink (240ms) → swap content (0ms) → rise (240ms).<br/>
+        The glass region sinks into the bottom area, content swaps invisibly, then rises back.
+      </p>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content-area">
+      <div class="content-inset">
+        <div ref="glassEl" class="content-glass" :class="glassClasses">
+          <div class="glass-content" style="width:100%;height:100%;">
+            <!-- Markdown Editor (no activity-layout wrapper) -->
+            <div v-if="contentType === 'editor'" key="editor" class="editor-area" contenteditable="true">
+              <h1>知识管理工具</h1>
+              <p>信息爆炸可以说是21世纪的代名词。随着AI的发展，如今我们每天获取的信息量达到了一个新的高度。</p>
+              <p>它彻底改变了我们的工作方式，以往我们需要重复搜集信息和应用信息的流程，而现在我们可以完全把这个流程交给AI执行。</p>
+              <p>但是人脑也无法脱离用进废退的规律。当我们不再亲自执行这个信息处理的流程，自身的信息处理能力便会潜移默化地倒退。</p>
+            </div>
+
+            <!-- Everything else: wrapped in activity-layout with activity-glass -->
+            <div v-else class="activity-layout">
+              <!-- Auth -->
+              <template v-if="contentType === 'auth'">
+                <div key="auth" class="activity-glass">
+                  <div class="activity-inner">
+                    <div class="page-label">Authentication</div>
+                    <div class="page-title">登录</div>
+                    <input class="mock-input" type="text" placeholder="用户名" />
+                    <input class="mock-input" type="password" placeholder="密码" />
+                    <button class="mock-btn">登 录</button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Confirm Delete -->
+              <template v-else-if="contentType === 'confirm'">
+                <div key="confirm" class="activity-glass">
+                  <div class="confirm-mock">
+                    <div class="page-label">Delete Confirmation</div>
+                    <div class="warning">确定要删除此节点？</div>
+                    <div class="hint">此操作不可撤销</div>
+                    <div style="display:flex;gap:12px;">
+                      <button class="mock-btn">取消</button>
+                      <button class="mock-btn" style="background:rgba(255,107,107,0.3);">删除</button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Add Node -->
+              <template v-else-if="contentType === 'add-node'">
+                <div key="add-node" class="activity-glass">
+                  <div class="activity-inner">
+                    <div class="page-label">Add Node</div>
+                    <div class="page-title">新的知识点</div>
+                    <input class="mock-input" type="text" placeholder="输入节点名称" />
+                    <button class="mock-btn">确认添加</button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Global Tree -->
+              <template v-else-if="contentType === 'tree'">
+                <div key="tree" class="activity-glass">
+                  <div class="tree-mock">
+                    <div class="page-label" style="margin-bottom:12px;">Global Tree</div>
+                    <div class="tree-node root">知识管理</div>
+                    <div class="tree-node">学习方法论</div>
+                    <div class="tree-node">AI 与认知</div>
+                    <div class="tree-node">笔记工具对比</div>
+                    <div class="tree-node">费曼技巧</div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Quiz -->
+              <template v-else-if="contentType === 'quiz'">
+                <div key="quiz" class="activity-glass">
+                  <div class="activity-inner">
+                    <div class="page-label">Quiz</div>
+                    <div class="page-title">随机测试</div>
+                    <div class="page-body">以下哪项最能描述 AI 辅助学习的认知债务效应？</div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                      <button class="mock-btn" style="text-align:left;">A. AI 让学习者更自信但实际内化更少</button>
+                      <button class="mock-btn" style="text-align:left;">B. AI 提升了长时记忆保持率</button>
+                      <button class="mock-btn" style="text-align:left;">C. AI 辅助对认知没有显著影响</button>
+                      <button class="mock-btn" style="text-align:left;">D. AI 增强了知识迁移能力</button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Stats -->
+              <template v-else-if="contentType === 'stats'">
+                <div key="stats" class="activity-glass">
+                  <div class="activity-inner">
+                    <div class="page-label">Statistics</div>
+                    <div class="page-title">学习统计</div>
+                    <div class="page-body">总知识点: 42</div>
+                    <div class="page-body">已掌握: 28</div>
+                    <div class="page-body">正确率: 73%</div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase debug overlay -->
+        <div class="phase-debug">{{ phase }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, watch } = Vue;
+
+createApp({
+  setup() {
+    const contentType = ref('editor');
+    const phase = ref('idle');
+    const isTransitioning = ref(false);
+    const enableRiseSink = ref(true);
+    const enableTransition = ref(true);
+    const speedMultiplier = ref(1);
+    const glassEl = ref(null);
+
+    // Sync CSS variable so all transition-duration scales
+    watch(speedMultiplier, (val) => {
+      document.documentElement.style.setProperty('--anim-speed', String(val));
+    }, { immediate: true });
+
+    const glassClasses = computed(() => {
+      if (!enableTransition.value) return {};
+      return {
+        'glass-sinking': phase.value === 'sinking',
+        'glass-sunken': phase.value === 'loading' || phase.value === 'swapping',
+        'glass-rising': phase.value === 'rising',
+      };
+    });
+
+    async function switchContent(target) {
+      if (isTransitioning.value || contentType.value === target) return;
+
+      // Fast path: transitions disabled
+      if (!enableTransition.value) {
+        contentType.value = target;
+        return;
+      }
+
+      isTransitioning.value = true;
+      const el = glassEl.value;
+      if (!el) return;
+
+      const m = speedMultiplier.value;
+
+      // Phase 1: Sink
+      phase.value = 'sinking';
+
+      if (enableRiseSink.value) {
+        el.classList.add('glass-sinking');
+        await sleep(240 * m);
+        el.classList.add('glass-sunken');
+        el.classList.remove('glass-sinking');
+      }
+
+      // Phase 2: Loading (data swap happens here in production)
+      phase.value = 'loading';
+      await sleep(enableRiseSink.value ? 80 * m : 0);
+
+      // Phase 3: Swap content
+      phase.value = 'swapping';
+      contentType.value = target;
+      await sleep(0); // let Vue render new content
+
+      // Phase 4: Rise
+      phase.value = 'rising';
+
+      if (enableRiseSink.value) {
+        el.classList.add('glass-rising');
+        void el.offsetHeight; // force reflow so transitions register
+        el.classList.remove('glass-sunken');
+        await sleep(240 * m);
+        el.classList.remove('glass-rising');
+      }
+
+      // Phase 5: Idle
+      phase.value = 'idle';
+      isTransitioning.value = false;
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    return {
+      contentType,
+      phase,
+      glassEl,
+      glassClasses,
+      switchContent,
+      enableRiseSink,
+      enableTransition,
+      speedMultiplier,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
