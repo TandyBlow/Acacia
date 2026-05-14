@@ -80,6 +80,7 @@ onMounted(async () => {
     element: treeRef,
     shouldShow: (state) => state.viewState === 'move',
     parent: 'content',
+    skipGlobalTransition: true,
   });
 
   if (treeNodes.value.length === 0) {

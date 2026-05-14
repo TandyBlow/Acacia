@@ -10,7 +10,7 @@ export const UI = {
   nav: {
     move: '移动',
     delete: '删除',
-    addNode: '+ 添加节点',
+    addNode: '添加知识点',
     authTip: '注册或登录以继续',
   },
 

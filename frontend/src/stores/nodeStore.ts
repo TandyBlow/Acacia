@@ -157,6 +157,13 @@ export const useNodeStore = defineStore('node', () => {
     startTransition({ type: 'navigate', nodeId }, 'large');
   }
 
+  function applyPendingSharedData(): void {
+    if (pendingNodeContext.value) {
+      pathNodes.value = pendingNodeContext.value.pathNodes;
+      childNodes.value = pendingNodeContext.value.children;
+    }
+  }
+
   function applyPendingData(): void {
     if (pendingNodeContext.value) {
       activeNode.value = pendingNodeContext.value.nodeInfo;
@@ -241,14 +248,12 @@ export const useNodeStore = defineStore('node', () => {
 
   function startDailyQuiz(): void {
     errorMessage.value = null;
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'daily_quiz' }, 'large');
+    viewState.value = ViewStates.DAILY_QUIZ;
   }
 
   function startWelcome(): void {
     errorMessage.value = null;
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'welcome' }, 'large');
+    viewState.value = ViewStates.WELCOME;
   }
 
   async function checkDailyQuizStatus(): Promise<void> {
@@ -381,6 +386,7 @@ export const useNodeStore = defineStore('node', () => {
     initialize,
     loadNode,
     applyPendingData,
+    applyPendingSharedData,
     setViewState,
     startAdd,
     startDelete,

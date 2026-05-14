@@ -59,6 +59,7 @@ onMounted(() => {
              state.viewState === 'move';
     },
     parent: 'content',
+    skipGlobalTransition: true,
   });
 });
 
