@@ -5,7 +5,9 @@ import * as nodeCache from '../services/nodeCache';
 import type { DataAdapter, NodeRecord, TreeNode, ViewState } from '../types/node';
 import { ViewStates } from '../types/node';
 import { UI } from '../constants/uiStrings';
+import { LAST_ACTIVE_NODE_KEY } from '../constants/app';
 import { usePageTransition } from '../composables/usePageTransition';
+import { getToken } from '../utils/api';
 
 function formatError(error: unknown): string {
   if (error instanceof Error) {
@@ -14,17 +16,7 @@ function formatError(error: unknown): string {
   return UI.errors.unknown;
 }
 
-let navigator: ((path: string, replace: boolean) => void) | null = null;
-let getInitialNodeId: (() => string | null) | null = null;
 let dataAdapter: DataAdapter | null = null;
-
-export function setNavigator(
-  nav: (path: string, replace: boolean) => void,
-  getRouteId: () => string | null,
-): void {
-  navigator = nav;
-  getInitialNodeId = getRouteId;
-}
 
 export function setDataAdapter(adapter: DataAdapter): void {
   dataAdapter = adapter;
@@ -35,8 +27,11 @@ export function getDataAdapter(): DataAdapter {
   return dataAdapter;
 }
 
-function navigate(path: string, replace = false): void {
-  navigator?.(path, replace);
+export interface OfficialNode {
+  id: string;
+  name: string;
+  visible: boolean;
+  action: () => void;
 }
 
 export const useNodeStore = defineStore('node', () => {
@@ -65,6 +60,9 @@ export const useNodeStore = defineStore('node', () => {
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
 
+  // 每日答题可见性
+  const dailyQuizVisible = ref(false);
+
   const isEditState = computed(
     () =>
       viewState.value === ViewStates.ADD ||
@@ -73,10 +71,8 @@ export const useNodeStore = defineStore('node', () => {
   );
 
   const isTreeState = computed(() => viewState.value === ViewStates.TREE);
-  const isQuizState = computed(() => viewState.value === ViewStates.QUIZ);
-  const isQuizHistoryState = computed(() => viewState.value === ViewStates.QUIZ_HISTORY);
-  const isStatsState = computed(() => viewState.value === ViewStates.STATS);
-  const isReviewState = computed(() => viewState.value === ViewStates.REVIEW);
+  const isDailyQuizState = computed(() => viewState.value === ViewStates.DAILY_QUIZ);
+  const isWelcomeState = computed(() => viewState.value === ViewStates.WELCOME);
   const isConfirmState = computed(() => isEditState.value);
 
   const canConfirm = computed(() => {
@@ -103,6 +99,22 @@ export const useNodeStore = defineStore('node', () => {
 
   const currentNodeId = computed(() => activeNode.value?.id ?? null);
 
+  // 官方知识点列表
+  const officialNodes = computed<OfficialNode[]>(() => [
+    {
+      id: 'daily_quiz',
+      name: UI.official.dailyQuiz,
+      visible: dailyQuizVisible.value,
+      action: () => startDailyQuiz(),
+    },
+    {
+      id: 'welcome',
+      name: UI.official.welcome,
+      visible: true,
+      action: () => startWelcome(),
+    },
+  ]);
+
   function clearTransientState(): void {
     operationNode.value = null;
     operationHasChildren.value = false;
@@ -116,10 +128,7 @@ export const useNodeStore = defineStore('node', () => {
     treeNodes.value = await dataAdapter!.getTree();
   }
 
-  let syncRouteFromLoad = false;
-
   async function loadNode(nodeId: string | null, options?: { replace?: boolean; skipTransition?: boolean }): Promise<void> {
-    // When called from executeDataLoading, skip the transition and just fetch data
     if (options?.skipTransition) {
       const cached = nodeCache.getCached(nodeId);
       if (cached) {
@@ -140,22 +149,14 @@ export const useNodeStore = defineStore('node', () => {
       return;
     }
 
-    // Entry point: trigger page transition, which will fetch data via executeDataLoading.
-    // Pre-set cached data so if startTransition is blocked by an in-progress transition,
-    // the pending context is still available for applyPendingData.
     const cached = nodeCache.getCached(nodeId);
     if (cached) {
       pendingNodeContext.value = cached;
     }
 
     startTransition({ type: 'navigate', nodeId }, 'large');
-
-    syncRouteFromLoad = true;
-    const targetPath = nodeId ? `/node/${nodeId}` : '/';
-    navigate(targetPath, options?.replace ?? false);
   }
 
-  // 应用待处理的数据（由转换系统调用）
   function applyPendingData(): void {
     if (pendingNodeContext.value) {
       activeNode.value = pendingNodeContext.value.nodeInfo;
@@ -164,27 +165,17 @@ export const useNodeStore = defineStore('node', () => {
       viewState.value = ViewStates.DISPLAY;
       clearTransientState();
       pendingNodeContext.value = null;
+      try {
+        localStorage.setItem(LAST_ACTIVE_NODE_KEY, activeNode.value?.id ?? '');
+      } catch { /* ignore */ }
     }
-  }
-
-  async function syncFromRoute(nodeId: string | null): Promise<void> {
-    if (syncRouteFromLoad) {
-      syncRouteFromLoad = false;
-      return;
-    }
-    const currentId = activeNode.value?.id ?? null;
-    if (nodeId === currentId) {
-      return;
-    }
-    await loadNode(nodeId);
-    syncRouteFromLoad = false;
   }
 
   async function initialize(): Promise<void> {
-    const routeNodeId = getInitialNodeId?.() ?? null;
-    syncRouteFromLoad = true;
-    await loadNode(routeNodeId);
-    syncRouteFromLoad = false;
+    const lastNodeId = (() => {
+      try { return localStorage.getItem(LAST_ACTIVE_NODE_KEY) || null; } catch { return null; }
+    })();
+    await loadNode(lastNodeId);
   }
 
   function setViewState(state: string): void {
@@ -205,7 +196,6 @@ export const useNodeStore = defineStore('node', () => {
   async function startDelete(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
 
-    // 触发页面转换 — setup 在 loading 阶段（sunken）执行
     const { startTransition } = usePageTransition();
     startTransition({
       type: 'viewState',
@@ -223,7 +213,6 @@ export const useNodeStore = defineStore('node', () => {
   async function startMove(node: NodeRecord): Promise<void> {
     errorMessage.value = null;
 
-    // 触发页面转换 — setup 在 loading 阶段（sunken）执行
     const { startTransition } = usePageTransition();
     startTransition({
       type: 'viewState',
@@ -250,32 +239,35 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
   }
 
-  function startQuiz(): void {
+  function startDailyQuiz(): void {
     errorMessage.value = null;
-
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'quiz' }, 'large');
+    startTransition({ type: 'viewState', newState: 'daily_quiz' }, 'large');
   }
 
-  function startQuizHistory(): void {
+  function startWelcome(): void {
     errorMessage.value = null;
-
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'quiz_history' }, 'large');
+    startTransition({ type: 'viewState', newState: 'welcome' }, 'large');
   }
 
-  function startStats(): void {
-    errorMessage.value = null;
-
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'stats' }, 'large');
-  }
-
-  function startReview(): void {
-    errorMessage.value = null;
-
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'review' }, 'large');
+  async function checkDailyQuizStatus(): Promise<void> {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:7860';
+      const res = await fetch(`${backendUrl}/daily-quiz/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        dailyQuizVisible.value = !data.completed;
+      } else {
+        dailyQuizVisible.value = true;
+      }
+    } catch {
+      dailyQuizVisible.value = true;
+    }
   }
 
   function resetAfterLogout(): void {
@@ -287,7 +279,7 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
     dataAdapter?.clearCache?.();
     nodeCache.invalidateAll();
-    navigate('/', true);
+    try { localStorage.removeItem(LAST_ACTIVE_NODE_KEY); } catch { /* ignore */ }
   }
 
   async function saveActiveNodeContent(nodeId: string, content: string): Promise<boolean> {
@@ -309,7 +301,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function onKnobClick(): Promise<void> {
-    if (viewState.value === ViewStates.QUIZ || viewState.value === ViewStates.QUIZ_HISTORY || viewState.value === ViewStates.STATS || viewState.value === ViewStates.REVIEW) {
+    if (viewState.value === ViewStates.DAILY_QUIZ || viewState.value === ViewStates.WELCOME) {
       viewState.value = ViewStates.DISPLAY;
       return;
     }
@@ -379,13 +371,13 @@ export const useNodeStore = defineStore('node', () => {
     errorMessage,
     isEditState,
     isTreeState,
-    isQuizState,
-    isQuizHistoryState,
-    isStatsState,
-    isReviewState,
+    isDailyQuizState,
+    isWelcomeState,
     isConfirmState,
     canConfirm,
     currentNodeId,
+    dailyQuizVisible,
+    officialNodes,
     initialize,
     loadNode,
     applyPendingData,
@@ -393,16 +385,14 @@ export const useNodeStore = defineStore('node', () => {
     startAdd,
     startDelete,
     startMove,
-    startQuiz,
-    startQuizHistory,
-    startStats,
-    startReview,
+    startDailyQuiz,
+    startWelcome,
+    checkDailyQuizStatus,
     setMoveTargetParent,
     cancelOperation,
     saveActiveNodeContent,
     refreshTree,
     resetAfterLogout,
-    syncFromRoute,
     onKnobClick,
     confirmOperation,
   };

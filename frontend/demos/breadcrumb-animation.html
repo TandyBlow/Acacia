@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>面包屑动画演示</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #e8ecf1;
+    --glass-bg: rgba(255, 255, 255, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.45);
+    --shadow-raised-a: rgba(49, 78, 151, 0.12);
+    --shadow-raised-b: rgba(255, 255, 255, 0.7);
+    --shadow-inset-a: rgba(49, 78, 151, 0.08);
+    --shadow-inset-b: rgba(255, 255, 255, 0.5);
+    --color-primary: #4a6cf7;
+    --color-sunken-border: rgba(109, 138, 255, 0.34);
+    --crumb-height: 44px;
+    --speed: 1;
+    --sink-ms: calc(240ms * var(--speed));
+    --slide-ms: calc(280ms * var(--speed));
+    --rise-ms: calc(240ms * var(--speed));
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .demo-shell {
+    width: 900px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  /* ======== Breadcrumb area (inset shell) ======== */
+  .breadcrumb-stage {
+    background: var(--bg);
+    border-radius: 24px;
+    padding: 12px;
+    box-shadow:
+      inset 9px 9px 18px var(--shadow-inset-a),
+      inset -9px -9px 18px var(--shadow-inset-b);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+  }
+
+  .crumb-track {
+    position: relative;
+    display: flex;
+    gap: 1px;
+    height: var(--crumb-height);
+    overflow: hidden;
+  }
+
+  /* ======== Active area: raised, glass, clickable ======== */
+  .crumb-item {
+    flex: 0 0 auto;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    border-radius: 24px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    color: var(--color-primary);
+    font-size: 14px;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    box-shadow:
+      5px 5px 10px var(--shadow-raised-a),
+      -5px -5px 10px var(--shadow-raised-b);
+  }
+
+  /* ======== Sunken area = current-node look: framed, no shadow, not clickable ======== */
+  .crumb-item.is-current {
+    box-shadow: none;
+    border-color: var(--color-sunken-border);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    cursor: default;
+  }
+
+  /* ================================================================
+     Phase 1: SINK — active → sunken (is-current look)
+     ================================================================ */
+  .crumb-item.sinking {
+    box-shadow: none !important;
+    border-color: var(--color-sunken-border) !important;
+    background: transparent !important;
+    transition:
+      box-shadow var(--sink-ms) ease,
+      border-color var(--sink-ms) ease,
+      background var(--sink-ms) ease;
+  }
+
+  /* ================================================================
+     Phase 2: SLIDE OUT — sunken items go up behind the page
+     ================================================================ */
+  .crumb-item.slide-out {
+    transform: translateY(calc(-1 * var(--crumb-height) - 20px));
+    opacity: 0;
+    transition:
+      transform var(--slide-ms) cubic-bezier(0.4, 0, 0.6, 1),
+      opacity var(--slide-ms) ease;
+  }
+
+  /* ================================================================
+     Phase 3: SLIDE IN — new items arrive from above, sunken-looking
+     ================================================================ */
+  .crumb-item.slide-in-prep {
+    transform: translateY(calc(-1 * var(--crumb-height) - 20px));
+    opacity: 0;
+    transition: none;
+  }
+
+  .crumb-item.slide-in {
+    transform: translateY(0);
+    opacity: 1;
+    transition:
+      transform var(--slide-ms) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      opacity var(--slide-ms) ease;
+  }
+
+  /* ================================================================
+     Phase 4: RISE — sunken → active (remove is-current)
+     ================================================================ */
+  .crumb-item.rising {
+    transition:
+      box-shadow var(--rise-ms) ease,
+      border-color var(--rise-ms) ease,
+      background var(--rise-ms) ease,
+      backdrop-filter var(--rise-ms) ease;
+  }
+
+  /* ======== Speed control ======== */
+  .speed-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: #666;
+    font-size: 13px;
+  }
+
+  .speed-bar input[type="range"] {
+    width: 200px;
+    accent-color: var(--color-primary);
+  }
+
+  .speed-bar .speed-label {
+    min-width: 70px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ======== Route buttons ======== */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .controls button {
+    padding: 10px 20px;
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    color: #333;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow:
+      3px 3px 6px var(--shadow-raised-a),
+      -3px -3px 6px var(--shadow-raised-b);
+    transition: all 160ms ease;
+  }
+
+  .controls button:hover {
+    box-shadow:
+      1px 1px 3px var(--shadow-raised-a),
+      -1px -1px 3px var(--shadow-raised-b);
+  }
+
+  .controls button:active {
+    box-shadow: none;
+    transform: translateY(2px);
+  }
+
+  .controls button.active-route {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .info {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+  }
+
+  .phase-indicator {
+    text-align: center;
+    font-size: 14px;
+    color: var(--color-primary);
+    height: 24px;
+    line-height: 24px;
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-shell">
+  <div class="phase-indicator" id="phaseLabel">等待操作</div>
+
+  <div class="breadcrumb-stage">
+    <div class="crumb-track" id="crumbTrack"></div>
+  </div>
+
+  <div class="speed-bar">
+    <span>1×</span>
+    <input type="range" id="speedSlider" min="1" max="10" value="1" step="0.5">
+    <span class="speed-label" id="speedLabel">1× 正常速度</span>
+  </div>
+
+  <div class="info">点击面包屑节点模拟导航，或点击下方按钮切换路径</div>
+
+  <div class="controls" id="controls"></div>
+</div>
+
+<script>
+  const tree = {
+    home:  { id: 'home',  name: '首页' },
+    math:  { id: 'math',  name: '数学' },
+    alg:   { id: 'alg',   name: '代数' },
+    lin:   { id: 'lin',   name: '线性方程' },
+    quad:  { id: 'quad',  name: '二次方程' },
+    geo:   { id: 'geo',   name: '几何' },
+    sci:   { id: 'sci',   name: '科学' },
+    phys:  { id: 'phys',  name: '物理' },
+    chem:  { id: 'chem',  name: '化学' },
+  };
+
+  const routes = {
+    'A': ['home', 'math', 'alg', 'lin'],
+    'B': ['home', 'math', 'geo'],
+    'C': ['home', 'sci', 'phys'],
+    'D': ['home', 'math'],
+    'E': ['home', 'math', 'alg', 'quad'],
+    'F': ['home', 'sci', 'chem'],
+  };
+
+  const routeNames = {
+    'A': '首页 > 数学 > 代数 > 线性方程',
+    'B': '首页 > 数学 > 几何',
+    'C': '首页 > 科学 > 物理',
+    'D': '首页 > 数学',
+    'E': '首页 > 数学 > 代数 > 二次方程',
+    'F': '首页 > 科学 > 化学',
+  };
+
+  let currentPath = [...routes['A']];
+  let isAnimating = false;
+  let speedMultiplier = 1;
+
+  const track = document.getElementById('crumbTrack');
+  const phaseLabel = document.getElementById('phaseLabel');
+  const controlsEl = document.getElementById('controls');
+  const speedSlider = document.getElementById('speedSlider');
+  const speedLabel = document.getElementById('speedLabel');
+
+  speedSlider.addEventListener('input', () => {
+    speedMultiplier = parseFloat(speedSlider.value);
+    document.documentElement.style.setProperty('--speed', speedMultiplier);
+    speedLabel.textContent = speedMultiplier === 1
+      ? '1× 正常速度'
+      : speedMultiplier.toFixed(1) + '× 慢放';
+  });
+
+  function buildCrumbEl(node, isCurrent) {
+    const el = document.createElement('div');
+    el.className = 'crumb-item' + (isCurrent ? ' is-current' : '');
+    el.textContent = node.name;
+    el.dataset.id = node.id;
+    if (!isCurrent) el.onclick = () => onCrumbClick(node.id);
+    return el;
+  }
+
+  function renderPath(path) {
+    track.innerHTML = '';
+    path.forEach((id, i) => {
+      track.appendChild(buildCrumbEl(tree[id], i === path.length - 1));
+    });
+  }
+
+  function renderControls() {
+    controlsEl.innerHTML = '';
+    Object.entries(routes).forEach(([key, path]) => {
+      const btn = document.createElement('button');
+      btn.textContent = `${key}: ${routeNames[key]}`;
+      if (arraysEqual(path, currentPath)) btn.classList.add('active-route');
+      btn.addEventListener('click', () => navigateTo(path));
+      controlsEl.appendChild(btn);
+    });
+  }
+
+  function arraysEqual(a, b) { return a.length === b.length && a.every((v, i) => v === b[i]); }
+  function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+  function onCrumbClick(nodeId) {
+    if (isAnimating) return;
+    const idx = currentPath.indexOf(nodeId);
+    if (idx === -1) return;
+    const newPath = currentPath.slice(0, idx + 1);
+    if (arraysEqual(newPath, currentPath)) return;
+    navigateTo(newPath);
+  }
+
+  async function navigateTo(newPath) {
+    if (isAnimating) return;
+    if (arraysEqual(newPath, currentPath)) return;
+
+    isAnimating = true;
+    const oldPath = currentPath;
+    currentPath = [...newPath];
+    renderControls();
+
+    const oldSet = new Set(oldPath);
+    const newSet = new Set(newPath);
+    const leavingIds  = oldPath.filter(id => !newSet.has(id));
+    const enteringIds = newPath.filter(id => !oldSet.has(id));
+
+    const allCrumbs = track.querySelectorAll('.crumb-item');
+
+    // ==========================================
+    // Phase 1: SINK — active → sunken (is-current look)
+    // ==========================================
+    setPhase('阶段1: 下沉');
+    for (const el of allCrumbs) {
+      el.classList.add('sinking');
+    }
+    await sleep(240 * speedMultiplier);
+
+    for (const el of allCrumbs) {
+      el.classList.remove('sinking');
+      el.classList.add('is-current');
+    }
+
+    // ==========================================
+    // Phase 2: SLIDE OUT — unwanted sunken items go up
+    // ==========================================
+    if (leavingIds.length > 0) {
+      setPhase('阶段2: 滑出');
+      for (const el of allCrumbs) {
+        if (leavingIds.includes(el.dataset.id)) {
+          el.classList.add('slide-out');
+        }
+      }
+      await sleep(280 * speedMultiplier);
+
+      for (const el of allCrumbs) {
+        if (leavingIds.includes(el.dataset.id)) el.remove();
+      }
+    }
+
+    // ==========================================
+    // Phase 3: SLIDE IN — new items from above, arrive sunken
+    // ==========================================
+    if (enteringIds.length > 0) {
+      setPhase('阶段3: 滑入');
+
+      const newEls = [];
+      for (const id of newPath) {
+        if (enteringIds.includes(id)) {
+          const el = buildCrumbEl(tree[id], false);
+          el.classList.add('is-current', 'slide-in-prep');
+          newEls.push({ id, el });
+        }
+      }
+
+      const existingEls = track.querySelectorAll('.crumb-item');
+      for (const { id, el } of newEls) {
+        const targetIdx = newPath.indexOf(id);
+        if (targetIdx >= existingEls.length) {
+          track.appendChild(el);
+        } else {
+          track.insertBefore(el, existingEls[targetIdx]);
+        }
+      }
+
+      track.offsetHeight; // force reflow
+
+      for (const { el } of newEls) {
+        el.classList.remove('slide-in-prep');
+        el.classList.add('slide-in');
+      }
+
+      await sleep(280 * speedMultiplier);
+
+      for (const { el } of newEls) {
+        el.classList.remove('slide-in');
+      }
+    }
+
+    // ==========================================
+    // Phase 4: RISE — all except current node: sunken → active
+    // ==========================================
+    setPhase('阶段4: 升起');
+    const finalCrumbs = track.querySelectorAll('.crumb-item');
+    for (const el of finalCrumbs) {
+      el.classList.add('rising');
+    }
+    await sleep(10);
+
+    const newLastId = newPath[newPath.length - 1];
+    for (const el of finalCrumbs) {
+      const isCurrent = el.dataset.id === newLastId;
+      if (isCurrent) {
+        // stays sunken (is-current)
+        el.onclick = null;
+        el.style.cursor = 'default';
+      } else {
+        el.classList.remove('is-current');
+        el.style.cursor = 'pointer';
+        el.onclick = () => onCrumbClick(el.dataset.id);
+      }
+    }
+
+    await sleep(240 * speedMultiplier);
+
+    for (const el of finalCrumbs) {
+      el.classList.remove('rising');
+    }
+
+    setPhase('完成');
+    isAnimating = false;
+  }
+
+  function setPhase(text) { phaseLabel.textContent = text; }
+
+  renderPath(currentPath);
+  renderControls();
+</script>
+
+</body>
+</html>

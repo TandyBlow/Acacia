@@ -194,8 +194,7 @@ onMounted(() => {
     shouldShow: (state) => {
       return state.isAuthenticated &&
              !state.activeNode &&
-             state.viewState === 'display' &&
-             !state.isFeaturePanel;
+             state.viewState === 'display';
     },
     parent: 'content',
   });

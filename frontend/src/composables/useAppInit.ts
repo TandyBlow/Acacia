@@ -1,5 +1,4 @@
 import { computed, onMounted, provide, watch } from 'vue';
-import { useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/authStore';
 import { useNodeStore } from '../stores/nodeStore';
 import { useStyleStore } from '../stores/styleStore';
@@ -9,7 +8,6 @@ export function useAppInit() {
   const authStore = useAuthStore();
   const nodeStore = useNodeStore();
   const styleStore = useStyleStore();
-  const route = useRoute();
 
   const isBusy = computed(() => nodeStore.isBusy || authStore.isBusy);
   provide('isBusy', isBusy);
@@ -18,6 +16,7 @@ export function useAppInit() {
     await authStore.initialize();
     if (authStore.isAuthenticated) {
       await nodeStore.initialize();
+      nodeStore.checkDailyQuizStatus();
       preloadSkeleton();
       if (authStore.user?.id) {
         styleStore.fetchStyle(authStore.user.id);
@@ -41,17 +40,6 @@ export function useAppInit() {
       if (!authenticated && prevAuthenticated) {
         styleStore.reset();
       }
-    },
-  );
-
-  watch(
-    () => route.params.id as string | undefined,
-    (id) => {
-      if (!authStore.isAuthenticated) {
-        return;
-      }
-      const nodeId = id ?? null;
-      void nodeStore.syncFromRoute(nodeId);
     },
   );
 

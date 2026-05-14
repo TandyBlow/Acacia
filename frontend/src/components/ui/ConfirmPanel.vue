@@ -30,38 +30,23 @@
         </GlassWrapper>
       </button>
     </section>
-
-    <section v-else-if="isLoggingOut" class="block">
-      <h2>{{ UI.confirm.logout }}</h2>
-      <div class="target-name">{{ logoutPrompt }}</div>
-    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from './GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
-import { useAuthStore } from '../../stores/authStore';
-import { useKnobDispatch } from '../../composables/useKnobDispatch';
 import { usePageTransition } from '../../composables/usePageTransition';
 import { ViewStates } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
-const authStore = useAuthStore();
 const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteWithChildren } =
   storeToRefs(nodeStore);
-const { currentUsername } = storeToRefs(authStore);
-const { isLoggingOut, logoutUsername } = useKnobDispatch();
 const { registerRegion, unregisterRegion } = usePageTransition();
 const panelRef = ref<HTMLElement | null>(null);
-
-const logoutPrompt = computed(() => {
-  const name = logoutUsername.value || currentUsername.value || UI.errors.unknownUser;
-  return UI.confirm.logoutPrompt(name);
-});
 
 onMounted(() => {
   registerRegion({

@@ -72,18 +72,13 @@ export class SceneManager {
   private treeBounds: THREE.Box3 | null = null;
   private treeCenter = new THREE.Vector3();
 
-  // Resize animation
-  private sinkAnimProgress = 0;
-  private riseAnimProgress = 0;
-  private sinkTargetY = 0;
-  private isSinking = false;
-  private isRising = false;
+  // Resize handling
+  private isResizing = false;
   private resizeDebounceTimer: number | null = null;
   private refContainerW = 0;
   private refContainerH = 0;
   private lastContainerW = 0;
   private lastContainerH = 0;
-  private treeHeight = 0;
 
   // Context loss
   private contextLost = false;
@@ -230,10 +225,9 @@ export class SceneManager {
     this.lastContainerW = w;
     this.lastContainerH = h;
 
-    if (!this.isSinking && !this.isRising) {
-      this.isSinking = true;
-      this.sinkAnimProgress = 0;
-      this.sinkTargetY = -this.treeHeight * 0.3;
+    if (!this.isResizing) {
+      this.isResizing = true;
+      this.renderer.domElement.style.opacity = '0';
       this.callbacks.onResizeStart();
     }
 
@@ -387,7 +381,6 @@ export class SceneManager {
     this.treeBounds.getCenter(this.treeCenter);
     const size = new THREE.Vector3();
     this.treeBounds.getSize(size);
-    this.treeHeight = size.y;
 
     // Debug: log raw ez-tree mesh bounds
     if (this.ezTree) {
@@ -527,23 +520,16 @@ export class SceneManager {
     // Rebuild outline meshes with new geometry
     this.buildOutlineMeshes();
 
-    // Compute bounds at rest position (y=0) to avoid offset from sink/rise animation
-    const savedY = this.treeGroup.position.y;
-    this.treeGroup.position.y = 0;
+    // Compute bounds
     this.treeGroup.updateMatrixWorld(true);
     this.treeBounds = new THREE.Box3().setFromObject(this.treeGroup);
     this.treeBounds.getCenter(this.treeCenter);
     const size = new THREE.Vector3();
     this.treeBounds.getSize(size);
-    this.treeHeight = size.y;
 
     if (this.camera) {
       this.refitCamera();
-      // this.updateGroundLineY();
-      // this.updateParticleSpawnArea();
     }
-
-    this.treeGroup.position.y = savedY;
   }
 
   private refitCamera() {
@@ -901,28 +887,6 @@ export class SceneManager {
       }
     }
 
-    // Sink/rise animations
-    if (this.isSinking && this.treeGroup) {
-      this.sinkAnimProgress += dt / 0.3;
-      if (this.sinkAnimProgress >= 1) {
-        this.sinkAnimProgress = 1;
-        this.isSinking = false;
-      }
-      const eased = 1 - Math.pow(1 - this.sinkAnimProgress, 3);
-      this.treeGroup.position.y = this.sinkTargetY * eased;
-    }
-
-    if (this.isRising && this.treeGroup) {
-      this.riseAnimProgress += dt / 0.4;
-      if (this.riseAnimProgress >= 1) {
-        this.riseAnimProgress = 1;
-        this.isRising = false;
-        this.callbacks.onResizeEnd();
-      }
-      const eased = 1 - Math.pow(1 - this.riseAnimProgress, 3);
-      this.treeGroup.position.y = this.sinkTargetY * (1 - eased);
-    }
-
     // Update ground time uniform (disabled)
     // if (this.groundMaterial) {
     //   this.groundMaterial.uniforms.uTime!.value = this.elapsedTime;
@@ -954,11 +918,13 @@ export class SceneManager {
 
   private async onResizeDebounced() {
     if (!this.skeleton) {
+      this.renderer.domElement.style.opacity = '1';
+      this.isResizing = false;
       this.callbacks.onResizeEnd();
       return;
     }
 
-    // Compute bounds at rest position (y=0) to avoid offset from sink animation
+    // Recompute bounds and refit camera for new container size
     this.treeGroup.position.y = 0;
     this.treeGroup.updateMatrixWorld(true);
     this.treeBounds = new THREE.Box3().setFromObject(this.treeGroup);
@@ -1003,10 +969,10 @@ export class SceneManager {
       this.backgroundPlane.updateSize();
     }
 
-    // Set sunk position for rise animation
-    this.treeGroup.position.y = this.sinkTargetY;
-    this.isRising = true;
-    this.riseAnimProgress = 0;
+    // Show canvas now that camera is correctly positioned
+    this.renderer.domElement.style.opacity = '1';
+    this.isResizing = false;
+    this.callbacks.onResizeEnd();
   }
 
   private stopAnimation() {

@@ -648,6 +648,10 @@ class ChatMarkConceptRequest(BaseModel):
     concept_name: str
 
 
+class ChatEndRequest(BaseModel):
+    session_id: str
+
+
 @app.post("/start-conversation")
 def start_conversation_endpoint(
     request: StartConversationRequest,
@@ -860,6 +864,22 @@ def chat_mark_concept_endpoint(
         )
 
 
+@app.post("/chat/end")
+def chat_end_endpoint(
+    request: ChatEndRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Manually end a Socratic chat session."""
+    from chat_service import end_chat
+    try:
+        return end_chat(request.session_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+
 @app.get("/chat/sessions/{session_id}")
 def get_chat_session_endpoint(
     session_id: str,
@@ -980,6 +1000,81 @@ def quiz_stats_endpoint(user: dict = Depends(get_current_user)):
     with get_db_ctx() as conn:
         try:
             return get_quiz_stats_sqlite(owner_id, conn)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# --- Daily Quiz ---
+
+class DailyQuizCompleteRequest(BaseModel):
+    pass
+
+
+def _get_today_date() -> str:
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _get_refresh_at() -> str:
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    today_630 = now.replace(hour=6, minute=30, second=0, microsecond=0)
+    if now < today_630:
+        # Before 6:30 AM — refresh_at is today 6:30 AM
+        return today_630.isoformat()
+    # After 6:30 AM — refresh_at is tomorrow 6:30 AM
+    return (today_630 + timedelta(days=1)).isoformat()
+
+
+@app.get("/daily-quiz/status")
+def daily_quiz_status(user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    today = _get_today_date()
+    refresh_at = _get_refresh_at()
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            "SELECT completed FROM daily_quiz_completion WHERE user_id = ? AND date = ?",
+            (owner_id, today),
+        ).fetchone()
+        return {"completed": bool(row and row["completed"]), "refresh_at": refresh_at}
+
+
+@app.post("/daily-quiz/complete")
+def daily_quiz_complete(user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    today = _get_today_date()
+    completion_id = str(uuid4())
+    with get_db_ctx() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO daily_quiz_completion (id, user_id, date, completed, completed_at)
+               VALUES (?, ?, ?, 1, datetime('now'))""",
+            (completion_id, owner_id, today),
+        )
+        return {"completed": True, "date": today}
+
+
+@app.post("/generate-daily-quiz")
+def generate_daily_quiz(user: dict = Depends(get_current_user)):
+    import random
+    owner_id = user["sub"]
+    question_types = ["single_choice", "true_false", "short_answer"]
+    question_type = random.choice(question_types)
+    with get_db_ctx() as conn:
+        # Select a random non-deleted node owned by this user that has content
+        nodes = conn.execute(
+            """SELECT id FROM nodes
+               WHERE owner_id = ? AND is_deleted = 0 AND content != ''
+               ORDER BY RANDOM() LIMIT 1""",
+            (owner_id,),
+        ).fetchall()
+        if not nodes:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="没有可用的知识点")
+        node_id = nodes[0]["id"]
+        try:
+            computed_difficulty = compute_adaptive_difficulty(conn, node_id, owner_id)
+            return generate_quiz_question_sqlite(node_id, owner_id, conn, question_type, computed_difficulty)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 

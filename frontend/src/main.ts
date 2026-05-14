@@ -4,7 +4,7 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
 import App from './App.vue';
 import router from './router';
 import { setAuthAdapter } from './stores/authStore';
-import { setNavigator, setDataAdapter } from './stores/nodeStore';
+import { setDataAdapter } from './stores/nodeStore';
 import { loadAdapters } from './adapters';
 import './style.css';
 import './styles/transition.css';
@@ -86,17 +86,6 @@ async function bootstrap(): Promise<void> {
 
   setAuthAdapter(auth);
   setDataAdapter(data);
-  setNavigator(
-    (path, replace) => {
-      if (replace) {
-        router.replace(path);
-      } else {
-        router.push(path);
-      }
-    },
-    () => (router.currentRoute.value.params.id as string) || null,
-  );
-
   app.use(router);
   app.mount('#app');
 }

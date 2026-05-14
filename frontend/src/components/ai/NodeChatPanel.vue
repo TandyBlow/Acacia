@@ -84,9 +84,10 @@
             :current-index="currentKpIndex"
             :total="totalKp"
             :current-kp-title="currentSubTopic || '当前主题'"
-            :is-completed="false"
+            :is-completed="isCompleted"
             @answer="onAnswer"
             @skip="onSkip"
+            @end="onEnd"
           >
             <template #extra-actions>
               <div class="extra-chat-actions">
@@ -129,12 +130,13 @@ import { useNodeStore } from '../../stores/nodeStore';
 
 const {
   mode, sessionId, isBusy, errorMessage,
+  isCompleted,
   currentSubTopic, messages,
   totalKp, currentKpIndex,
   setNodeId, setTextMode, setFileMode,
   startTextChat: doStartTextChat,
   startFileChat: doStartFileChat,
-  sendMessage, skipTurn,
+  sendMessage, skipTurn, endConversation,
   regenerateWithTreeContext,
   markConcept,
   resetForNewNode,
@@ -201,6 +203,15 @@ async function onAnswer(answer: string) {
 
 async function onSkip() {
   const result = await skipTurn();
+  if (result) {
+    conversationRef.value?.addAiMessage(result.ai_message);
+  } else if (errorMessage.value) {
+    conversationRef.value?.resetThinking(errorMessage.value);
+  }
+}
+
+async function onEnd() {
+  const result = await endConversation();
   if (result) {
     conversationRef.value?.addAiMessage(result.ai_message);
   } else if (errorMessage.value) {

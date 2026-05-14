@@ -1,5 +1,11 @@
 <template>
-  <div class="nav-shell">
+  <div class="nav-shell" :class="{
+    'nav-sinking': navPhase === 'sinking',
+    'nav-slide-out': navPhase === 'sliding-out',
+    'nav-slide-in-prep': navPhase === 'sliding-in-prep',
+    'nav-slide-in': navPhase === 'sliding-in',
+    'nav-rising': navPhase === 'rising',
+  }">
     <template v-if="isAuthenticated">
       <TransitionGroup
         ref="nodeListRef"
@@ -13,25 +19,26 @@
         @touchstart.passive="onTouchStart"
         @touchend="onTouchEnd"
       >
-        <div v-if="childNodes.length === 0" key="empty" class="empty" />
+        <div v-if="displayItems.length === 0" key="empty" class="empty" />
 
-        <div v-for="node in displayNodes" :key="node.id" class="row">
+        <div v-for="item in displayItems" :key="item.id" class="row">
           <GlassWrapper
             class="row-glass"
+            :class="{ 'official-glass': item.isOfficial }"
             interactive
-            :pressed="pressedNodeId === node.id || scrollingTopId === node.id || scrollingBottomId === node.id"
-            @click="onRowClick(node.id)"
-            @contextmenu.prevent="onContextMenu(node.id)"
+            :pressed="!item.isOfficial && (pressedNodeId === item.id || scrollingTopId === item.id || scrollingBottomId === item.id)"
+            @click="item.isOfficial ? item.action!() : onRowClick(item.id)"
+            @contextmenu.prevent="!item.isOfficial && onContextMenu(item.id)"
           >
-            <div class="row-content">
-              <template v-if="actionNodeId !== node.id">
-                <span class="row-name">{{ node.name }}</span>
+            <div class="row-content" :class="{ 'official-content': item.isOfficial }">
+              <template v-if="!item.isOfficial && actionNodeId === item.id">
+                <div class="inline-actions">
+                  <button type="button" class="action-half" @click.stop="moveNode(item.nodeData!)">{{ UI.nav.move }}</button>
+                  <button type="button" class="action-half" @click.stop="deleteNode(item.nodeData!)">{{ UI.nav.delete }}</button>
+                </div>
               </template>
               <template v-else>
-                <div class="inline-actions">
-                  <button type="button" class="action-half" @click.stop="moveNode(node)">{{ UI.nav.move }}</button>
-                  <button type="button" class="action-half" @click.stop="deleteNode(node)">{{ UI.nav.delete }}</button>
-                </div>
+                <span class="row-name" :class="{ 'official-name': item.isOfficial }">{{ item.name }}</span>
               </template>
             </div>
           </GlassWrapper>
@@ -61,7 +68,6 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useDevStore } from '../../stores/devStore';
-import { usePageTransition } from '../../composables/usePageTransition';
 import type { NodeRecord } from '../../types/node';
 import {
   NAV_ROW_H,
@@ -77,25 +83,69 @@ import { UI } from '../../constants/uiStrings';
 
 const ROW_STEP = NAV_ROW_H + NAV_ROW_GAP;
 
+// Page navigation animation durations (mirrors breadcrumbs: sink → slide-out → slide-in → rise)
+const NAV_SINK_MS = 240;
+const NAV_SLIDE_MS = 280;
+const NAV_RISE_MS = 240;
+
 const store = useNodeStore();
 const authStore = useAuthStore();
-const { childNodes } = storeToRefs(store);
+const { childNodes, officialNodes, activeNode } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
+
+const visibleOfficialNodes = computed(() =>
+  officialNodes.value.filter(n => n.visible),
+);
+
+// Official section visibility, synchronized with page nav animation
+const showOfficialNodes = ref(visibleOfficialNodes.value.length > 0 && !activeNode.value);
+
+interface NavItem {
+  id: string;
+  name: string;
+  isOfficial: boolean;
+  action?: () => void;
+  nodeData?: NodeRecord;
+}
+
+// Full scrollable list: official nodes (when shown) + child nodes
+const scrollSource = computed<NavItem[]>(() => {
+  const items: NavItem[] = [];
+  if (showOfficialNodes.value) {
+    for (const n of visibleOfficialNodes.value) {
+      items.push({ id: n.id, name: n.name, isOfficial: true, action: n.action });
+    }
+  }
+  for (const n of childNodes.value) {
+    items.push({ id: n.id, name: n.name, isOfficial: false, nodeData: n });
+  }
+  return items;
+});
+
+// --- page navigation animation state ---
+const navPhase = ref<'idle' | 'sinking' | 'sliding-out' | 'sliding-in-prep' | 'sliding-in' | 'rising'>('idle');
+const navAnimating = ref(false);
+let navAnimToken = 0;
+let lastActiveNodeId: string | null = null;
+let hasInitialized = false;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // --- scroll state ---
 const nodeListRef = ref<ComponentPublicInstance | HTMLElement | null>(null);
 const containerH = ref(0);
 const scrollOffset = ref(0);
 const isAnimating = ref(false);
-const displayNodes = ref<NodeRecord[]>([]);
+const displayItems = ref<NavItem[]>([]);
 const scrollingTopId = ref<string | null>(null);
 const scrollingBottomId = ref<string | null>(null);
 const scrollDirection = ref<'up' | 'down' | null>(null);
 const transitionName = ref('cell');
 const devStore = useDevStore();
-const { isTransitioning } = usePageTransition();
 const effectiveTransitionName = computed(() => {
-  if (!devStore.enableRiseSink || isTransitioning.value) return 'none';
+  if (!devStore.enableRiseSink || navAnimating.value) return 'none';
   return transitionName.value;
 });
 
@@ -130,52 +180,125 @@ function calcAnimDuration(): number {
   return Math.round(duration);
 }
 
+// ================================================================
+// 4-phase page navigation animation (mirrors breadcrumbs)
+// Sink → slide-out-left → commit DOM → slide-in-from-left → rise
+// ================================================================
+async function animateNavPageTransition() {
+  transitionName.value = 'none';
+
+  if (navAnimating.value) {
+    navAnimToken++;
+    navPhase.value = 'idle';
+    navAnimating.value = false;
+    pressedNodeId.value = null;
+    displayItems.value = scrollSource.value.slice(0, maxVisible.value);
+    nextTick(() => { transitionName.value = 'cell'; });
+    return;
+  }
+
+  navAnimating.value = true;
+  const token = ++navAnimToken;
+  const el = nodeListRef.value as HTMLElement | null;
+
+  // Phase 1: Sink — all glass items become pressed/sunken
+  navPhase.value = 'sinking';
+  await nextTick();
+  if (token !== navAnimToken) return;
+  await sleep(NAV_SINK_MS);
+  if (token !== navAnimToken) return;
+
+  // Phase 2: Slide out left — old content slides left behind the page
+  navPhase.value = 'sliding-out';
+  await sleep(NAV_SLIDE_MS);
+  if (token !== navAnimToken) return;
+
+  // Commit new DOM in prep position (off-screen left, no transition)
+  showOfficialNodes.value = visibleOfficialNodes.value.length > 0 && !activeNode.value;
+  pressedNodeId.value = null;
+  displayItems.value = scrollSource.value.slice(0, maxVisible.value);
+  navPhase.value = 'sliding-in-prep';
+
+  await nextTick();
+  if (token !== navAnimToken) return;
+
+  // Force reflow so prep position is painted, then trigger slide-in
+  if (el) void el.offsetHeight;
+  navPhase.value = 'sliding-in';
+
+  // Phase 3: Slide in from left — new content arrives from behind the page
+  await sleep(NAV_SLIDE_MS);
+  if (token !== navAnimToken) return;
+
+  // Phase 4: Rise — glass items regain shadow
+  navPhase.value = 'rising';
+  await nextTick();
+  if (token !== navAnimToken) return;
+  await sleep(NAV_RISE_MS);
+
+  navPhase.value = 'idle';
+  navAnimating.value = false;
+  nextTick(() => { transitionName.value = 'cell'; });
+}
+
 // --- interaction state ---
 const actionNodeId = ref<string | null>(null);
 const addPressed = computed(() => store.viewState === 'add');
 const pressedNodeId = ref<string | null>(null);
 
 // [Bug2 fix] reset when child nodes change — cancel any in-flight scroll
-watch(childNodes, (list) => {
+watch(childNodes, () => {
   scrollCancelToken++;
   scrollQueue.value = [];
   isAnimating.value = false;
   scrollOffset.value = 0;
-  pressedNodeId.value = null;
   scrollingTopId.value = null;
   scrollingBottomId.value = null;
   scrollDirection.value = null;
   currentSpeed.value = 0;
   currentAnimMs.value = NAV_ANIM_MS;
-  displayNodes.value = list.slice(0, maxVisible.value);
-  // 禁用初始动画，直接显示
-  transitionName.value = 'none';
-  nextTick(() => { transitionName.value = 'cell'; });
+
+  const newActiveId = activeNode.value?.id ?? null;
+  const isPageNav = hasInitialized && newActiveId !== lastActiveNodeId;
+
+  if (isPageNav) {
+    // Page navigation — run 4-phase animation
+    lastActiveNodeId = newActiveId;
+    animateNavPageTransition();
+  } else {
+    // Initial load or non-navigation change — render without animation
+    if (!hasInitialized) hasInitialized = true;
+    lastActiveNodeId = newActiveId;
+    showOfficialNodes.value = visibleOfficialNodes.value.length > 0 && !activeNode.value;
+    pressedNodeId.value = null;
+    displayItems.value = scrollSource.value.slice(0, maxVisible.value);
+    transitionName.value = 'none';
+    nextTick(() => { transitionName.value = 'cell'; });
+  }
 }, { immediate: true });
 
 // [Bug4 fix] update visible window when container resizes
 watch(maxVisible, (mv) => {
-  if (!isAnimating.value) {
-    displayNodes.value = childNodes.value.slice(scrollOffset.value, scrollOffset.value + mv);
+  if (!isAnimating.value && !navAnimating.value) {
+    displayItems.value = scrollSource.value.slice(scrollOffset.value, scrollOffset.value + mv);
   }
 });
 
 function onRowClick(nodeId: string): void {
-  if (isAnimating.value) return;
+  if (isAnimating.value || navAnimating.value) return;
   if (actionNodeId.value === nodeId) return;
   openNode(nodeId);
 }
 
 function onContextMenu(nodeId: string): void {
-  if (isAnimating.value) return;
+  if (isAnimating.value || navAnimating.value) return;
   toggleActions(nodeId);
 }
 
 function openNode(nodeId: string): void {
-  if (pressedNodeId.value) return;
+  if (pressedNodeId.value || navAnimating.value) return;
   actionNodeId.value = null;
   pressedNodeId.value = nodeId;
-  transitionName.value = 'none';
   setTimeout(() => {
     store.loadNode(nodeId).catch(() => {
       pressedNodeId.value = null;
@@ -285,7 +408,7 @@ async function processScrollQueue(): Promise<void> {
     const entry = scrollQueue.value.shift()!;
 
     const canScroll = entry.direction === 'down'
-      ? scrollOffset.value + maxVisible.value < childNodes.value.length
+      ? scrollOffset.value + maxVisible.value < scrollSource.value.length
       : scrollOffset.value > 0;
     if (!canScroll) continue;
 
@@ -310,7 +433,7 @@ async function applyMomentum(): Promise<void> {
 
     const direction = lastScrollDirection.value;
     const canScroll = direction === 'down'
-      ? scrollOffset.value + maxVisible.value < childNodes.value.length
+      ? scrollOffset.value + maxVisible.value < scrollSource.value.length
       : scrollOffset.value > 0;
     if (!canScroll) break;
 
@@ -330,24 +453,24 @@ function animateSingleScroll(direction: 'up' | 'down', totalMs: number): Promise
 
   return new Promise<void>((resolve) => {
     if (direction === 'down') {
-      const topId = displayNodes.value[0]?.id;
-      const newNode = childNodes.value[scrollOffset.value + maxVisible.value];
-      if (!topId || !newNode) { resolve(); return; }
+      const topId = displayItems.value[0]?.id;
+      const newItem = scrollSource.value[scrollOffset.value + maxVisible.value];
+      if (!topId || !newItem) { resolve(); return; }
 
       scrollingTopId.value = topId;
 
       setTimeout(() => {
         if (token !== scrollCancelToken) { resolve(); return; }
         scrollingTopId.value = null;
-        scrollingBottomId.value = newNode.id;
-        displayNodes.value = [...displayNodes.value.slice(1), newNode];
+        scrollingBottomId.value = newItem.id;
+        displayItems.value = [...displayItems.value.slice(1), newItem];
         scrollOffset.value = scrollOffset.value + 1;
 
         setTimeout(() => {
           if (token !== scrollCancelToken) { resolve(); return; }
           scrollingBottomId.value = null;
           scrollDirection.value = null;
-          displayNodes.value = childNodes.value.slice(
+          displayItems.value = scrollSource.value.slice(
             scrollOffset.value,
             scrollOffset.value + maxVisible.value,
           );
@@ -355,24 +478,24 @@ function animateSingleScroll(direction: 'up' | 'down', totalMs: number): Promise
         }, phase2Ms);
       }, phase1Ms);
     } else {
-      const bottomId = displayNodes.value[displayNodes.value.length - 1]?.id;
-      const newNode = childNodes.value[scrollOffset.value - 1];
-      if (!bottomId || !newNode) { resolve(); return; }
+      const bottomId = displayItems.value[displayItems.value.length - 1]?.id;
+      const newItem = scrollSource.value[scrollOffset.value - 1];
+      if (!bottomId || !newItem) { resolve(); return; }
 
       scrollingBottomId.value = bottomId;
 
       setTimeout(() => {
         if (token !== scrollCancelToken) { resolve(); return; }
         scrollingBottomId.value = null;
-        scrollingTopId.value = newNode.id;
-        displayNodes.value = [newNode, ...displayNodes.value.slice(0, -1)];
+        scrollingTopId.value = newItem.id;
+        displayItems.value = [newItem, ...displayItems.value.slice(0, -1)];
         scrollOffset.value = scrollOffset.value - 1;
 
         setTimeout(() => {
           if (token !== scrollCancelToken) { resolve(); return; }
           scrollingTopId.value = null;
           scrollDirection.value = null;
-          displayNodes.value = childNodes.value.slice(
+          displayItems.value = scrollSource.value.slice(
             scrollOffset.value,
             scrollOffset.value + maxVisible.value,
           );
@@ -566,4 +689,90 @@ onUnmounted(() => ro?.disconnect());
   opacity: 1 !important;
   transform: none !important;
 }
+
+/* Official nodes */
+.official-glass {
+  width: 100%;
+  height: 100%;
+}
+
+.official-glass :deep(.glass-raised) {
+  box-shadow:
+    4px 4px 8px var(--shadow-raised-a),
+    -4px -4px 8px var(--shadow-raised-b);
+}
+
+.official-content {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: rgba(255, 187, 51, 0.12);
+}
+
+.official-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #FFBB33;
+}
+
+/* ================================================================
+   Page navigation 4-phase animation (mirrors breadcrumbs)
+   Must be at end of style section so these overrides win against
+   equal-specificity .row-glass / .add-shell :deep() selectors above.
+   ================================================================ */
+
+/* Sunken state: persists from sinking through sliding-in */
+.nav-sinking :deep(.glass-raised),
+.nav-slide-out :deep(.glass-raised),
+.nav-slide-in-prep :deep(.glass-raised),
+.nav-slide-in :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.nav-sinking :deep(.glass-content),
+.nav-slide-out :deep(.glass-content),
+.nav-slide-in-prep :deep(.glass-content),
+.nav-slide-in :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.nav-sinking :deep(.official-content),
+.nav-slide-out :deep(.official-content),
+.nav-slide-in-prep :deep(.official-content),
+.nav-slide-in :deep(.official-content) {
+  background: transparent;
+}
+
+/* Phase 2: Slide out left — container moves left, fades out */
+.nav-slide-out {
+  transform: translateX(-80px);
+  opacity: 0;
+  transition:
+    transform 280ms cubic-bezier(0.4, 0, 0.6, 1),
+    opacity 280ms ease;
+}
+
+/* Phase 3 prep: new content positioned left, no transition (forced by reflow in JS) */
+.nav-slide-in-prep {
+  transform: translateX(-80px);
+  opacity: 0;
+  transition: none;
+}
+
+/* Phase 3: Slide in from left */
+.nav-slide-in {
+  transform: translateX(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
+}
+
+/* Phase 4: Rise — no explicit overrides needed.
+   Removing sunken classes lets GlassWrapper's default transition
+   animate back to the raised state naturally. */
 </style>
