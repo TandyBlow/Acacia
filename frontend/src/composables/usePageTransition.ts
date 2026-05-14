@@ -21,7 +21,7 @@ const newRegions = ref<Set<string>>(new Set());
 async function sinkRegions(regionIds: Set<string>): Promise<void> {
   const matched = Array.from(regionIds)
     .map(id => regions.get(id))
-    .filter((reg): reg is RegionRegistration => reg !== undefined && !reg.skipGlobalTransition);
+    .filter((reg): reg is RegionRegistration => reg !== undefined && !reg.skipGlobalTransition && reg.type === 'glass');
 
   if (matched.length === 0) {
     return;
@@ -30,11 +30,7 @@ async function sinkRegions(regionIds: Set<string>): Promise<void> {
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
-    if (reg.type === 'glass') {
-      el.classList.add('glass-sinking');
-    } else {
-      el.classList.add('inset-sinking');
-    }
+    el.classList.add('glass-sinking');
   }
 
   await new Promise(resolve => setTimeout(resolve, 240));
@@ -42,20 +38,15 @@ async function sinkRegions(regionIds: Set<string>): Promise<void> {
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
-    if (reg.type === 'glass') {
-      el.classList.add('glass-sunken');
-      el.classList.remove('glass-sinking');
-    } else {
-      el.classList.add('inset-sunken');
-      el.classList.remove('inset-sinking');
-    }
+    el.classList.add('glass-sunken');
+    el.classList.remove('glass-sinking');
   }
 }
 
 async function riseRegions(regionIds: Set<string>): Promise<void> {
   const matched = Array.from(regionIds)
     .map(id => regions.get(id))
-    .filter((reg): reg is RegionRegistration => reg !== undefined && !reg.skipGlobalTransition);
+    .filter((reg): reg is RegionRegistration => reg !== undefined && !reg.skipGlobalTransition && reg.type === 'glass');
 
   if (matched.length === 0) {
     return;
@@ -64,11 +55,7 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
-    if (reg.type === 'glass') {
-      el.classList.add('glass-rising');
-    } else {
-      el.classList.add('inset-rising');
-    }
+    el.classList.add('glass-rising');
   }
 
   void (matched[0]?.element.value?.offsetHeight);
@@ -76,11 +63,7 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
-    if (reg.type === 'glass') {
-      el.classList.remove('glass-sunken');
-    } else {
-      el.classList.remove('inset-sunken');
-    }
+    el.classList.remove('glass-sunken');
   }
 
   await new Promise(resolve => setTimeout(resolve, 240));
@@ -88,11 +71,7 @@ async function riseRegions(regionIds: Set<string>): Promise<void> {
   for (const reg of matched) {
     const el = reg.element.value;
     if (!el) continue;
-    if (reg.type === 'glass') {
-      el.classList.remove('glass-rising');
-    } else {
-      el.classList.remove('inset-rising');
-    }
+    el.classList.remove('glass-rising');
   }
 }
 
@@ -165,17 +144,16 @@ export function usePageTransition() {
         for (const [, reg] of regions.entries()) {
           const el = reg.element.value;
           if (!el) continue;
+          if (reg.skipGlobalTransition) continue;
           const shouldBeVisible = reg.shouldShow(newState);
           const currentDisplay = window.getComputedStyle(el).display;
           if (shouldBeVisible && currentDisplay === 'none') {
             el.style.display = '';
-            el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking',
-              'inset-sunken', 'inset-rising', 'inset-sinking');
+            el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking');
           } else if (!shouldBeVisible && currentDisplay !== 'none') {
             el.style.display = 'none';
           } else if (shouldBeVisible) {
-            el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking',
-              'inset-sunken', 'inset-rising', 'inset-sinking');
+            el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking');
           }
         }
       } catch (error) {
@@ -211,7 +189,7 @@ export function usePageTransition() {
       phase.value = 'swapping';
 
       const nodeStore = useNodeStore();
-      nodeStore.applyPendingData();
+      nodeStore.applyPendingSharedData();
 
       const newState = getCurrentPageState(layout);
       const newVisibleRegions = new Set<string>();
@@ -226,29 +204,24 @@ export function usePageTransition() {
       for (const [id, reg] of regions.entries()) {
         const el = reg.element.value;
         if (!el) continue;
+        if (reg.skipGlobalTransition) continue;
 
         const shouldBeVisible = newVisibleRegions.has(id);
         const wasVisible = oldVisibleRegions.has(id);
 
         if (shouldBeVisible && !wasVisible) {
           el.style.display = '';
-          if (devStore.enableRiseSink) {
-            if (reg.type === 'glass') {
-              el.classList.add('glass-sunken');
-            } else {
-              el.classList.add('inset-sunken');
-            }
+          if (reg.type === 'glass' && devStore.enableRiseSink) {
+            el.classList.add('glass-sunken');
           } else {
             el.classList.remove(
               'glass-sunken', 'glass-rising', 'glass-sinking',
-              'inset-sunken', 'inset-rising', 'inset-sinking',
             );
           }
         } else if (!shouldBeVisible && wasVisible) {
           el.style.display = 'none';
         } else if (shouldBeVisible && wasVisible && !devStore.enableRiseSink) {
-          el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking',
-            'inset-sunken', 'inset-rising', 'inset-sinking');
+          el.classList.remove('glass-sunken', 'glass-rising', 'glass-sinking');
         }
       }
 

@@ -75,6 +75,7 @@ onMounted(() => {
     element: authRef,
     shouldShow: (state) => !state.isAuthenticated,
     parent: 'content',
+    skipGlobalTransition: true,
   });
 });
 

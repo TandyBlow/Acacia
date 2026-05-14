@@ -25,22 +25,28 @@
 
         <section class="content-area">
           <div class="content-inset">
-            <div ref="contentGlassRef" class="content-glass">
+            <div ref="contentGlassRef" class="content-glass" :class="{
+              'content-sinking': contentPhase === 'sinking',
+              'content-slide-out': contentPhase === 'slide-out',
+              'content-slide-in-prep': contentPhase === 'slide-in-prep',
+              'content-slide-in': contentPhase === 'slide-in',
+              'content-rising': contentPhase === 'rising',
+            }">
               <div class="glass-content" style="width:100%;height:100%">
-                <div v-if="showTree" key="tree" class="content-host">
-                  <TreeCanvas ref="treeCanvasRef" :visible="showTree" />
+                <div v-if="displayedShowTree" key="tree" class="content-host">
+                  <TreeCanvas ref="treeCanvasRef" :visible="displayedShowTree" />
                 </div>
-                <template v-if="!showTree">
+                <template v-if="!displayedShowTree">
                   <component
-                    v-if="nonTreeContent === MarkdownEditor"
-                    :is="nonTreeContent"
-                    :key="contentKey"
+                    v-if="displayedNonTreeContent === MarkdownEditor"
+                    :is="displayedNonTreeContent"
+                    :key="displayedKey"
                   />
                   <div v-else class="activity-layout">
                     <div class="activity-glass-host">
                       <GlassWrapper>
                         <div class="activity-scroll">
-                          <component :is="nonTreeContent" :key="contentKey" />
+                          <component :is="displayedNonTreeContent" :key="displayedKey" />
                         </div>
                       </GlassWrapper>
                     </div>
@@ -63,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import LogoArea from '../components/layout/LogoArea.vue';
 import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
@@ -118,6 +124,24 @@ const treeCanvasRef = ref<{ sceneReady: boolean } | null>(null);
 // Compact layout tracking
 const isCompact = ref(false);
 const isTooSmall = ref(false);
+
+// Content slide animation
+const CONTENT_SINK_MS = 240;
+const CONTENT_SLIDE_MS = 280;
+const CONTENT_RISE_MS = 240;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+const contentPhase = ref('idle');
+let contentAnimToken = 0;
+const contentAnimating = ref(false);
+
+const displayedKey = ref('');
+const displayedShowTree = ref(false);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const displayedNonTreeContent = ref<any>(MarkdownEditor);
 
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
   let timeoutId: number | null = null;
@@ -199,6 +223,7 @@ onMounted(() => {
       type: 'glass',
       element: contentGlassRef,
       shouldShow: () => true,
+      skipGlobalTransition: true,
     });
   }
 
@@ -282,6 +307,109 @@ const contentKey = computed(() => {
   }
   const state = nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
+});
+
+// Initialize displayed refs with current values
+displayedKey.value = contentKey.value;
+displayedShowTree.value = showTree.value;
+displayedNonTreeContent.value = nonTreeContent.value;
+
+// ================================================================
+// 4-phase content slide animation: sink → slide-out-right → slide-in-from-right → rise
+// ================================================================
+async function animateContentTransition() {
+  if (contentAnimating.value) {
+    contentAnimToken++;
+    contentPhase.value = 'idle';
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    contentAnimating.value = false;
+    return;
+  }
+
+  contentAnimating.value = true;
+  const token = ++contentAnimToken;
+  const oldKey = displayedKey.value;
+
+  // Phase 1: Sink — glass frame loses shadow, content fades
+  contentPhase.value = 'sinking';
+  await nextTick();
+  if (token !== contentAnimToken) return;
+  await sleep(CONTENT_SINK_MS);
+  if (token !== contentAnimToken) return;
+
+  // Phase 2: Slide out right — old content slides right, fades out
+  contentPhase.value = 'slide-out';
+  await sleep(CONTENT_SLIDE_MS);
+  if (token !== contentAnimToken) return;
+
+  // Apply pending data after slide-out so the editor doesn't
+  // show new content while the old is still on-screen
+  nodeStore.applyPendingData();
+
+  // Content didn't change (e.g. layout transition) — skip slide, just rise
+  if (contentKey.value === oldKey) {
+    contentPhase.value = 'rising';
+    await nextTick();
+    if (token !== contentAnimToken) return;
+    await sleep(CONTENT_RISE_MS);
+    if (token !== contentAnimToken) return;
+    contentPhase.value = 'idle';
+    contentAnimating.value = false;
+    return;
+  }
+
+  // Phase 3: Swap DOM — new content in prep position (off-screen right)
+  displayedKey.value = contentKey.value;
+  displayedShowTree.value = showTree.value;
+  displayedNonTreeContent.value = nonTreeContent.value;
+  contentPhase.value = 'slide-in-prep';
+
+  await nextTick();
+  if (token !== contentAnimToken) return;
+
+  // Force reflow so prep position is painted, then trigger slide-in
+  void contentGlassRef.value?.offsetHeight;
+  contentPhase.value = 'slide-in';
+
+  await sleep(CONTENT_SLIDE_MS);
+  if (token !== contentAnimToken) return;
+
+  // Phase 4: Rise — glass frame regains shadow
+  contentPhase.value = 'rising';
+  await nextTick();
+  if (token !== contentAnimToken) return;
+  await sleep(CONTENT_RISE_MS);
+  if (token !== contentAnimToken) return;
+
+  contentPhase.value = 'idle';
+  contentAnimating.value = false;
+}
+
+// Trigger content animation when global transition starts sinking
+watch(currentPhase, (phase) => {
+  if (phase === 'sinking') {
+    if (contentAnimating.value) {
+      // Cancel in-progress animation, snap to current state
+      contentAnimToken++;
+      contentPhase.value = 'idle';
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      contentAnimating.value = false;
+    }
+    animateContentTransition();
+  }
+});
+
+// Keep displayed refs in sync when not animating (e.g. dev mode with transitions disabled)
+watch(contentKey, () => {
+  if (!contentAnimating.value && contentPhase.value === 'idle') {
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+  }
 });
 
 // Tree curtain logic
@@ -582,6 +710,64 @@ watch(
     justify-self: center;
     width: min(100%, 260px);
   }
+}
+
+/* ================================================================
+   Content area slide animation
+   Sink → slide-out-right → slide-in-from-right → rise
+   ================================================================ */
+
+/* Phase 1: Sinking — inner glass items lose shadow */
+.content-sinking :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.content-sinking :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Sunken hold state: glass items flat — persists through slide phases */
+.content-slide-out :deep(.glass-raised),
+.content-slide-in-prep :deep(.glass-raised),
+.content-slide-in :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.content-slide-out :deep(.glass-content),
+.content-slide-in-prep :deep(.glass-content),
+.content-slide-in :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Phase 2: Slide out right — content slides right, fades out */
+.content-slide-out > .glass-content {
+  transform: translateX(80px);
+  opacity: 0;
+  transition:
+    transform 280ms cubic-bezier(0.4, 0, 0.6, 1),
+    opacity 280ms ease;
+}
+
+/* Phase 3 prep: new content positioned right, no transition (forced by reflow in JS) */
+.content-slide-in-prep > .glass-content {
+  transform: translateX(80px);
+  opacity: 0;
+  transition: none;
+}
+
+/* Phase 3: Slide in from right */
+.content-slide-in > .glass-content {
+  transform: translateX(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
 }
 </style>
 

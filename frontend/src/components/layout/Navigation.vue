@@ -26,8 +26,8 @@
             class="row-glass"
             :class="{ 'official-glass': item.isOfficial }"
             interactive
-            :pressed="!item.isOfficial && (pressedNodeId === item.id || scrollingTopId === item.id || scrollingBottomId === item.id)"
-            @click="item.isOfficial ? item.action!() : onRowClick(item.id)"
+            :pressed="(item.isOfficial && pressedOfficialId === item.id) || (!item.isOfficial && (pressedNodeId === item.id || scrollingTopId === item.id || scrollingBottomId === item.id))"
+            @click="item.isOfficial ? onOfficialClick(item) : onRowClick(item.id)"
             @contextmenu.prevent="!item.isOfficial && onContextMenu(item.id)"
           >
             <div class="row-content" :class="{ 'official-content': item.isOfficial }">
@@ -90,12 +90,17 @@ const NAV_RISE_MS = 240;
 
 const store = useNodeStore();
 const authStore = useAuthStore();
-const { childNodes, officialNodes, activeNode } = storeToRefs(store);
+const { childNodes, officialNodes, activeNode, viewState } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
 
 const visibleOfficialNodes = computed(() =>
   officialNodes.value.filter(n => n.visible),
 );
+
+const pressedOfficialId = computed<string | null>(() => {
+  const state = viewState.value;
+  return state === 'daily_quiz' || state === 'welcome' ? state : null;
+});
 
 // Official section visibility, synchronized with page nav animation
 const showOfficialNodes = ref(visibleOfficialNodes.value.length > 0 && !activeNode.value);
@@ -318,6 +323,14 @@ function onAddClick(): void {
     return;
   }
   store.startAdd();
+}
+
+function onOfficialClick(item: NavItem): void {
+  if (pressedOfficialId.value === item.id) {
+    store.cancelOperation();
+  } else {
+    item.action!();
+  }
 }
 
 function onBeforeLeave(el: Element): void {
@@ -581,6 +594,10 @@ onUnmounted(() => ro?.disconnect());
   text-shadow: 0 2px 2px rgba(0, 0, 0, 0.12);
 }
 
+.row-glass :deep(.glass-pressed) .official-content {
+  background: transparent;
+}
+
 .row-content {
   height: 100%;
   display: flex;
@@ -747,8 +764,8 @@ onUnmounted(() => ro?.disconnect());
   background: transparent;
 }
 
-/* Phase 2: Slide out left — container moves left, fades out */
-.nav-slide-out {
+/* Phase 2: Slide out left — node list moves left, fades out; add button stays in place */
+.nav-slide-out .node-list {
   transform: translateX(-80px);
   opacity: 0;
   transition:
@@ -757,14 +774,14 @@ onUnmounted(() => ro?.disconnect());
 }
 
 /* Phase 3 prep: new content positioned left, no transition (forced by reflow in JS) */
-.nav-slide-in-prep {
+.nav-slide-in-prep .node-list {
   transform: translateX(-80px);
   opacity: 0;
   transition: none;
 }
 
 /* Phase 3: Slide in from left */
-.nav-slide-in {
+.nav-slide-in .node-list {
   transform: translateX(0);
   opacity: 1;
   transition:
