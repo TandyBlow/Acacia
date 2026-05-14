@@ -3,7 +3,7 @@ export const NODE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // UI Timing
 export const KNOB_HOLD_MS = 700;
-export const KNOB_DBLCLICK_MS = 300;
+export const KNOB_DOUBLE_CLICK_MS = 380;
 export const AUTO_SAVE_DELAY_MS = 1000;
 export const COPY_RESET_DELAY_MS = 1200;
 export const NAV_ROW_H = 54;
@@ -28,3 +28,4 @@ export const MIN_SPACE_HEIGHT = 400;
 export const LOCAL_NODES_KEY = 'seewhat_local_nodes_v1';
 export const LOCAL_USERS_KEY = 'seewhat_local_users_v1';
 export const LOCAL_SESSION_KEY = 'seewhat_local_session_v1';
+export const LAST_ACTIVE_NODE_KEY = 'acacia_last_active_node';

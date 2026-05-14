@@ -94,6 +94,17 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_quiz_records_node_owner ON quiz_records(node_id, owner_id, answered_at DESC);
 
+            CREATE TABLE IF NOT EXISTS daily_quiz_completion (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                date TEXT NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 1,
+                completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(user_id, date)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_daily_quiz_user_date ON daily_quiz_completion(user_id, date DESC);
+
             CREATE TABLE IF NOT EXISTS conversation_sessions (
                 id TEXT PRIMARY KEY,
                 owner_id TEXT NOT NULL,

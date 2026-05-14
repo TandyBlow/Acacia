@@ -43,7 +43,6 @@ export const UI = {
     holdToConfirm: '长按旋钮，确认操作',
     clickToHome: '单击旋钮，回到主页',
     clickToReturn: '单击旋钮，回到主页',
-    dblClickFeature: '双击旋钮，选择功能',
   },
 
   // Global Tree
@@ -53,6 +52,16 @@ export const UI = {
     devTestSakura: '测试樱花',
     sakuraDomainTag: '日本文化',
     noBackend: '树可视化需要后端连接',
+  },
+
+  // Official nodes
+  official: {
+    dailyQuiz: '今日成长',
+    welcome: '欢迎',
+    quizCompleted: '今日成长已完成，明天再来吧！',
+    startQuiz: '开始答题',
+    correct: '回答正确！',
+    incorrect: '回答错误',
   },
 
   // Error messages

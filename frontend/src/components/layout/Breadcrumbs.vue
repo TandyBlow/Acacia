@@ -1,24 +1,37 @@
 <template>
   <div class="breadcrumbs-shell">
-    <TransitionGroup v-if="isAuthenticated" :name="transitionName" tag="div" class="crumb-track" ref="crumbTrackRef" @wheel.passive="onWheel" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd">
+    <div
+      v-if="isAuthenticated"
+      class="crumb-track"
+      ref="crumbTrackRef"
+      @wheel.passive="onWheel"
+      @touchstart.passive="onTouchStart"
+      @touchmove.passive="onTouchMove"
+      @touchend.passive="onTouchEnd"
+    >
       <GlassWrapper
-        v-for="node in displayNodes"
+        v-for="(node, i) in displayNodes"
         :key="node.id"
         class="crumb-wrap"
+        :class="{
+          'current-wrap': i === displayNodes.length - 1,
+          'crumb-slide-out': slideOutIds.has(node.id),
+          'crumb-slide-in-prep': enteringIds.has(node.id),
+        }"
+        :data-crumb-id="node.id"
+        :pressed="i === displayNodes.length - 1 || isAnimating"
         interactive
-        @click="goTo(node.id)"
+        @click="i < displayNodes.length - 1 && !busy && goTo(node.id)"
       >
-        <button type="button" class="crumb">
+        <component
+          :is="i === displayNodes.length - 1 ? 'div' : 'button'"
+          :class="i === displayNodes.length - 1 ? 'current-node' : 'crumb'"
+          :type="i === displayNodes.length - 1 ? undefined : 'button'"
+        >
           {{ node.name }}
-        </button>
+        </component>
       </GlassWrapper>
-
-      <GlassWrapper v-if="showCurrentNode" key="current-node" class="crumb-wrap current-wrap" :class="{ sinking: phase === 'collapsing' }" pressed>
-        <div class="current-node">
-          {{ activeNode ? activeNode.name : UI.breadcrumbs.home }}
-        </div>
-      </GlassWrapper>
-    </TransitionGroup>
+    </div>
 
     <div v-else class="crumb-track">
       <GlassWrapper class="crumb-wrap current-wrap" pressed>
@@ -31,15 +44,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
-import { useDevStore } from '../../stores/devStore';
-import { usePageTransition } from '../../composables/usePageTransition';
 import type { NodeRecord } from '../../types/node';
 import { UI } from '../../constants/uiStrings';
+
+// Animation durations (ms)
+const SINK_MS = 240;
+const SLIDE_MS = 280;
+const RISE_MS = 240;
+
+// Home placeholder shown when at root level (no active node)
+const HOME_PLACEHOLDER: NodeRecord = {
+  id: '__home__',
+  name: UI.breadcrumbs.home,
+  content: '',
+  parentId: null,
+  sortOrder: 0,
+};
 
 // Scroll animation constants
 const BREADCRUMB_ANIM_MS = 180;
@@ -51,103 +76,179 @@ const store = useNodeStore();
 const authStore = useAuthStore();
 const { pathNodes, activeNode } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
-const devStore = useDevStore();
-const { isTransitioning } = usePageTransition();
 
-const transitionName = computed(() => {
-  if (!devStore.enableRiseSink || isTransitioning.value) return 'none';
-  return 'cell';
-});
+function buildFullPath(): NodeRecord[] {
+  const ancestors = pathNodes.value;
+  const current = activeNode.value;
+  if (current) return [...ancestors, current];
+  // At root level — show home placeholder as current node
+  if (ancestors.length === 0) return [HOME_PLACEHOLDER];
+  return [...ancestors];
+}
 
-type Phase = 'idle' | 'collapsing' | 'expanding';
-const phase = ref<Phase>('idle');
-const displayNodes = ref<NodeRecord[]>([...pathNodes.value]);
-const showCurrentNode = ref(true);
+// Unified render list: ancestors + current node as last item
+const displayNodes = ref<NodeRecord[]>(buildFullPath());
+
+// Animation state
+const busy = ref(false);
+const isAnimating = ref(false);
+const slideOutIds = ref<Set<string>>(new Set());
+const enteringIds = ref<Set<string>>(new Set());
+
+// Track last rendered path IDs to detect structural changes
+let lastPathIds: string[] = [];
 
 // Scroll engine state
 const scrollQueue = ref<Array<{ direction: 'left' | 'right' }>>([]);
-const isAnimating = ref(false);
+const isScrolling = ref(false);
 const lastWheelTime = ref(0);
 const currentSpeed = ref(0);
 const currentAnimMs = ref(BREADCRUMB_ANIM_MS);
 const crumbTrackRef = ref<HTMLElement | null>(null);
 let scrollCancelToken = 0;
 
-// Touch support state (Task 9)
+// Touch support state
 const touchStartX = ref(0);
 const touchStartTime = ref(0);
 const touchStartScrollLeft = ref(0);
 
-// [Bug6 fix] cancel token to invalidate stale animation callbacks
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function goTo(nodeId: string): Promise<void> {
+  if (busy.value) return;
+  await store.loadNode(nodeId);
+}
+
+// Cancel token for rapid navigation — invalidates stale animation callbacks
 let animToken = 0;
 
-watch(pathNodes, (newPath, oldPath) => {
-  // [Bug5 fix] initial mount — skip animation, just set directly
-  if (oldPath === undefined) {
-    displayNodes.value = [...newPath];
-    return;
-  }
-
-  // [Bug6 fix] rapid navigation — cancel pending animation, reset state
-  if (phase.value !== 'idle') {
-    animToken++;
-    phase.value = 'idle';
-    showCurrentNode.value = true;
-    displayNodes.value = [...newPath];
-    return;
-  }
-
-  // [Task 7] Reset scroll state on path change
-  scrollQueue.value = [];
-  currentSpeed.value = 0;
-  isAnimating.value = false;
-  scrollCancelToken++;
-
-  const old = oldPath;
-  const next = newPath;
-
-  // Find divergence point
-  let diverge = 0;
-  while (
-    diverge < old.length &&
-    diverge < next.length &&
-    old[diverge]!.id === next[diverge]!.id
-  ) {
-    diverge++;
-  }
-
-  const hasRemovals = diverge < old.length;
-  const hasAdditions = diverge < next.length;
-
-  if (!hasRemovals && !hasAdditions) {
-    displayNodes.value = [...next];
-    return;
-  }
-
+// ================================================================
+// 4-phase breadcrumb animation
+// ================================================================
+async function animateBreadcrumb(oldIds: string[], newIds: string[]) {
+  if (busy.value) return;
+  busy.value = true;
+  isAnimating.value = true;
   const token = ++animToken;
+  if (token !== animToken) return;
 
-  if (hasRemovals) {
-    phase.value = 'collapsing';
+  const oldSet = new Set(oldIds);
+  const newSet = new Set(newIds);
+  const leavingIds = oldIds.filter(id => !newSet.has(id));
+  const enteringIdsList = newIds.filter(id => !oldSet.has(id));
 
-    setTimeout(() => {
-      if (token !== animToken) return;
-      displayNodes.value = [...next];
-      showCurrentNode.value = true;
-      phase.value = 'idle';
-    }, 200);
-  } else {
-    // Only additions, just expand
-    phase.value = 'expanding';
-    displayNodes.value = [...next];
-    showCurrentNode.value = true;
+  // Phase 1: Sink — all active items → pressed (sunken)
+  // isAnimating=true triggers :pressed on all GlassWrappers
+  await nextTick();
+  if (token !== animToken) return;
+  await sleep(SINK_MS);
+  if (token !== animToken) return;
 
-    setTimeout(() => {
-      if (token !== animToken) return;
-      phase.value = 'idle';
-    }, 240);
+  // Phase 2: Slide out — unwanted items move up behind the page
+  if (leavingIds.length > 0) {
+    slideOutIds.value = new Set(leavingIds);
+    await sleep(SLIDE_MS);
+    if (token !== animToken) return;
+    slideOutIds.value = new Set();
   }
-}, { immediate: true });
 
+  // Commit new path to DOM
+  displayNodes.value = buildFullPath();
+  if (enteringIdsList.length > 0) {
+    enteringIds.value = new Set(enteringIdsList);
+  }
+
+  await nextTick();
+  if (token !== animToken) return;
+
+  // Phase 3: Slide in — new items arrive from above
+  if (enteringIdsList.length > 0) {
+    const track = crumbTrackRef.value;
+    if (track) {
+      const newItems = track.querySelectorAll<HTMLElement>('.crumb-slide-in-prep');
+      // Force reflow so slide-in-prep (no transition) is applied
+      void track.offsetHeight;
+      for (const el of newItems) {
+        el.classList.remove('crumb-slide-in-prep');
+        el.classList.add('crumb-slide-in');
+      }
+    }
+    await sleep(SLIDE_MS);
+    if (token !== animToken) return;
+
+    // Clean up slide-in classes
+    const track2 = crumbTrackRef.value;
+    if (track2) {
+      for (const el of track2.querySelectorAll<HTMLElement>('.crumb-slide-in')) {
+        el.classList.remove('crumb-slide-in');
+      }
+    }
+    enteringIds.value = new Set();
+  }
+
+  // Phase 4: Rise — all except current node regain shadow
+  isAnimating.value = false;
+  await nextTick();
+  if (token !== animToken) return;
+  await sleep(RISE_MS);
+  busy.value = false;
+}
+
+// Watch for path changes
+watch(
+  [pathNodes, activeNode],
+  () => {
+    const newIds = buildFullPath().map(n => n.id);
+
+    // Initial mount or first data load — render without animation
+    if (lastPathIds.length === 0) {
+      displayNodes.value = buildFullPath();
+      lastPathIds = newIds;
+      return;
+    }
+
+    // Content-only update (e.g. rename) — update text, skip animation
+    if (arraysEqual(newIds, lastPathIds)) {
+      displayNodes.value = buildFullPath();
+      return;
+    }
+
+    // Rapid navigation — cancel in-progress animation, snap to new state
+    if (busy.value) {
+      animToken++;
+      slideOutIds.value = new Set();
+      enteringIds.value = new Set();
+      busy.value = false;
+      isAnimating.value = false;
+      displayNodes.value = buildFullPath();
+      lastPathIds = newIds;
+      return;
+    }
+
+    // Structural change — run 4-phase animation
+    const oldIds = lastPathIds;
+    lastPathIds = newIds;
+
+    // Reset scroll state on path change
+    scrollQueue.value = [];
+    currentSpeed.value = 0;
+    isScrolling.value = false;
+    scrollCancelToken++;
+
+    animateBreadcrumb(oldIds, newIds);
+  },
+  { immediate: true },
+);
+
+// ================================================================
+// Scroll engine (unchanged)
+// ================================================================
 function calcAnimDuration(): number {
   const speed = currentSpeed.value;
   if (speed <= 0) return BREADCRUMB_ANIM_MS;
@@ -159,7 +260,6 @@ function calcAnimDuration(): number {
   return Math.round(duration);
 }
 
-// Used by animateSingleScroll in Task 4
 function findNextScrollTarget(direction: 'left' | 'right'): number {
   const container = crumbTrackRef.value;
   if (!container) return 0;
@@ -173,10 +273,7 @@ function findNextScrollTarget(direction: 'left' | 'right'): number {
     for (const item of items) {
       const itemRect = item.getBoundingClientRect();
       const itemLeft = itemRect.left - containerLeft + currentScrollLeft;
-
-      if (itemLeft > currentScrollLeft + 10) {
-        return itemLeft;
-      }
+      if (itemLeft > currentScrollLeft + 10) return itemLeft;
     }
     return container.scrollWidth - container.clientWidth;
   } else {
@@ -184,10 +281,7 @@ function findNextScrollTarget(direction: 'left' | 'right'): number {
       const item = items[i]!;
       const itemRect = item.getBoundingClientRect();
       const itemLeft = itemRect.left - containerLeft + currentScrollLeft;
-
-      if (itemLeft < currentScrollLeft - 10) {
-        return itemLeft;
-      }
+      if (itemLeft < currentScrollLeft - 10) return itemLeft;
     }
     return 0;
   }
@@ -203,19 +297,17 @@ async function animateSingleScroll(direction: 'left' | 'right', duration: number
   container.style.scrollBehavior = 'smooth';
   container.scrollLeft = targetScrollLeft;
 
-  await new Promise(resolve => setTimeout(resolve, duration));
+  await sleep(duration);
 
   if (token !== scrollCancelToken) return;
-
   container.style.scrollBehavior = 'auto';
 }
 
 async function processScrollQueue(): Promise<void> {
-  isAnimating.value = true;
+  isScrolling.value = true;
 
   while (scrollQueue.value.length > 0) {
     const entry = scrollQueue.value.shift()!;
-
     const container = crumbTrackRef.value;
     if (!container) break;
 
@@ -227,11 +319,10 @@ async function processScrollQueue(): Promise<void> {
 
     const duration = calcAnimDuration();
     currentAnimMs.value = duration;
-
     await animateSingleScroll(entry.direction, duration);
   }
 
-  isAnimating.value = false;
+  isScrolling.value = false;
   currentSpeed.value = 0;
 }
 
@@ -256,7 +347,7 @@ function onWheel(e: WheelEvent): void {
     scrollQueue.value.push({ direction });
   }
 
-  if (!isAnimating.value) {
+  if (!isScrolling.value) {
     processScrollQueue();
   }
 }
@@ -276,7 +367,6 @@ function onTouchMove(e: TouchEvent): void {
 
   const touchX = e.touches[0]!.clientX;
   const deltaX = touchStartX.value - touchX;
-
   container.scrollLeft = touchStartScrollLeft.value + deltaX;
 }
 
@@ -302,16 +392,11 @@ function onTouchEnd(e: TouchEvent): void {
         }
       }
 
-      if (!isAnimating.value) {
+      if (!isScrolling.value) {
         processScrollQueue();
       }
     }
   }
-}
-
-async function goTo(nodeId: string): Promise<void> {
-  if (phase.value !== 'idle') return;
-  await store.loadNode(nodeId);
 }
 </script>
 
@@ -351,11 +436,6 @@ async function goTo(nodeId: string): Promise<void> {
 
 .current-wrap :deep(.glass) {
   border-style: solid;
-}
-
-.current-wrap.sinking :deep(.glass) {
-  transform: translateY(3px) scale(0.98);
-  opacity: 0.6;
 }
 
 .crumb,
@@ -399,8 +479,31 @@ async function goTo(nodeId: string): Promise<void> {
   box-shadow: none;
 }
 
-/* TransitionGroup layout: leaving crumb exits flow so others can slide into place */
-.cell-leave-active {
-  position: absolute;
+/* ================================================================
+   Phase 2: Slide out — sunken items move upward behind the page
+   ================================================================ */
+.crumb-slide-out {
+  transform: translateY(-64px);
+  opacity: 0;
+  transition:
+    transform 280ms cubic-bezier(0.4, 0, 0.6, 1),
+    opacity 280ms ease;
+}
+
+/* ================================================================
+   Phase 3: Slide in — new items start above, slide down into place
+   ================================================================ */
+.crumb-slide-in-prep {
+  transform: translateY(-64px);
+  opacity: 0;
+  transition: none;
+}
+
+.crumb-slide-in {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
 }
 </style>

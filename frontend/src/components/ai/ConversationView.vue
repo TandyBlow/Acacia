@@ -3,11 +3,20 @@
     <!-- Progress bar -->
     <div class="progress-bar">
       <div class="progress-text">
-        第 {{ currentIndex + 1 }} / {{ total }} 个知识点
+        <template v-if="total <= 1">
+          {{ isCompleted ? '对话已结束' : '对话进行中' }}
+        </template>
+        <template v-else>
+          第 {{ currentIndex + 1 }} / {{ total }} 个知识点
+        </template>
         <span v-if="currentKpTitle" class="progress-kp">{{ currentKpTitle }}</span>
       </div>
       <div class="progress-track">
-        <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+        <div
+          class="progress-fill"
+          :class="{ 'progress-indeterminate': total <= 1 && !isCompleted }"
+          :style="total > 1 || isCompleted ? { width: progressPercent + '%' } : {}"
+        ></div>
       </div>
     </div>
 
@@ -43,6 +52,13 @@
             <div class="message-thinking">思考中...</div>
           </div>
         </div>
+      </div>
+
+      <!-- Completion banner -->
+      <div v-if="isCompleted" class="completion-banner">
+        <div class="completion-icon">✓</div>
+        <div class="completion-text">对话已结束</div>
+        <div class="completion-sub">你已经很好地掌握了这个主题！可以回顾上方生成的笔记内容。</div>
       </div>
 
       <!-- Example preview card -->
@@ -114,6 +130,13 @@
             跳过
           </button>
           <button
+            class="input-btn input-btn-end"
+            :disabled="isThinking || isCompleted"
+            @click="endConversation"
+          >
+            结束对话
+          </button>
+          <button
             class="input-btn input-btn-send"
             :disabled="!canSend || isThinking || isCompleted"
             @click="sendAnswer"
@@ -158,6 +181,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   answer: [answer: string];
   skip: [];
+  end: [];
   'example-feedback': [payload: { action: string; feedback?: string }];
 }>();
 
@@ -199,6 +223,9 @@ const feedbackText = ref('');
 const showFeedbackInput = ref(false);
 
 const progressPercent = computed(() => {
+  if (props.total <= 1) {
+    return props.isCompleted ? 100 : 0;
+  }
   if (props.total === 0) return 0;
   return (props.currentIndex / props.total) * 100;
 });
@@ -232,6 +259,12 @@ function skipCurrent() {
 
   startThinking();
   emit('skip');
+}
+
+function endConversation() {
+  if (isThinking.value) return;
+  startThinking();
+  emit('end');
 }
 
 function addAiMessage(content: string, generatedContent?: string, messageType?: 'correct_self' | 'admit_uncertainty') {
@@ -557,6 +590,15 @@ defineExpose({
   background: rgba(255, 255, 255, 0.16);
 }
 
+.input-btn-end {
+  background: rgba(255, 80, 80, 0.12);
+  color: #ff6b6b;
+}
+
+.input-btn-end:hover:not(:disabled) {
+  background: rgba(255, 80, 80, 0.22);
+}
+
 .input-btn-send {
   background: rgba(102, 255, 229, 0.28);
   color: var(--color-primary);
@@ -700,5 +742,55 @@ defineExpose({
 .example-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Completion banner */
+.completion-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  margin: 0 16px 12px;
+  border-radius: 16px;
+  background: rgba(46, 204, 113, 0.08);
+  border: 1px solid rgba(46, 204, 113, 0.2);
+  text-align: center;
+}
+
+.completion-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(46, 204, 113, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #2ecc71;
+}
+
+.completion-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.completion-sub {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+
+/* Indeterminate progress bar for single-KP */
+.progress-indeterminate {
+  width: 100% !important;
+  opacity: 0.5;
+  animation: progress-pulse 2s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
 }
 </style>

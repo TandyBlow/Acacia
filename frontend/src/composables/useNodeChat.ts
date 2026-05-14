@@ -56,6 +56,7 @@ const currentSubTopic = ref('');
 const totalKp = ref(1);
 const currentKpIndex = ref(0);
 const currentKpData = ref<Record<string, unknown> | null>(null);
+const isCompleted = ref(false);
 
 const { setLoading: setGlobalLoading } = useGlobalLoading();
 
@@ -264,6 +265,11 @@ export function useNodeChat() {
         currentSubTopic.value = data.sub_topic;
       }
 
+      if (data.completed) {
+        isCompleted.value = true;
+        mode.value = 'completed';
+      }
+
       totalKp.value = data.total_kp || totalKp.value;
       currentKpIndex.value = data.current_kp_index ?? currentKpIndex.value;
       currentKpData.value = data.kp_data || currentKpData.value;
@@ -306,6 +312,11 @@ export function useNodeChat() {
         });
       }
 
+      if (data.completed) {
+        isCompleted.value = true;
+        mode.value = 'completed';
+      }
+
       totalKp.value = data.total_kp || totalKp.value;
       currentKpIndex.value = data.current_kp_index ?? currentKpIndex.value;
       currentKpData.value = data.kp_data || currentKpData.value;
@@ -314,6 +325,46 @@ export function useNodeChat() {
       return { ai_message: data.ai_message || '', generated_content: '', action: data.action || 'question', sub_topic: data.sub_topic || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '跳过失败';
+    } finally {
+      isBusy.value = false;
+      setGlobalLoading('nodeChat', false);
+    }
+  }
+
+  async function endConversation() {
+    if (!sessionId.value || isBusy.value) return;
+    isBusy.value = true;
+    errorMessage.value = '';
+    setGlobalLoading('nodeChat', true);
+
+    try {
+      const resp = await fetchWithTimeout(`${backendUrl}/chat/end`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ session_id: sessionId.value }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: '结束对话失败' }));
+        throw new Error(err.detail || '结束对话失败');
+      }
+
+      const data = await resp.json();
+      isCompleted.value = true;
+      mode.value = 'completed';
+
+      if (data.ai_message) {
+        messages.value.push({
+          role: 'ai',
+          content: data.ai_message,
+          metadata: { action: 'end_conversation' },
+        });
+      }
+
+      saveCheckpoint();
+      return { ai_message: data.ai_message || '', generated_content: '', action: 'end_conversation' };
+    } catch (e: unknown) {
+      errorMessage.value = e instanceof Error ? e.message : '结束对话失败';
     } finally {
       isBusy.value = false;
       setGlobalLoading('nodeChat', false);
@@ -448,6 +499,7 @@ export function useNodeChat() {
     totalKp.value = 1;
     currentKpIndex.value = 0;
     currentKpData.value = null;
+    isCompleted.value = false;
     clearCheckpoint();
   }
 
@@ -463,6 +515,7 @@ export function useNodeChat() {
     totalKp.value = 1;
     currentKpIndex.value = 0;
     currentKpData.value = null;
+    isCompleted.value = false;
     clearCheckpoint();
   }
 
@@ -507,6 +560,7 @@ export function useNodeChat() {
     totalKp,
     currentKpIndex,
     currentKpData,
+    isCompleted,
     // Computed
     hasActiveConversation,
     hasResumableSession,
@@ -518,6 +572,7 @@ export function useNodeChat() {
     startFileChat,
     sendMessage,
     skipTurn,
+    endConversation,
     regenerateWithTreeContext,
     markConcept,
     resumeChat,

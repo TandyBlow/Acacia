@@ -9,13 +9,8 @@
         <span v-if="showHoldHintLocal" class="knob-hint">{{ UI.knob.holdToConfirm }}</span>
       </Transition>
     </div>
-    <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-right">
-      <Transition name="cell">
-        <span v-if="showDblClickHintLocal" class="knob-hint">{{ UI.knob.dblClickFeature }}</span>
-      </Transition>
-    </div>
 
-    <!-- Compact hints (mobile, stacked above/below) -->
+    <!-- Compact hints (mobile, stacked above) -->
     <div v-if="isAuthenticated && isCompactLayout && (showClickHintLocal || showHoldHintLocal)" class="hint-compact hint-compact-top">
       <Transition name="cell">
         <span v-if="showClickHintLocal" class="knob-hint-compact">{{ UI.knob.clickToHome }}</span>
@@ -33,7 +28,7 @@
             class="knob-hit-area"
             :class="{ confirmable: inConfirmMode && canConfirm }"
             :disabled="isBusy"
-            aria-label="??"
+            aria-label="旋钮"
             @mousedown="onPressStart"
             @mouseup="onPressEnd"
             @mouseleave="onPressCancel"
@@ -47,13 +42,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Compact hint below (mobile) -->
-    <div v-if="isAuthenticated && isCompactLayout && showDblClickHintLocal" class="hint-compact hint-compact-bottom">
-      <Transition name="cell">
-        <span class="knob-hint-compact">{{ UI.knob.dblClickFeature }}</span>
-      </Transition>
-    </div>
   </div>
 </template>
 
@@ -65,7 +53,7 @@ import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
 import { useKnobHints } from '../../composables/useKnobHints';
-import { KNOB_HOLD_MS, KNOB_DBLCLICK_MS } from '../../constants/app';
+import { KNOB_HOLD_MS, KNOB_DOUBLE_CLICK_MS } from '../../constants/app';
 import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
@@ -79,30 +67,25 @@ const {
   onHoldConfirm,
   onClick,
   onDoubleClick,
-  isFeaturePanel,
   isCompactLayout,
 } = useKnobDispatch();
 
-const { recordAction, showClickHint, showHoldHint, showDblClickHint } = useKnobHints();
+const { recordAction, showClickHint, showHoldHint } = useKnobHints();
 
 const pressed = ref(false);
 const triggeredByHold = ref(false);
-const lastPressTime = ref(0);
-const dblPressDetected = ref(false);
 let holdTimer: number | null = null;
-let clickTimer: number | null = null;
 
-// Context-aware hint visibility
+// Double-click tracking
+let lastClickTime = 0;
+let doubleClickTimer: number | null = null;
+
 const showClickHintLocal = computed(() =>
-  showClickHint.value && (!nodeStore.isEditState || isFeaturePanel.value),
+  showClickHint.value && !nodeStore.isEditState,
 );
 
 const showHoldHintLocal = computed(() =>
-  showHoldHint.value && inConfirmMode.value && !isFeaturePanel.value,
-);
-
-const showDblClickHintLocal = computed(() =>
-  showDblClickHint.value,
+  showHoldHint.value && inConfirmMode.value,
 );
 
 function clearTimer(): void {
@@ -112,28 +95,9 @@ function clearTimer(): void {
   }
 }
 
-function clearClickTimer(): void {
-  if (clickTimer !== null) {
-    window.clearTimeout(clickTimer);
-    clickTimer = null;
-  }
-}
-
 function onPressStart(): void {
-  const now = Date.now();
-  const isDblPress = now - lastPressTime.value < KNOB_DBLCLICK_MS;
-  lastPressTime.value = now;
-
   if (isBusy.value) return;
 
-  if (isDblPress) {
-    clearClickTimer();
-    dblPressDetected.value = true;
-    lastPressTime.value = 0;
-    return;
-  }
-
-  dblPressDetected.value = false;
   pressed.value = true;
   triggeredByHold.value = false;
   clearTimer();
@@ -149,13 +113,6 @@ function onPressStart(): void {
 }
 
 async function onPressEnd(): Promise<void> {
-  if (dblPressDetected.value) {
-    dblPressDetected.value = false;
-    recordAction('dblclick');
-    await onDoubleClick();
-    return;
-  }
-
   if (!pressed.value && !holdTimer) return;
 
   clearTimer();
@@ -164,11 +121,31 @@ async function onPressEnd(): Promise<void> {
   triggeredByHold.value = false;
 
   if (shouldClick) {
+    if (isCompactLayout.value) {
+      const now = Date.now();
+      if (now - lastClickTime < KNOB_DOUBLE_CLICK_MS && lastClickTime > 0) {
+        if (doubleClickTimer !== null) {
+          window.clearTimeout(doubleClickTimer);
+          doubleClickTimer = null;
+        }
+        lastClickTime = 0;
+        recordAction('click');
+        await onDoubleClick();
+        return;
+      }
+
+      lastClickTime = now;
+      doubleClickTimer = window.setTimeout(async () => {
+        doubleClickTimer = null;
+        lastClickTime = 0;
+        recordAction('click');
+        await onClick();
+      }, KNOB_DOUBLE_CLICK_MS);
+      return;
+    }
+
     recordAction('click');
-    clickTimer = window.setTimeout(async () => {
-      clickTimer = null;
-      await onClick();
-    }, KNOB_DBLCLICK_MS);
+    await onClick();
   }
 }
 
@@ -176,7 +153,11 @@ function onPressCancel(): void {
   if (!pressed.value && !holdTimer) return;
 
   clearTimer();
-  clearClickTimer();
+  if (doubleClickTimer !== null) {
+    window.clearTimeout(doubleClickTimer);
+    doubleClickTimer = null;
+  }
+  lastClickTime = 0;
   pressed.value = false;
   triggeredByHold.value = false;
 }
@@ -225,11 +206,6 @@ function onPressCancel(): void {
   text-align: right;
 }
 
-.hint-right {
-  left: calc(100% + 8px);
-  text-align: left;
-}
-
 .hint-compact {
   display: flex;
   flex-direction: column;
@@ -240,10 +216,6 @@ function onPressCancel(): void {
 
 .hint-compact-top {
   margin-bottom: 2px;
-}
-
-.hint-compact-bottom {
-  margin-top: 2px;
 }
 
 .knob-stage {

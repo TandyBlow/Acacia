@@ -1033,6 +1033,45 @@ def process_conversation_turn(
 
     elif action == "follow_up":
         session["follow_up_count"] += 1
+        if session["follow_up_count"] > 3:
+            session["current_index"] += 1
+            session["follow_up_count"] = 0
+            session["self_correction_count"] = 0
+            session["uncertainty_count"] = 0
+            if session["current_index"] >= len(knowledge_points):
+                session["status"] = "completed"
+                _save_session(session)
+                return {
+                    "action": "completed",
+                    "ai_message": ai_message + "\n\n（已自动总结，学习下一个知识点。）",
+                    "generated_content": session["generated_content"],
+                    "progress": {
+                        "current": session["current_index"],
+                        "total": len(knowledge_points),
+                        "completed": True
+                    }
+                }
+            next_kp = knowledge_points[session["current_index"]]
+            question_data = generate_question_for_knowledge_point(next_kp)
+            session["messages"].append({
+                "role": "ai",
+                "content": question_data["question"],
+                "timestamp": time.time(),
+                "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
+            })
+            _save_session(session)
+            return {
+                "action": "accept_and_next",
+                "ai_message": ai_message + "\n\n（已自动总结，学习下一个知识点。）",
+                "next_question": question_data["question"],
+                "hints": question_data.get("hints", []),
+                "progress": {
+                    "current": session["current_index"],
+                    "total": len(knowledge_points),
+                    "kp_title": next_kp["title"],
+                    "kp_type": next_kp["type"],
+                }
+            }
         _save_session(session)
         return {
             "action": "follow_up",
@@ -1077,6 +1116,45 @@ def process_conversation_turn(
 
     elif action == "progressive_hint":
         session["follow_up_count"] += 1
+        if session["follow_up_count"] > 3:
+            session["current_index"] += 1
+            session["follow_up_count"] = 0
+            session["self_correction_count"] = 0
+            session["uncertainty_count"] = 0
+            if session["current_index"] >= len(knowledge_points):
+                session["status"] = "completed"
+                _save_session(session)
+                return {
+                    "action": "completed",
+                    "ai_message": ai_message + "\n\n（已自动总结，学习下一个知识点。）",
+                    "generated_content": session["generated_content"],
+                    "progress": {
+                        "current": session["current_index"],
+                        "total": len(knowledge_points),
+                        "completed": True
+                    }
+                }
+            next_kp = knowledge_points[session["current_index"]]
+            question_data = generate_question_for_knowledge_point(next_kp)
+            session["messages"].append({
+                "role": "ai",
+                "content": question_data["question"],
+                "timestamp": time.time(),
+                "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
+            })
+            _save_session(session)
+            return {
+                "action": "accept_and_next",
+                "ai_message": ai_message + "\n\n（已自动总结，学习下一个知识点。）",
+                "next_question": question_data["question"],
+                "hints": question_data.get("hints", []),
+                "progress": {
+                    "current": session["current_index"],
+                    "total": len(knowledge_points),
+                    "kp_title": next_kp["title"],
+                    "kp_type": next_kp["type"],
+                }
+            }
         _save_session(session)
         return {
             "action": "hint",

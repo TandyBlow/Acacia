@@ -11,11 +11,6 @@ const router = createRouter({
       name: 'home',
       component: Empty,
     },
-    {
-      path: '/node/:id',
-      name: 'node',
-      component: Empty,
-    },
   ],
 });
 

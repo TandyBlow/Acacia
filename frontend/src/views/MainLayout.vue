@@ -50,12 +50,11 @@
               <div ref="treeCurtainRef" class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
             </div>
           </div>
-          <FeaturePanel key="feature" class="feature-host" style="display: none" />
         </section>
       </div>
     </section>
 
-  <section ref="knobRef" class="knob-area">
+    <section ref="knobRef" class="knob-area">
       <Knob />
     </section>
 
@@ -71,16 +70,13 @@ import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
 import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
-import FeaturePanel from '../components/ui/FeaturePanel.vue';
 import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
 import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
-import QuizPanel from '../components/quiz/QuizPanel.vue';
-import QuizHistoryPanel from '../components/quiz/QuizHistoryPanel.vue';
-import StatsPanel from '../components/stats/StatsPanel.vue';
-import ReviewPanel from '../components/review/ReviewPanel.vue';
+import DailyQuizPanel from '../components/official/DailyQuizPanel.vue';
+import WelcomePanel from '../components/official/WelcomePanel.vue';
 import DevPanel from '../components/dev/DevPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
@@ -103,7 +99,7 @@ const {
 } = storeToRefs(authStore);
 
 useAppInit();
-const { isLoggingOut, isFeaturePanel, compactMode, isCompactLayout, closeFeaturePanel } = useKnobDispatch();
+const { compactMode, isCompactLayout } = useKnobDispatch();
 
 const { registerRegion, unregisterRegion, startTransition, currentPhase } = usePageTransition();
 
@@ -114,7 +110,7 @@ const navigationRef = ref<HTMLElement | null>(null);
 const contentGlassRef = ref<HTMLElement | null>(null);
 const knobRef = ref<HTMLElement | null>(null);
 
-// Tree curtain: masks tree area during tree-involving transitions
+// Tree curtain
 const treeCurtainDrawn = ref(false);
 const treeCurtainRef = ref<HTMLElement | null>(null);
 const treeCanvasRef = ref<{ sceneReady: boolean } | null>(null);
@@ -123,7 +119,6 @@ const treeCanvasRef = ref<{ sceneReady: boolean } | null>(null);
 const isCompact = ref(false);
 const isTooSmall = ref(false);
 
-// Debounce utility
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
   let timeoutId: number | null = null;
   return ((...args: any[]) => {
@@ -146,7 +141,6 @@ function updateCompactState(): void {
   isCompact.value = w <= COMPACT_BREAKPOINT || h <= COMPACT_HEIGHT_BREAKPOINT;
   isCompactLayout.value = isCompact.value;
 
-  // Trigger transition if layout changed
   if (wasCompact !== isCompact.value) {
     const layout = isCompact.value ? 'small' : 'large';
     startTransition({ type: 'layout', newLayout: layout }, layout);
@@ -154,11 +148,6 @@ function updateCompactState(): void {
 
   if (!isCompact.value) {
     compactMode.value = 'content';
-    if (isFeaturePanel.value) {
-      closeFeaturePanel();
-    }
-  } else if (isFeaturePanel.value) {
-    compactMode.value = 'feature';
   }
 }
 
@@ -168,18 +157,13 @@ onMounted(() => {
   updateCompactState();
   window.addEventListener('resize', handleResize);
 
-  // Register all main regions with the page transition system
   if (logoRef.value) {
     registerRegion({
       id: 'logo',
       type: 'inset',
       element: logoRef,
       shouldShow: (state) => {
-        // Logo is hidden in compact-nav and compact-feature modes
-        if (state.layout === 'small') {
-          return state.compactMode === 'content';
-        }
-        return true;
+        return state.layout !== 'small';
       },
     });
   }
@@ -189,13 +173,8 @@ onMounted(() => {
       id: 'breadcrumbs',
       type: 'inset',
       element: breadcrumbsRef,
-      shouldShow: (state) => {
-        // Breadcrumbs are hidden in compact-content and compact-feature modes
-        if (state.layout === 'small') {
-          return state.compactMode === 'nav';
-        }
-        return true;
-      },
+      shouldShow: () => true,
+      skipGlobalTransition: true,
     });
   }
 
@@ -205,12 +184,12 @@ onMounted(() => {
       type: 'inset',
       element: navigationRef,
       shouldShow: (state) => {
-        // Navigation is hidden in compact-content and compact-feature modes
         if (state.layout === 'small') {
           return state.compactMode === 'nav';
         }
         return true;
       },
+      skipGlobalTransition: true,
     });
   }
 
@@ -219,19 +198,16 @@ onMounted(() => {
       id: 'content',
       type: 'glass',
       element: contentGlassRef,
-      shouldShow: (state) => !state.isFeaturePanel,
+      shouldShow: () => true,
     });
   }
 
   if (knobRef.value) {
     registerRegion({
       id: 'knob',
-      type: 'inset', // 旋钮区域不参与玻璃动画，保持静止
+      type: 'inset',
       element: knobRef,
-      shouldShow: () => {
-        // Knob is always visible
-        return true;
-      },
+      shouldShow: () => true,
     });
   }
 });
@@ -239,7 +215,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
 
-  // Unregister all regions
   unregisterRegion('logo');
   unregisterRegion('breadcrumbs');
   unregisterRegion('navigation');
@@ -247,13 +222,6 @@ onBeforeUnmount(() => {
   unregisterRegion('knob');
 });
 
-watch(isFeaturePanel, (open) => {
-  if (isCompact.value && open && compactMode.value !== 'feature') {
-    compactMode.value = 'feature';
-  }
-});
-
-// Sync dev animation toggles to :root for CSS-level control of GlassWrapper transitions
 watch(
   () => [devStore.enableRiseSink, devStore.enableTransition] as const,
   ([riseSink, transition]) => {
@@ -272,16 +240,21 @@ watch(
   { immediate: true },
 );
 
+watch(compactMode, (newMode, oldMode) => {
+  if (newMode !== oldMode && isCompact.value) {
+    startTransition({ type: 'layout', newLayout: 'small' }, 'small');
+  }
+});
+
 const layoutClasses = computed(() => ({
   'compact': isCompact.value,
   'compact-content': isCompact.value && compactMode.value === 'content',
   'compact-nav': isCompact.value && compactMode.value === 'nav',
-  'compact-feature': isCompact.value && compactMode.value === 'feature',
   'is-too-small': isTooSmall.value,
 }));
 
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !isLoggingOut.value && !isFeaturePanel.value && !nodeStore.isQuizState && !nodeStore.isQuizHistoryState && !nodeStore.isStatsState && !nodeStore.isReviewState;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isWelcomeState;
 });
 
 const nonTreeContent = computed(() => {
@@ -291,20 +264,14 @@ const nonTreeContent = computed(() => {
   if (nodeStore.isTreeState) {
     return GlobalTree;
   }
-  if (nodeStore.isConfirmState || isLoggingOut.value) {
+  if (nodeStore.isConfirmState) {
     return ConfirmPanel;
   }
-  if (nodeStore.isQuizState) {
-    return QuizPanel;
+  if (nodeStore.isDailyQuizState) {
+    return DailyQuizPanel;
   }
-  if (nodeStore.isQuizHistoryState) {
-    return QuizHistoryPanel;
-  }
-  if (nodeStore.isStatsState) {
-    return StatsPanel;
-  }
-  if (nodeStore.isReviewState) {
-    return ReviewPanel;
+  if (nodeStore.isWelcomeState) {
+    return WelcomePanel;
   }
   return MarkdownEditor;
 });
@@ -313,12 +280,11 @@ const contentKey = computed(() => {
   if (!isAuthenticated.value) {
     return `auth:${authMode.value}`;
   }
-  const state = isLoggingOut.value ? 'logout' : nodeStore.viewState;
+  const state = nodeStore.viewState;
   return `${state}:${activeNode.value?.id ?? 'editor'}`;
 });
 
-// Tree curtain: fades in during sink (tree disappearing) or draws instantly
-// (tree appearing), then fades out during rise to reveal the new content.
+// Tree curtain logic
 const treeWasVisible = ref(false);
 
 watch(currentPhase, (phase) => {
@@ -329,25 +295,21 @@ watch(currentPhase, (phase) => {
     }
   } else if (phase === 'rising') {
     if (!treeWasVisible.value && showTree.value) {
-      // Tree just appeared — draw curtain instantly so it masks while scene loads
       const el = treeCurtainRef.value;
       if (el) {
         el.style.transition = 'none';
         treeCurtainDrawn.value = true;
-        el.offsetHeight; // force reflow so browser paints opacity:1
+        el.offsetHeight;
         el.style.transition = '';
       }
     }
-    // Undraw is handled by the tree-ready watcher below
   } else if (phase === 'idle') {
-    // Only undraw if there's no tree to wait for
     if (!showTree.value) {
       treeCurtainDrawn.value = false;
     }
   }
 });
 
-// Undraw curtain when tree scene is ready, or when tree is no longer visible
 watch(
   [() => treeCanvasRef.value?.sceneReady, () => showTree.value],
   ([ready, treeVisible]) => {
@@ -451,7 +413,6 @@ watch(
   overflow: hidden;
 }
 
-/* 去除导航右边缘和内容左边缘的 inset shadow，避免间隙处阴影叠加 */
 .navigation-shell {
   box-shadow:
     inset 0 9px 18px var(--shadow-inset-a),
@@ -459,7 +420,6 @@ watch(
     inset 0 -9px 18px var(--shadow-inset-b);
 }
 
-/* 导航区 z-index 高于内容区，防止 outset shadow 覆盖导航边缘 */
 .navigation-area { z-index: 2; }
 .content-area { z-index: 1; }
 
@@ -502,14 +462,6 @@ watch(
   z-index: 2;
   width: 100%;
   height: 100%;
-  border-radius: 24px;
-  overflow: hidden;
-}
-
-.feature-host {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
   border-radius: 24px;
   overflow: hidden;
 }
@@ -577,25 +529,29 @@ watch(
     padding: 0;
   }
 
-  /* Compact content mode: content + knob */
+  /* Compact content mode: breadcrumbs + content + knob */
   .layout.compact-content {
-    grid-template-rows: minmax(0, 1fr) 90px;
+    grid-template-rows: 54px minmax(0, 1fr) 90px;
   }
 
-  .layout.compact-content .logo-area,
-  .layout.compact-content .breadcrumbs-area,
-  .layout.compact-content .navigation-area {
-    display: none;
-  }
-
-  .layout.compact-content .content-area {
+  .layout.compact-content .breadcrumbs-area {
     grid-column: 1;
     grid-row: 1;
   }
 
-  .layout.compact-content .knob-area {
+  .layout.compact-content .content-area {
     grid-column: 1;
     grid-row: 2;
+  }
+
+  .layout.compact-content .navigation-area {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .layout.compact-content .knob-area {
+    grid-column: 1;
+    grid-row: 3;
     justify-self: center;
     width: min(100%, 260px);
   }
@@ -603,11 +559,6 @@ watch(
   /* Compact nav mode: breadcrumbs + navigation + knob */
   .layout.compact-nav {
     grid-template-rows: 54px minmax(0, 1fr) 90px;
-  }
-
-  .layout.compact-nav .logo-area,
-  .layout.compact-nav .content-area {
-    display: none;
   }
 
   .layout.compact-nav .breadcrumbs-area {
@@ -620,32 +571,14 @@ watch(
     grid-row: 2;
   }
 
+  .layout.compact-nav .content-area {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
   .layout.compact-nav .knob-area {
     grid-column: 1;
     grid-row: 3;
-    justify-self: center;
-    width: min(100%, 260px);
-  }
-
-  /* Compact feature mode: feature panel + knob */
-  .layout.compact-feature {
-    grid-template-rows: minmax(0, 1fr) 90px;
-  }
-
-  .layout.compact-feature .logo-area,
-  .layout.compact-feature .breadcrumbs-area,
-  .layout.compact-feature .navigation-area {
-    display: none;
-  }
-
-  .layout.compact-feature .content-area {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .layout.compact-feature .knob-area {
-    grid-column: 1;
-    grid-row: 2;
     justify-self: center;
     width: min(100%, 260px);
   }
@@ -653,10 +586,7 @@ watch(
 </style>
 
 <style>
-/* Shared activity area pattern — used by content components inside the inset frame.
-   Each activity area is a glass-raised panel that tiles the available space.
-   Layout: flex column (优先上下), each area flex:1 to divide equally. */
-
+/* Shared activity area pattern */
 .activity-layout {
   display: flex;
   flex-direction: column;

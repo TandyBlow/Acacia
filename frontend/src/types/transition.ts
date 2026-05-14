@@ -8,7 +8,7 @@ export type LayoutType = 'large' | 'medium' | 'small';
 /**
  * Compact mode determines which region is visible in small layouts.
  */
-export type CompactMode = 'content' | 'nav' | 'feature';
+export type CompactMode = 'content' | 'nav';
 
 /**
  * Transition animation phases for glass morphism effects.
@@ -23,8 +23,8 @@ export interface PageState {
   viewState: string;
   /** Currently active node, if any */
   activeNode: { id: string } | null;
-  /** Whether a feature panel (tree/confirm) is currently displayed */
-  isFeaturePanel: boolean;
+  /** Whether user is navigating an official node (daily_quiz / welcome) */
+  isOfficialNode: boolean;
   /** Current layout breakpoint */
   layout: LayoutType;
   /** Active compact mode for small layouts */
@@ -47,6 +47,8 @@ export interface RegionRegistration {
   shouldShow: (state: PageState) => boolean;
   /** Optional parent region ID for nested regions */
   parent?: string;
+  /** When true, this region handles its own animation and skips global sink/rise */
+  skipGlobalTransition?: boolean;
 }
 
 /**
@@ -56,4 +58,4 @@ export type TransitionTrigger =
   | { type: 'navigate'; nodeId: string | null; setup?: () => Promise<void> }
   | { type: 'viewState'; newState: string; setup?: () => Promise<void> }
   | { type: 'layout'; newLayout: LayoutType; setup?: () => Promise<void> }
-  | { type: 'knob'; action: 'click' | 'doubleClick' | 'hold'; setup?: () => Promise<void> };
+  | { type: 'knob'; action: 'click' | 'hold'; setup?: () => Promise<void> };
