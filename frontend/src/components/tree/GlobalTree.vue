@@ -46,7 +46,7 @@ const { treeNodes, moveTargetParentId, blockedParentIds } = storeToRefs(store);
 const { registerRegion, unregisterRegion } = usePageTransition();
 const treeRef = ref<HTMLElement | null>(null);
 const expandedIds = ref<string[]>([]);
-const transitionName = computed(() => devStore.enableRiseSink ? 'cell' : 'none');
+const transitionName = computed(() => devStore.enableTransition ? 'cell' : 'none');
 
 function collectAllIds(nodes: TreeNode[], result: string[]): void {
   for (const node of nodes) {
@@ -80,7 +80,6 @@ onMounted(async () => {
     element: treeRef,
     shouldShow: (state) => state.viewState === 'move',
     parent: 'content',
-    skipGlobalTransition: true,
   });
 
   if (treeNodes.value.length === 0) {
