@@ -36,8 +36,14 @@
             @touchend.prevent="onPressEnd"
             @touchcancel.prevent="onPressCancel"
           >
-            <GlassWrapper class="knob-body" shape="circle" :pressed="pressed || isBusy" interactive />
-            <span v-if="inConfirmMode && canConfirm && pressed" class="hold-ring" />
+            <GlassWrapper
+              class="knob-body"
+              shape="circle"
+              :pressed="glassPressed"
+              :style="glassPressed ? 'box-shadow: inset 4px 4px 10px var(--shadow-inset-a), inset -4px -4px 10px var(--shadow-inset-b)' : undefined"
+              interactive
+            />
+            <span v-if="showHoldRing" class="hold-ring" />
           </button>
         </div>
       </div>
@@ -46,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
@@ -60,6 +66,9 @@ const nodeStore = useNodeStore();
 const authStore = useAuthStore();
 const { isAuthenticated } = storeToRefs(authStore);
 
+// Inject content animation state from MainLayout
+const contentAnimating = inject<Ref<boolean>>('contentAnimating', ref(false));
+
 const {
   isBusy,
   inConfirmMode,
@@ -72,14 +81,23 @@ const {
 
 const { recordAction, showClickHint, showHoldHint } = useKnobHints();
 
-const pressed = ref(false);
-const triggeredByHold = ref(false);
-let holdTimer: number | null = null;
+// --- Animation state ---
+const isHolding = ref(false);
+const isClickAnimating = ref(false);
 
-// Double-click tracking
-let lastClickTime = 0;
-let doubleClickTimer: number | null = null;
+const glassPressed = computed(() =>
+  isClickAnimating.value || contentAnimating.value || isBusy.value,
+);
 
+const showHoldRing = computed(() =>
+  inConfirmMode.value && canConfirm.value && isHolding.value,
+);
+
+const isInteractable = computed(() =>
+  !isClickAnimating.value && !contentAnimating.value && !isBusy.value,
+);
+
+// --- Hint visibility ---
 const showClickHintLocal = computed(() =>
   showClickHint.value && !nodeStore.isEditState,
 );
@@ -88,79 +106,113 @@ const showHoldHintLocal = computed(() =>
   showHoldHint.value && inConfirmMode.value,
 );
 
-function clearTimer(): void {
+// --- Timers ---
+let holdTimer: number | null = null;
+let clickAnimTimer: number | null = null;
+let doubleClickTimer: number | null = null;
+let lastClickTime = 0;
+let triggeredByHold = false;
+
+// --- Click animation: sink phase (~260ms) + stay phase (~80ms) then CSS transition rises ---
+const CLICK_ANIM_MS = 420;
+
+function playClickAnimation(): void {
+  isClickAnimating.value = true;
+  if (clickAnimTimer !== null) {
+    window.clearTimeout(clickAnimTimer);
+  }
+  clickAnimTimer = window.setTimeout(() => {
+    isClickAnimating.value = false;
+    clickAnimTimer = null;
+  }, CLICK_ANIM_MS);
+}
+
+// --- Timer helpers ---
+function clearHoldTimer(): void {
   if (holdTimer !== null) {
     window.clearTimeout(holdTimer);
     holdTimer = null;
   }
 }
 
-function onPressStart(): void {
-  if (isBusy.value) return;
+function clearDblClickTimer(): void {
+  if (doubleClickTimer !== null) {
+    window.clearTimeout(doubleClickTimer);
+    doubleClickTimer = null;
+  }
+  lastClickTime = 0;
+}
 
-  pressed.value = true;
-  triggeredByHold.value = false;
-  clearTimer();
+// --- Press handlers ---
+function onPressStart(): void {
+  if (!isInteractable.value) return;
+
+  isHolding.value = true;
+  triggeredByHold = false;
+  clearHoldTimer();
 
   if (canConfirm.value) {
     holdTimer = window.setTimeout(async () => {
-      triggeredByHold.value = true;
-      pressed.value = false;
+      triggeredByHold = true;
+      isHolding.value = false;
+      clearHoldTimer();
       recordAction('hold');
+      playClickAnimation();
       await onHoldConfirm();
     }, KNOB_HOLD_MS);
   }
 }
 
 async function onPressEnd(): Promise<void> {
-  if (!pressed.value && !holdTimer) return;
+  if (triggeredByHold) {
+    triggeredByHold = false;
+    return;
+  }
 
-  clearTimer();
-  const shouldClick = !triggeredByHold.value;
-  pressed.value = false;
-  triggeredByHold.value = false;
+  if (!isHolding.value) return;
 
-  if (shouldClick) {
-    if (isCompactLayout.value) {
-      const now = Date.now();
-      if (now - lastClickTime < KNOB_DOUBLE_CLICK_MS && lastClickTime > 0) {
-        if (doubleClickTimer !== null) {
-          window.clearTimeout(doubleClickTimer);
-          doubleClickTimer = null;
-        }
-        lastClickTime = 0;
-        recordAction('click');
-        await onDoubleClick();
-        return;
-      }
+  clearHoldTimer();
+  isHolding.value = false;
 
-      lastClickTime = now;
-      doubleClickTimer = window.setTimeout(async () => {
-        doubleClickTimer = null;
-        lastClickTime = 0;
-        recordAction('click');
-        await onClick();
-      }, KNOB_DOUBLE_CLICK_MS);
+  if (isCompactLayout.value) {
+    const now = Date.now();
+    if (now - lastClickTime < KNOB_DOUBLE_CLICK_MS && lastClickTime > 0) {
+      clearDblClickTimer();
+      recordAction('click');
+      playClickAnimation();
+      await onDoubleClick();
       return;
     }
 
-    recordAction('click');
-    await onClick();
+    lastClickTime = now;
+    // Wait for potential second click before committing to single-click
+    doubleClickTimer = window.setTimeout(async () => {
+      doubleClickTimer = null;
+      lastClickTime = 0;
+      recordAction('click');
+      playClickAnimation();
+      await onClick();
+    }, KNOB_DOUBLE_CLICK_MS);
+    return;
   }
+
+  recordAction('click');
+  playClickAnimation();
+  await onClick();
 }
 
 function onPressCancel(): void {
-  if (!pressed.value && !holdTimer) return;
-
-  clearTimer();
-  if (doubleClickTimer !== null) {
-    window.clearTimeout(doubleClickTimer);
-    doubleClickTimer = null;
-  }
-  lastClickTime = 0;
-  pressed.value = false;
-  triggeredByHold.value = false;
+  if (!isHolding.value && !holdTimer && !triggeredByHold) return;
+  clearHoldTimer();
+  isHolding.value = false;
+  triggeredByHold = false;
 }
+
+onBeforeUnmount(() => {
+  clearHoldTimer();
+  if (clickAnimTimer !== null) window.clearTimeout(clickAnimTimer);
+  clearDblClickTimer();
+});
 </script>
 
 <style scoped>
@@ -269,14 +321,15 @@ function onPressCancel(): void {
   height: 100%;
 }
 
+.knob-body :deep(.glass) {
+  transition: transform 160ms ease, box-shadow 320ms ease, border-color 320ms ease,
+              background 240ms ease, backdrop-filter 240ms ease, -webkit-backdrop-filter 240ms ease;
+}
+
 .knob-body :deep(.glass-raised) {
   box-shadow:
     4px 4px 8px var(--shadow-raised-a),
     0 -4px 8px var(--shadow-raised-b);
-}
-
-.knob-body :deep(.glass-pressed) {
-  box-shadow: none;
 }
 
 .knob-body :deep(.glass-content) {
