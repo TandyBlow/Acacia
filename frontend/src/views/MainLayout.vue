@@ -28,6 +28,7 @@
             <div ref="treeMaskRef" class="tree-mask" :class="{ 'tree-mask-visible': treeMaskVisible }" aria-hidden="true"></div>
             <div ref="contentGlassRef" class="content-glass" :class="{
               'content-sinking': contentPhase === 'sinking',
+              'content-tree-mask': contentPhase === 'tree-mask',
               'content-slide-out': contentPhase === 'slide-out',
               'content-slide-in-prep': contentPhase === 'slide-in-prep',
               'content-slide-in': contentPhase === 'slide-in',
@@ -70,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick, provide } from 'vue';
 import { storeToRefs } from 'pinia';
 import LogoArea from '../components/layout/LogoArea.vue';
 import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
@@ -198,6 +199,7 @@ function waitForSceneReady(token: number): Promise<void> {
 const contentPhase = ref('idle');
 let contentAnimToken = 0;
 const contentAnimating = ref(false);
+provide('contentAnimating', contentAnimating);
 
 const displayedKey = ref('');
 const displayedShowTree = ref(false);
@@ -397,57 +399,27 @@ async function animateContentTransition() {
   await sleep(CONTENT_SINK_MS);
   if (token !== contentAnimToken) return;
 
-  // Phase 2: Slide out — old content leaves
-  contentPhase.value = 'slide-out';
-  await sleep(CONTENT_SLIDE_MS);
-  if (token !== contentAnimToken) return;
+  if (wasShowingTree) {
+    // ================================================================
+    // TREE EXIT PATH: mask fade-in → DOM swap → slide-in
+    // ================================================================
 
-  // Apply pending data NOW — viewState is updated, so showTree is current
-  nodeStore.applyPendingData();
+    // Apply pending data early to know the destination state
+    nodeStore.applyPendingData();
+    const willShowTree = showTree.value;
 
-  const willShowTree = showTree.value;
+    if (willShowTree) {
+      // Staying in tree — just rise
+      contentPhase.value = 'rising';
+      await nextTick();
+      if (token !== contentAnimToken) return;
+      await sleep(CONTENT_RISE_MS);
+      if (token !== contentAnimToken) return;
+      contentPhase.value = 'idle';
+      contentAnimating.value = false;
+      return;
+    }
 
-  // Content didn't change — skip slide, just rise
-  if (contentKey.value === oldKey) {
-    contentPhase.value = 'rising';
-    await nextTick();
-    if (token !== contentAnimToken) return;
-    await sleep(CONTENT_RISE_MS);
-    if (token !== contentAnimToken) return;
-    contentPhase.value = 'idle';
-    contentAnimating.value = false;
-    return;
-  }
-
-  if (willShowTree && !wasShowingTree) {
-    // ---- TREE ENTER: non-tree → tree ----
-
-    // Snap mask to visible instantly (no fade-in) — looks like empty area
-    treeOverlayActive.value = true;
-    const maskEl = treeMaskRef.value;
-    if (maskEl) maskEl.style.transition = 'none';
-    treeMaskVisible.value = true;
-
-    await nextTick();
-    if (token !== contentAnimToken) return;
-    void contentGlassRef.value?.offsetHeight; // force reflow so opacity:1 is painted
-    if (maskEl) maskEl.style.transition = ''; // re-enable transition for fade-out
-
-    // Now swap DOM: tree loads under the fully opaque mask
-    displayedKey.value = contentKey.value;
-    displayedShowTree.value = showTree.value;
-    displayedNonTreeContent.value = nonTreeContent.value;
-    contentPhase.value = 'tree-mask';
-
-    // Wait for tree scene to be ready, then fade mask out
-    await waitForSceneReady(token);
-    if (token !== contentAnimToken) return;
-    treeMaskVisible.value = false;
-    await sleep(TREE_MASK_FADE_MS);
-    if (token !== contentAnimToken) return;
-
-  } else if (!willShowTree && wasShowingTree) {
-    // ---- TREE EXIT: tree → non-tree ----
     // Mask fades in, covering the tree
     treeMaskVisible.value = true;
     contentPhase.value = 'tree-mask';
@@ -467,27 +439,7 @@ async function animateContentTransition() {
       return;
     }
 
-    // Swap DOM behind the mask
-    displayedKey.value = contentKey.value;
-    displayedShowTree.value = showTree.value;
-    displayedNonTreeContent.value = nonTreeContent.value;
-
-    await nextTick();
-    if (token !== contentAnimToken) return;
-    void contentGlassRef.value?.offsetHeight;
-
-    // Mask fades out, revealing new content
-    treeMaskVisible.value = false;
-    await sleep(TREE_MASK_FADE_MS);
-    if (token !== contentAnimToken) return;
-
-    // Z-indices revert after mask is gone
-    treeOverlayActive.value = false;
-
-  } else {
-    // ---- NON-TREE: standard slide-in from right ----
-
-    // Phase 3: Swap DOM — new content in prep position (off-screen right)
+    // Swap DOM behind mask — tree unmounts, new content in slide-in-prep position
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
@@ -495,13 +447,95 @@ async function animateContentTransition() {
 
     await nextTick();
     if (token !== contentAnimToken) return;
-
-    // Force reflow so prep position is painted, then trigger slide-in
     void contentGlassRef.value?.offsetHeight;
-    contentPhase.value = 'slide-in';
 
+    // Snap mask off (content is invisible at prep position, no visual change)
+    const maskEl = treeMaskRef.value;
+    if (maskEl) maskEl.style.transition = 'none';
+    treeMaskVisible.value = false;
+    treeOverlayActive.value = false;
+
+    await nextTick();
+    void contentGlassRef.value?.offsetHeight;
+    if (maskEl) maskEl.style.transition = '';
+
+    // Trigger slide-in from right
+    contentPhase.value = 'slide-in';
     await sleep(CONTENT_SLIDE_MS);
     if (token !== contentAnimToken) return;
+
+  } else {
+    // ================================================================
+    // NON-TREE PATH: slide-out → (tree enter OR standard slide-in)
+    // ================================================================
+
+    // Phase 2: Slide out — old content leaves
+    contentPhase.value = 'slide-out';
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== contentAnimToken) return;
+
+    // Apply pending data NOW — viewState is updated, so showTree is current
+    nodeStore.applyPendingData();
+    const willShowTree = showTree.value;
+
+    // Content didn't change — skip slide, just rise
+    if (contentKey.value === oldKey) {
+      contentPhase.value = 'rising';
+      await nextTick();
+      if (token !== contentAnimToken) return;
+      await sleep(CONTENT_RISE_MS);
+      if (token !== contentAnimToken) return;
+      contentPhase.value = 'idle';
+      contentAnimating.value = false;
+      return;
+    }
+
+    if (willShowTree) {
+      // ---- TREE ENTER: non-tree → tree ----
+
+      // Snap mask to visible instantly (no fade-in) — looks like empty area
+      treeOverlayActive.value = true;
+      const maskEl = treeMaskRef.value;
+      if (maskEl) maskEl.style.transition = 'none';
+      treeMaskVisible.value = true;
+
+      await nextTick();
+      if (token !== contentAnimToken) return;
+      void contentGlassRef.value?.offsetHeight; // force reflow so opacity:1 is painted
+      if (maskEl) maskEl.style.transition = ''; // re-enable transition for fade-out
+
+      // Now swap DOM: tree loads under the fully opaque mask
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      contentPhase.value = 'tree-mask';
+
+      // Wait for tree scene to be ready, then fade mask out
+      await waitForSceneReady(token);
+      if (token !== contentAnimToken) return;
+      treeMaskVisible.value = false;
+      await sleep(TREE_MASK_FADE_MS);
+      if (token !== contentAnimToken) return;
+
+    } else {
+      // ---- NON-TREE: standard slide-in from right ----
+
+      // Phase 3: Swap DOM — new content in prep position (off-screen right)
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      contentPhase.value = 'slide-in-prep';
+
+      await nextTick();
+      if (token !== contentAnimToken) return;
+
+      // Force reflow so prep position is painted, then trigger slide-in
+      void contentGlassRef.value?.offsetHeight;
+      contentPhase.value = 'slide-in';
+
+      await sleep(CONTENT_SLIDE_MS);
+      if (token !== contentAnimToken) return;
+    }
   }
 
   // Phase: Rise — glass frame regains shadow
@@ -521,11 +555,7 @@ const treeWasVisible = ref(false);
 // Trigger content animation when a page transition starts
 watch(isTransitioning, (transitioning) => {
   if (transitioning) {
-    // Set up tree curtain before animation starts
     treeWasVisible.value = showTree.value;
-    if (showTree.value) {
-      treeCurtainDrawn.value = true;
-    }
 
     if (contentAnimating.value) {
       contentAnimToken++;
@@ -882,7 +912,8 @@ watch(
   -webkit-backdrop-filter: none;
 }
 
-/* Sunken hold state: glass items flat — persists through slide phases */
+/* Sunken hold state: glass items flat — persists through mask/slide phases */
+.content-tree-mask :deep(.glass-raised),
 .content-slide-out :deep(.glass-raised),
 .content-slide-in-prep :deep(.glass-raised),
 .content-slide-in :deep(.glass-raised) {
@@ -890,6 +921,7 @@ watch(
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+.content-tree-mask :deep(.glass-content),
 .content-slide-out :deep(.glass-content),
 .content-slide-in-prep :deep(.glass-content),
 .content-slide-in :deep(.glass-content) {
