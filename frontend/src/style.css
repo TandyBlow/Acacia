@@ -8,6 +8,7 @@
   --shadow-inset-b: rgba(148, 241, 255, 0.52);
   --shadow-raised-a: rgba(49, 78, 151, 0.14);
   --shadow-raised-b: rgba(255, 255, 255, 0.28);
+  --bg-gradient: linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%);
   color: var(--color-primary);
   line-height: 1.35;
   font-weight: 400;
@@ -26,11 +27,7 @@
   --shadow-inset-b: rgba(255, 183, 213, 0.52);
   --shadow-raised-a: rgba(151, 49, 90, 0.14);
   --shadow-raised-b: rgba(255, 255, 255, 0.3);
-}
-
-.theme-sakura body {
-  background:
-    linear-gradient(180deg, #fff5f8 0%, #ffe4ee 20%, #ffb7d5 55%, #ff8fbf 100%);
+  --bg-gradient: linear-gradient(180deg, #fff5f8 0%, #ffe4ee 20%, #ffb7d5 55%, #ff8fbf 100%);
 }
 
 /* cyberpunk theme */
@@ -43,11 +40,7 @@
   --shadow-inset-b: rgba(0, 255, 224, 0.35);
   --shadow-raised-a: rgba(0, 255, 224, 0.12);
   --shadow-raised-b: rgba(255, 0, 255, 0.08);
-}
-
-.theme-cyberpunk body {
-  background:
-    linear-gradient(180deg, #0a0a1a 0%, #0d1b2a 20%, #1b2838 55%, #0a192f 100%);
+  --bg-gradient: linear-gradient(180deg, #0a0a1a 0%, #0d1b2a 20%, #1b2838 55%, #0a192f 100%);
 }
 
 /* ink theme */
@@ -60,11 +53,7 @@
   --shadow-inset-b: rgba(200, 168, 124, 0.3);
   --shadow-raised-a: rgba(44, 44, 44, 0.12);
   --shadow-raised-b: rgba(255, 255, 255, 0.25);
-}
-
-.theme-ink body {
-  background:
-    linear-gradient(180deg, #f5f0e8 0%, #ece4d4 20%, #ddd2bc 55%, #c8b99a 100%);
+  --bg-gradient: linear-gradient(180deg, #f5f0e8 0%, #ece4d4 20%, #ddd2bc 55%, #c8b99a 100%);
 }
 
 * {
@@ -105,8 +94,7 @@ body,
 body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   min-width: 320px;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%);
+  background: var(--bg-gradient);
 }
 
 button,

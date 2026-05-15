@@ -28,9 +28,29 @@
             <span class="dev-toggle-thumb" />
           </button>
         </div>
+        <div class="dev-toggle-row">
+          <span class="dev-toggle-label">手动 Scene Ready</span>
+          <button
+            type="button"
+            class="dev-toggle"
+            :class="{ on: devStore.manualSceneReady }"
+            @click.stop="devStore.toggleManualSceneReady()"
+          >
+            <span class="dev-toggle-thumb" />
+          </button>
+        </div>
       </div>
     </div>
-    <button v-else class="dev-panel-trigger" @click="isExpanded = true">
+    <!-- Floating Scene Ready button — always visible when waiting -->
+    <button
+      v-if="waitingForScene"
+      type="button"
+      class="scene-ready-btn"
+      @click="emitSceneReady"
+    >
+      Scene Ready
+    </button>
+    <button v-if="!isExpanded && !waitingForScene" class="dev-panel-trigger" @click="isExpanded = true">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5">
         <circle cx="9" cy="9" r="2.5" />
         <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M3.7 14.3l1.4-1.4M12.9 5.1l1.4-1.4" />
@@ -40,11 +60,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useDevStore } from '../../stores/devStore';
 
 const devStore = useDevStore();
 const isExpanded = ref(false);
+const waitingForScene = ref(false);
+
+function emitSceneReady() {
+  window.dispatchEvent(new CustomEvent('dev-scene-ready'));
+  waitingForScene.value = false;
+}
+
+function onWaitingForScene() {
+  if (devStore.manualSceneReady) {
+    waitingForScene.value = true;
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('dev-waiting-for-scene', onWaitingForScene);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('dev-waiting-for-scene', onWaitingForScene);
+});
 </script>
 
 <style scoped>
@@ -176,5 +216,52 @@ const isExpanded = ref(false);
   transform: translateX(18px);
   opacity: 1;
   background: rgba(102, 255, 229, 0.9);
+}
+
+.dev-action-btn {
+  margin-top: 4px;
+  padding: 6px 12px;
+  border: 1px solid rgba(102, 255, 229, 0.35);
+  border-radius: 10px;
+  background: rgba(102, 255, 229, 0.15);
+  color: var(--color-hint);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 160ms ease;
+}
+
+.dev-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.dev-action-btn:not(:disabled):hover {
+  background: rgba(102, 255, 229, 0.25);
+}
+
+.scene-ready-btn {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1001;
+  padding: 10px 28px;
+  border: 1px solid rgba(102, 255, 229, 0.5);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--color-hint);
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  transition: background 160ms ease;
+}
+
+.scene-ready-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 </style>

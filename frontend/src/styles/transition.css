@@ -97,7 +97,8 @@
  * ==================================== */
 
 :root[data-no-transition] .glass,
-:root[data-no-transition] .glass-content {
+:root[data-no-transition] .glass-content,
+:root[data-no-transition] .tree-mask {
   transition: none !important;
 }
 

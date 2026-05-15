@@ -192,12 +192,14 @@ export const useNodeStore = defineStore('node', () => {
 
   function startAdd(): void {
     errorMessage.value = null;
-    viewState.value = ViewStates.ADD;
     pendingNodeName.value = '';
     operationNode.value = null;
     deleteWithChildren.value = false;
     moveTargetParentId.value = null;
     blockedParentIds.value = [];
+
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'add' }, 'large');
   }
 
   async function startDelete(node: NodeRecord): Promise<void> {
@@ -242,18 +244,24 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   function cancelOperation(): void {
-    viewState.value = ViewStates.DISPLAY;
     clearTransientState();
+
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'display' }, 'large');
   }
 
   function startDailyQuiz(): void {
     errorMessage.value = null;
-    viewState.value = ViewStates.DAILY_QUIZ;
+
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'daily_quiz' }, 'large');
   }
 
   function startWelcome(): void {
     errorMessage.value = null;
-    viewState.value = ViewStates.WELCOME;
+
+    const { startTransition } = usePageTransition();
+    startTransition({ type: 'viewState', newState: 'welcome' }, 'large');
   }
 
   async function checkDailyQuizStatus(): Promise<void> {
@@ -307,7 +315,7 @@ export const useNodeStore = defineStore('node', () => {
 
   async function onKnobClick(): Promise<void> {
     if (viewState.value === ViewStates.DAILY_QUIZ || viewState.value === ViewStates.WELCOME) {
-      viewState.value = ViewStates.DISPLAY;
+      cancelOperation();
       return;
     }
     if (viewState.value === ViewStates.DISPLAY || viewState.value === ViewStates.ADD) {
