@@ -24,7 +24,8 @@
         </section>
 
         <section class="content-area">
-          <div class="content-inset">
+          <div class="content-inset" :class="{ 'tree-visible': treeOverlayActive }">
+            <div ref="treeMaskRef" class="tree-mask" :class="{ 'tree-mask-visible': treeMaskVisible }" aria-hidden="true"></div>
             <div ref="contentGlassRef" class="content-glass" :class="{
               'content-sinking': contentPhase === 'sinking',
               'content-slide-out': contentPhase === 'slide-out',
@@ -121,6 +122,11 @@ const treeCurtainDrawn = ref(false);
 const treeCurtainRef = ref<HTMLElement | null>(null);
 const treeCanvasRef = ref<{ sceneReady: boolean } | null>(null);
 
+// Tree mask
+const treeMaskVisible = ref(false);
+const treeOverlayActive = ref(false);
+const treeMaskRef = ref<HTMLElement | null>(null);
+
 // Compact layout tracking
 const isCompact = ref(false);
 const isTooSmall = ref(false);
@@ -129,9 +135,65 @@ const isTooSmall = ref(false);
 const CONTENT_SINK_MS = 240;
 const CONTENT_SLIDE_MS = 280;
 const CONTENT_RISE_MS = 240;
+const TREE_MASK_FADE_MS = 380;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function waitForSceneReady(token: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (treeCanvasRef.value?.sceneReady && !devStore.manualSceneReady) {
+      resolve();
+      return;
+    }
+
+    // Notify DevPanel we're waiting
+    window.dispatchEvent(new CustomEvent('dev-waiting-for-scene'));
+
+    // In manual mode, wait for dev-scene-ready event
+    if (devStore.manualSceneReady) {
+      const onManualReady = () => {
+        console.log('[waitForSceneReady] dev-scene-ready received!');
+        window.removeEventListener('dev-scene-ready', onManualReady);
+        resolve();
+      };
+      window.addEventListener('dev-scene-ready', onManualReady);
+
+      const checkCancel = watch(
+        () => contentAnimToken,
+        (currentToken) => {
+          if (currentToken !== token) {
+            checkCancel();
+            window.removeEventListener('dev-scene-ready', onManualReady);
+            resolve();
+          }
+        },
+      );
+      return;
+    }
+
+    // Auto mode: watch sceneReady
+    const stop = watch(
+      () => treeCanvasRef.value?.sceneReady,
+      (ready) => {
+        if (ready) {
+          stop();
+          resolve();
+        }
+      },
+    );
+    const checkCancel = watch(
+      () => contentAnimToken,
+      (currentToken) => {
+        if (currentToken !== token) {
+          stop();
+          checkCancel();
+          resolve();
+        }
+      },
+    );
+  });
 }
 
 const contentPhase = ref('idle');
@@ -313,9 +375,12 @@ const contentKey = computed(() => {
 displayedKey.value = contentKey.value;
 displayedShowTree.value = showTree.value;
 displayedNonTreeContent.value = nonTreeContent.value;
+treeOverlayActive.value = showTree.value;
 
 // ================================================================
-// 4-phase content slide animation: sink → slide-out-right → slide-in-from-right → rise
+// Content transition animation
+// Tree: mask fade-in/out (no slide)
+// Non-tree: sink → slide-out → slide-in → rise
 // ================================================================
 async function animateContentTransition() {
   if (contentAnimating.value) {
@@ -324,6 +389,7 @@ async function animateContentTransition() {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
+    treeMaskVisible.value = false;
     contentAnimating.value = false;
     return;
   }
@@ -331,6 +397,7 @@ async function animateContentTransition() {
   contentAnimating.value = true;
   const token = ++contentAnimToken;
   const oldKey = displayedKey.value;
+  const wasShowingTree = displayedShowTree.value;
 
   // Phase 1: Sink — glass frame loses shadow, content fades
   contentPhase.value = 'sinking';
@@ -339,16 +406,17 @@ async function animateContentTransition() {
   await sleep(CONTENT_SINK_MS);
   if (token !== contentAnimToken) return;
 
-  // Phase 2: Slide out right — old content slides right, fades out
+  // Phase 2: Slide out — old content leaves
   contentPhase.value = 'slide-out';
   await sleep(CONTENT_SLIDE_MS);
   if (token !== contentAnimToken) return;
 
-  // Apply pending data after slide-out so the editor doesn't
-  // show new content while the old is still on-screen
+  // Apply pending data NOW — viewState is updated, so showTree is current
   nodeStore.applyPendingData();
 
-  // Content didn't change (e.g. layout transition) — skip slide, just rise
+  const willShowTree = showTree.value;
+
+  // Content didn't change — skip slide, just rise
   if (contentKey.value === oldKey) {
     contentPhase.value = 'rising';
     await nextTick();
@@ -360,23 +428,92 @@ async function animateContentTransition() {
     return;
   }
 
-  // Phase 3: Swap DOM — new content in prep position (off-screen right)
-  displayedKey.value = contentKey.value;
-  displayedShowTree.value = showTree.value;
-  displayedNonTreeContent.value = nonTreeContent.value;
-  contentPhase.value = 'slide-in-prep';
+  if (willShowTree && !wasShowingTree) {
+    // ---- TREE ENTER: non-tree → tree ----
 
-  await nextTick();
-  if (token !== contentAnimToken) return;
+    // Snap mask to visible instantly (no fade-in) — looks like empty area
+    treeOverlayActive.value = true;
+    const maskEl = treeMaskRef.value;
+    if (maskEl) maskEl.style.transition = 'none';
+    treeMaskVisible.value = true;
 
-  // Force reflow so prep position is painted, then trigger slide-in
-  void contentGlassRef.value?.offsetHeight;
-  contentPhase.value = 'slide-in';
+    await nextTick();
+    if (token !== contentAnimToken) return;
+    void contentGlassRef.value?.offsetHeight; // force reflow so opacity:1 is painted
+    if (maskEl) maskEl.style.transition = ''; // re-enable transition for fade-out
 
-  await sleep(CONTENT_SLIDE_MS);
-  if (token !== contentAnimToken) return;
+    // Now swap DOM: tree loads under the fully opaque mask
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    contentPhase.value = 'tree-mask';
 
-  // Phase 4: Rise — glass frame regains shadow
+    // Wait for tree scene to be ready, then fade mask out
+    await waitForSceneReady(token);
+    if (token !== contentAnimToken) return;
+    treeMaskVisible.value = false;
+    await sleep(TREE_MASK_FADE_MS);
+    if (token !== contentAnimToken) return;
+
+  } else if (!willShowTree && wasShowingTree) {
+    // ---- TREE EXIT: tree → non-tree ----
+    // Mask fades in, covering the tree
+    treeMaskVisible.value = true;
+    contentPhase.value = 'tree-mask';
+    await sleep(TREE_MASK_FADE_MS);
+    if (token !== contentAnimToken) return;
+
+    if (contentKey.value === oldKey) {
+      treeMaskVisible.value = false;
+      treeOverlayActive.value = false;
+      contentPhase.value = 'rising';
+      await nextTick();
+      if (token !== contentAnimToken) return;
+      await sleep(CONTENT_RISE_MS);
+      if (token !== contentAnimToken) return;
+      contentPhase.value = 'idle';
+      contentAnimating.value = false;
+      return;
+    }
+
+    // Swap DOM behind the mask
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+
+    await nextTick();
+    if (token !== contentAnimToken) return;
+    void contentGlassRef.value?.offsetHeight;
+
+    // Mask fades out, revealing new content
+    treeMaskVisible.value = false;
+    await sleep(TREE_MASK_FADE_MS);
+    if (token !== contentAnimToken) return;
+
+    // Z-indices revert after mask is gone
+    treeOverlayActive.value = false;
+
+  } else {
+    // ---- NON-TREE: standard slide-in from right ----
+
+    // Phase 3: Swap DOM — new content in prep position (off-screen right)
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    contentPhase.value = 'slide-in-prep';
+
+    await nextTick();
+    if (token !== contentAnimToken) return;
+
+    // Force reflow so prep position is painted, then trigger slide-in
+    void contentGlassRef.value?.offsetHeight;
+    contentPhase.value = 'slide-in';
+
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== contentAnimToken) return;
+  }
+
+  // Phase: Rise — glass frame regains shadow
   contentPhase.value = 'rising';
   await nextTick();
   if (token !== contentAnimToken) return;
@@ -397,6 +534,7 @@ watch(currentPhase, (phase) => {
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
+      treeMaskVisible.value = false;
       contentAnimating.value = false;
     }
     animateContentTransition();
@@ -409,6 +547,8 @@ watch(contentKey, () => {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
+    treeMaskVisible.value = false;
+    treeOverlayActive.value = showTree.value;
   }
 });
 
@@ -585,6 +725,37 @@ watch(
   pointer-events: none;
 }
 
+/* When tree is displayed, inner shadow overlays on top of tree content */
+.content-inset.tree-visible::after {
+  z-index: 3;
+}
+
+.content-inset.tree-visible .content-glass {
+  z-index: 1;
+}
+
+.tree-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 24px;
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 380ms ease;
+}
+
+.tree-mask.tree-mask-visible {
+  opacity: 1;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .tree-mask {
+    background-attachment: scroll;
+  }
+}
+
 .content-glass {
   position: relative;
   z-index: 2;
@@ -655,6 +826,10 @@ watch(
 
   .content-area {
     padding: 0;
+  }
+
+  .tree-mask {
+    border-radius: 0;
   }
 
   /* Compact content mode: breadcrumbs + content + knob */
