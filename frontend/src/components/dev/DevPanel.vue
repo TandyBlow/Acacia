@@ -18,17 +18,6 @@
           </button>
         </div>
         <div class="dev-toggle-row">
-          <span class="dev-toggle-label">上升/下沉动画</span>
-          <button
-            type="button"
-            class="dev-toggle"
-            :class="{ on: devStore.enableRiseSink }"
-            @click.stop="devStore.toggleRiseSink()"
-          >
-            <span class="dev-toggle-thumb" />
-          </button>
-        </div>
-        <div class="dev-toggle-row">
           <span class="dev-toggle-label">手动 Scene Ready</span>
           <button
             type="button"

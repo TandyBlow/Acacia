@@ -197,7 +197,6 @@ onMounted(() => {
              state.viewState === 'display';
     },
     parent: 'content',
-    skipGlobalTransition: true,
   });
 
   if (isAuthenticated.value && !treeLoaded) {

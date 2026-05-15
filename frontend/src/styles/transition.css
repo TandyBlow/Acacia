@@ -1,49 +1,15 @@
 /*
  * 页面转换动画系统
  *
- * 状态转换流程：
- * glass-raised (正常) → glass-sinking (下沉中) → glass-sunken (下沉完成) → glass-rising (升起中) → glass-raised (正常)
- *
- * 与 cell 过渡统一参数：
- * - 位移：translateY(12px)
- * - 缩放：0.97 → 1
- * - 不透明度：0 → 1
- * - 时长：240ms
- * - 缓动：ease
- */
-
-/* ====================================
- * Glass region transition states
- * ==================================== */
-
-/* Sinking: content fades out, frame stays visible (matches cell-leave) */
-.glass-sinking .glass-content {
-  opacity: 0;
-  transition: opacity 240ms ease;
-}
-
-/* Static sunken hold — no transitions, keeps element invisible during data loading */
-.glass-sunken {
-  box-shadow: none !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  opacity: 0 !important;
-  transform: translateY(12px) scale(0.97) !important;
-}
-
-/* Rising: transition enabler — when combined with removing .glass-sunken,
-   opacity and transform transition from sunken back to normal (matches cell-enter) */
-.glass-rising {
-  transition: opacity 240ms ease,
-              transform 240ms ease !important;
-}
-
-/* ====================================
- * Cell enter/leave transitions
- *
+ * Cell enter/leave transitions for navigation items:
  * Rise (enter): element slides up from below, fades in, scales 0.97→1
  * Sink (leave): inner content fades out, border frame persists then snaps
  *
  * Duration defaults to 240ms, overridable via --cell-anim-ms.
+ */
+
+/* ====================================
+ * Cell enter/leave transitions
  * ==================================== */
 
 .cell-enter-active,
@@ -92,7 +58,7 @@
 }
 
 /* ====================================
- * Dev toggle overrides — disable GlassWrapper transitions
+ * Dev toggle overrides — disable transitions
  * when the master page-transition toggle is off.
  * ==================================== */
 
@@ -100,11 +66,4 @@
 :root[data-no-transition] .glass-content,
 :root[data-no-transition] .tree-mask {
   transition: none !important;
-}
-
-/* When rise/sink is disabled, remove transform from GlassWrapper transitions
-   to prevent Vue TransitionGroup FLIP transforms from being animated. */
-:root[data-no-rise-sink] .glass {
-  transition-property: box-shadow, border-color, background, backdrop-filter, -webkit-backdrop-filter !important;
-  transition-duration: 240ms, 240ms, 240ms, 240ms, 240ms !important;
 }

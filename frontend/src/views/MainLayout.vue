@@ -54,7 +54,7 @@
                   </div>
                 </template>
               </div>
-              <div ref="treeCurtainRef" class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
+              <div class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
             </div>
           </div>
         </section>
@@ -108,7 +108,7 @@ const {
 useAppInit();
 const { compactMode, isCompactLayout } = useKnobDispatch();
 
-const { registerRegion, unregisterRegion, startTransition, currentPhase } = usePageTransition();
+const { registerRegion, unregisterRegion, startTransition, isTransitioning } = usePageTransition();
 
 // Region refs for page transition system
 const logoRef = ref<HTMLElement | null>(null);
@@ -119,7 +119,6 @@ const knobRef = ref<HTMLElement | null>(null);
 
 // Tree curtain
 const treeCurtainDrawn = ref(false);
-const treeCurtainRef = ref<HTMLElement | null>(null);
 const treeCanvasRef = ref<{ sceneReady: boolean } | null>(null);
 
 // Tree mask
@@ -260,7 +259,6 @@ onMounted(() => {
       type: 'inset',
       element: breadcrumbsRef,
       shouldShow: () => true,
-      skipGlobalTransition: true,
     });
   }
 
@@ -275,7 +273,6 @@ onMounted(() => {
         }
         return true;
       },
-      skipGlobalTransition: true,
     });
   }
 
@@ -285,7 +282,6 @@ onMounted(() => {
       type: 'glass',
       element: contentGlassRef,
       shouldShow: () => true,
-      skipGlobalTransition: true,
     });
   }
 
@@ -310,18 +306,13 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => [devStore.enableRiseSink, devStore.enableTransition] as const,
-  ([riseSink, transition]) => {
+  () => devStore.enableTransition,
+  (transition) => {
     const root = document.documentElement;
     if (!transition) {
       root.setAttribute('data-no-transition', '');
     } else {
       root.removeAttribute('data-no-transition');
-    }
-    if (!riseSink) {
-      root.setAttribute('data-no-rise-sink', '');
-    } else {
-      root.removeAttribute('data-no-rise-sink');
     }
   },
   { immediate: true },
@@ -524,11 +515,19 @@ async function animateContentTransition() {
   contentAnimating.value = false;
 }
 
-// Trigger content animation when global transition starts sinking
-watch(currentPhase, (phase) => {
-  if (phase === 'sinking') {
+// Tree curtain: tracks visibility across transitions
+const treeWasVisible = ref(false);
+
+// Trigger content animation when a page transition starts
+watch(isTransitioning, (transitioning) => {
+  if (transitioning) {
+    // Set up tree curtain before animation starts
+    treeWasVisible.value = showTree.value;
+    if (showTree.value) {
+      treeCurtainDrawn.value = true;
+    }
+
     if (contentAnimating.value) {
-      // Cancel in-progress animation, snap to current state
       contentAnimToken++;
       contentPhase.value = 'idle';
       displayedKey.value = contentKey.value;
@@ -538,6 +537,11 @@ watch(currentPhase, (phase) => {
       contentAnimating.value = false;
     }
     animateContentTransition();
+  } else {
+    // Transition ended — clean up tree curtain
+    if (!showTree.value) {
+      treeCurtainDrawn.value = false;
+    }
   }
 });
 
@@ -549,32 +553,6 @@ watch(contentKey, () => {
     displayedNonTreeContent.value = nonTreeContent.value;
     treeMaskVisible.value = false;
     treeOverlayActive.value = showTree.value;
-  }
-});
-
-// Tree curtain logic
-const treeWasVisible = ref(false);
-
-watch(currentPhase, (phase) => {
-  if (phase === 'sinking') {
-    treeWasVisible.value = showTree.value;
-    if (showTree.value) {
-      treeCurtainDrawn.value = true;
-    }
-  } else if (phase === 'rising') {
-    if (!treeWasVisible.value && showTree.value) {
-      const el = treeCurtainRef.value;
-      if (el) {
-        el.style.transition = 'none';
-        treeCurtainDrawn.value = true;
-        el.offsetHeight;
-        el.style.transition = '';
-      }
-    }
-  } else if (phase === 'idle') {
-    if (!showTree.value) {
-      treeCurtainDrawn.value = false;
-    }
   }
 });
 

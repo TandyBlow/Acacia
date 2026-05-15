@@ -11,11 +11,6 @@ export type LayoutType = 'large' | 'medium' | 'small';
 export type CompactMode = 'content' | 'nav';
 
 /**
- * Transition animation phases for glass morphism effects.
- */
-export type TransitionPhase = 'idle' | 'sinking' | 'loading' | 'swapping' | 'rising';
-
-/**
  * Snapshot of application state used to determine region visibility.
  */
 export interface PageState {
@@ -34,7 +29,7 @@ export interface PageState {
 }
 
 /**
- * Registration data for a UI region participating in glass transitions.
+ * Registration data for a UI region participating in transitions.
  */
 export interface RegionRegistration {
   /** Unique identifier for this region */
@@ -47,8 +42,6 @@ export interface RegionRegistration {
   shouldShow: (state: PageState) => boolean;
   /** Optional parent region ID for nested regions */
   parent?: string;
-  /** When true, this region handles its own animation and skips global sink/rise */
-  skipGlobalTransition?: boolean;
 }
 
 /**

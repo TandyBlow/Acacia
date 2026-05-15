@@ -150,7 +150,7 @@ const scrollDirection = ref<'up' | 'down' | null>(null);
 const transitionName = ref('cell');
 const devStore = useDevStore();
 const effectiveTransitionName = computed(() => {
-  if (!devStore.enableRiseSink || navAnimating.value) return 'none';
+  if (!devStore.enableTransition || navAnimating.value) return 'none';
   return transitionName.value;
 });
 
