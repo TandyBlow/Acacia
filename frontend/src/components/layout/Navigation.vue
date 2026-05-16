@@ -8,6 +8,7 @@
   }">
     <template v-if="isAuthenticated">
       <TransitionGroup
+        v-show="!hideNodeList"
         ref="nodeListRef"
         :name="effectiveTransitionName"
         :style="{ '--cell-anim-ms': `${currentAnimMs}ms` }"
@@ -45,10 +46,15 @@
         </div>
       </TransitionGroup>
 
-      <GlassWrapper class="add-shell" interactive :pressed="addPressed" @click="onAddClick">
+      <GlassWrapper v-if="!anchorOfficial" class="add-shell" interactive :pressed="addPressed" @click="onAddClick">
         <button type="button" class="add-button">
           {{ UI.nav.addNode }}
         </button>
+      </GlassWrapper>
+      <GlassWrapper v-if="anchorOfficial" class="add-shell anchor-official-shell" :class="{ 'anchor-slide-down': anchorSlidingDown }" interactive pressed @click="onAnchorOfficialClick">
+        <div class="official-content">
+          <span class="official-name">{{ anchorOfficial.name }}</span>
+        </div>
       </GlassWrapper>
 
     </template>
@@ -68,6 +74,7 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useDevStore } from '../../stores/devStore';
+import { useKnobDispatch } from '../../composables/useKnobDispatch';
 import type { NodeRecord } from '../../types/node';
 import {
   NAV_ROW_H,
@@ -92,6 +99,7 @@ const store = useNodeStore();
 const authStore = useAuthStore();
 const { childNodes, officialNodes, activeNode, viewState } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
+const { isCompactLayout } = useKnobDispatch();
 
 const visibleOfficialNodes = computed(() =>
   officialNodes.value.filter(n => n.visible),
@@ -104,6 +112,15 @@ const pressedOfficialId = computed<string | null>(() => {
 
 // Official section visibility, synchronized with page nav animation
 const showOfficialNodes = ref(visibleOfficialNodes.value.length > 0 && !activeNode.value);
+
+// Keep showOfficialNodes and displayItems in sync when not mid-animation
+// Covers: dailyQuizVisible async update, viewState transitions in non-compact layout
+watch([visibleOfficialNodes, activeNode], () => {
+  if (navAnimating.value || isAnimating.value) return;
+  const next = visibleOfficialNodes.value.length > 0 && !activeNode.value;
+  showOfficialNodes.value = next;
+  displayItems.value = scrollSource.value.slice(scrollOffset.value, scrollOffset.value + maxVisible.value);
+});
 
 interface NavItem {
   id: string;
@@ -133,6 +150,11 @@ const navAnimating = ref(false);
 let navAnimToken = 0;
 let lastActiveNodeId: string | null = null;
 let hasInitialized = false;
+
+// --- small layout add/official animation state ---
+const hideNodeList = ref(false);
+const anchorOfficial = ref<NavItem | null>(null);
+const anchorSlidingDown = ref(false);
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -282,6 +304,16 @@ watch(childNodes, () => {
   }
 }, { immediate: true });
 
+// Small layout: detect cancel/return from add/official state
+watch(viewState, (newState, oldState) => {
+  if (!isCompactLayout.value) return;
+  const wasSpecial = oldState === 'add' || oldState === 'daily_quiz' || oldState === 'welcome';
+  const isNormal = newState === 'display';
+  if (wasSpecial && isNormal && hideNodeList.value) {
+    animateSmallLayoutReturn();
+  }
+});
+
 // [Bug4 fix] update visible window when container resizes
 watch(maxVisible, (mv) => {
   if (!isAnimating.value && !navAnimating.value) {
@@ -322,15 +354,128 @@ function onAddClick(): void {
     store.cancelOperation();
     return;
   }
-  store.startAdd();
+  if (isCompactLayout.value) {
+    animateSmallLayoutAdd();
+  } else {
+    store.startAdd();
+  }
 }
 
 function onOfficialClick(item: NavItem): void {
   if (pressedOfficialId.value === item.id) {
     store.cancelOperation();
+  } else if (isCompactLayout.value) {
+    animateSmallLayoutOfficial(item);
   } else {
     item.action!();
   }
+}
+
+function onAnchorOfficialClick(): void {
+  store.cancelOperation();
+}
+
+// ================================================================
+// Small layout add/official animations — reuse navPhase state machine
+// Add: sink → node list slides out left (add button stays) → startAdd
+// Official: sink → node list slides out left → anchor slides down → action
+// Return: node list slides in from left → rise
+// ================================================================
+async function animateSmallLayoutAdd() {
+  if (navAnimating.value) {
+    navAnimToken++;
+    navPhase.value = 'idle';
+    navAnimating.value = false;
+    hideNodeList.value = false;
+  }
+
+  navAnimating.value = true;
+  const token = ++navAnimToken;
+
+  navPhase.value = 'sinking';
+  await nextTick();
+  await sleep(NAV_SINK_MS);
+  if (token !== navAnimToken) return;
+
+  navPhase.value = 'sliding-out';
+  await sleep(NAV_SLIDE_MS);
+  if (token !== navAnimToken) return;
+
+  hideNodeList.value = true;
+  navPhase.value = 'idle';
+  navAnimating.value = false;
+
+  store.startAdd();
+}
+
+async function animateSmallLayoutOfficial(item: NavItem) {
+  if (navAnimating.value) {
+    navAnimToken++;
+    navPhase.value = 'idle';
+    navAnimating.value = false;
+    hideNodeList.value = false;
+    anchorOfficial.value = null;
+    anchorSlidingDown.value = false;
+  }
+
+  navAnimating.value = true;
+  const token = ++navAnimToken;
+
+  navPhase.value = 'sinking';
+  await nextTick();
+  await sleep(NAV_SINK_MS);
+  if (token !== navAnimToken) return;
+
+  navPhase.value = 'sliding-out';
+  await sleep(NAV_SLIDE_MS);
+  if (token !== navAnimToken) return;
+
+  hideNodeList.value = true;
+  anchorOfficial.value = item;
+  navPhase.value = 'idle';
+  navAnimating.value = false;
+
+  // Animate anchor sliding down from above — CSS transition driven by class toggle + reflow
+  anchorSlidingDown.value = true;
+  await nextTick();
+  void document.body.offsetHeight; // force reflow so prep position is painted
+  anchorSlidingDown.value = false;
+  await sleep(NAV_SLIDE_MS);
+
+  item.action!();
+}
+
+async function animateSmallLayoutReturn() {
+  if (navAnimating.value) {
+    navAnimToken++;
+    navPhase.value = 'idle';
+    navAnimating.value = false;
+  }
+
+  navAnimating.value = true;
+  const token = ++navAnimToken;
+
+  hideNodeList.value = false;
+  anchorOfficial.value = null;
+  anchorSlidingDown.value = false;
+
+  navPhase.value = 'sliding-in-prep';
+  await nextTick();
+  const el = nodeListRef.value as HTMLElement | null;
+  if (el) void el.offsetHeight;
+  if (token !== navAnimToken) return;
+
+  navPhase.value = 'sliding-in';
+  await sleep(NAV_SLIDE_MS);
+  if (token !== navAnimToken) return;
+
+  navPhase.value = 'rising';
+  await nextTick();
+  await sleep(NAV_RISE_MS);
+  if (token !== navAnimToken) return;
+
+  navPhase.value = 'idle';
+  navAnimating.value = false;
 }
 
 function onBeforeLeave(el: Element): void {
@@ -792,4 +937,25 @@ onUnmounted(() => ro?.disconnect());
 /* Phase 4: Rise — no explicit overrides needed.
    Removing sunken classes lets GlassWrapper's default transition
    animate back to the raised state naturally. */
+
+/* Anchor official slides down from above when clicking official node in small layout */
+.anchor-slide-down :deep(.glass-raised) {
+  transform: translateY(-200px);
+  opacity: 0;
+  transition: none;
+}
+
+.anchor-slide-down :deep(.glass-content) {
+  transform: translateY(-200px);
+  opacity: 0;
+  transition: none;
+}
+
+/* Triggered by removing anchor-slide-down class after prep — glass transitions in */
+.anchor-official-shell :deep(.glass-raised) {
+  transition: transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 280ms ease, box-shadow 240ms ease;
+}
+.anchor-official-shell :deep(.glass-content) {
+  transition: transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 280ms ease;
+}
 </style>

@@ -1,35 +1,43 @@
 <template>
   <div ref="panelRef" class="panel">
-    <section v-if="viewState === ViewStates.ADD" class="block">
-      <h2>{{ UI.confirm.addNode }}</h2>
-      <input
-        v-model="pendingNodeName"
-        class="name-input"
-        type="text"
-        maxlength="80"
-      />
-    </section>
+    <div class="activity-layout">
+      <div class="activity-glass-host">
+        <GlassWrapper>
+          <div class="activity-scroll">
+            <section v-if="viewState === ViewStates.ADD" class="block">
+              <h2>{{ UI.confirm.addNode }}</h2>
+              <input
+                v-model="pendingNodeName"
+                class="name-input"
+                type="text"
+                maxlength="80"
+              />
+            </section>
 
-    <section v-else-if="viewState === ViewStates.DELETE" class="block">
-      <h2>{{ UI.confirm.deleteNode }}</h2>
-      <div class="target-name">{{ operationNode?.name ?? '' }}</div>
+            <section v-else-if="viewState === ViewStates.DELETE" class="block">
+              <h2>{{ UI.confirm.deleteNode }}</h2>
+              <div class="target-name">{{ operationNode?.name ?? '' }}</div>
 
-      <button
-        v-if="operationHasChildren"
-        type="button"
-        class="delete-option"
-        @click="deleteWithChildren = !deleteWithChildren"
-      >
-        <GlassWrapper
-          class="delete-toggle"
-          shape="circle"
-          :pressed="deleteWithChildren"
-          interactive
-        >
-          <span class="delete-toggle-mark">{{ deleteWithChildren ? '√' : '' }}</span>
+              <button
+                v-if="operationHasChildren"
+                type="button"
+                class="delete-option"
+                @click="deleteWithChildren = !deleteWithChildren"
+              >
+                <GlassWrapper
+                  class="delete-toggle"
+                  shape="circle"
+                  :pressed="deleteWithChildren"
+                  interactive
+                >
+                  <span class="delete-toggle-mark">{{ deleteWithChildren ? '√' : '' }}</span>
+                </GlassWrapper>
+              </button>
+            </section>
+          </div>
         </GlassWrapper>
-      </button>
-    </section>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -71,14 +79,12 @@ onBeforeUnmount(() => {
 .panel {
   width: 100%;
   height: 100%;
-  padding: 18px;
-  display: grid;
-  place-items: center;
-  color: var(--color-primary);
 }
 
 .block {
   width: min(620px, 100%);
+  margin: 0 auto;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -89,6 +95,7 @@ h2 {
   margin: 0;
   font-size: 28px;
   line-height: 1.2;
+  color: var(--color-primary);
 }
 
 .name-input {
@@ -115,6 +122,7 @@ h2 {
   background: rgba(255, 255, 255, 0.12);
   font-size: 18px;
   font-weight: 600;
+  color: var(--color-primary);
 }
 
 .delete-option {

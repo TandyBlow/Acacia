@@ -16,13 +16,15 @@ const isTransitioning = ref(false);
 function getCurrentPageState(layout: LayoutType): PageState {
   const nodeStore = useNodeStore();
   const authStore = useAuthStore();
-  const { compactMode } = useKnobDispatch();
+  const { compactMode, isCompactLayout } = useKnobDispatch();
+
+  const actualLayout: LayoutType = isCompactLayout.value ? 'small' : layout;
 
   return {
     viewState: nodeStore.viewState,
     activeNode: nodeStore.activeNode ? { id: nodeStore.activeNode.id } : null,
     isOfficialNode: nodeStore.isDailyQuizState || nodeStore.isWelcomeState,
-    layout,
+    layout: actualLayout,
     compactMode: compactMode.value,
     isAuthenticated: authStore.isAuthenticated,
   };
@@ -71,17 +73,34 @@ export function usePageTransition() {
 
     isTransitioning.value = true;
 
+    let deferredCompactSwitch = false;
+
     try {
       await executeDataLoading(trigger);
 
       const nodeStore = useNodeStore();
       nodeStore.applyPendingSharedData();
 
+      // Defer compact mode auto-switch to after the transition completes
+      // so animateCompactToggle can run properly (not blocked by isTransitioning)
+      if (trigger.type === 'navigate') {
+        const { compactMode, isCompactLayout } = useKnobDispatch();
+        if (isCompactLayout.value && compactMode.value === 'nav') {
+          deferredCompactSwitch = true;
+        }
+      }
+
       const newState = getCurrentPageState(layout);
 
       for (const [, reg] of regions.entries()) {
         const el = reg.element.value;
         if (!el) continue;
+
+        // Skip nav/content region swap when compact mode switch is deferred
+        // — animateCompactToggle will handle the swap with proper animation
+        if (deferredCompactSwitch && (reg.id === 'navigation' || reg.id === 'content')) {
+          continue;
+        }
 
         const shouldBeVisible = reg.shouldShow(newState);
         const currentDisplay = window.getComputedStyle(el).display;
@@ -96,6 +115,13 @@ export function usePageTransition() {
       console.error('Page transition failed:', error);
     } finally {
       isTransitioning.value = false;
+    }
+
+    // Apply deferred compact mode switch after transition completes
+    // (isTransitioning is now false, so compactMode watcher can run)
+    if (deferredCompactSwitch) {
+      const { compactMode } = useKnobDispatch();
+      compactMode.value = 'content';
     }
   }
 
