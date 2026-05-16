@@ -2,7 +2,13 @@
   <div v-if="isTooSmall" class="insufficient-space">
     <p>{{ UI.app.insufficientSpace }}</p>
   </div>
-  <main v-else class="layout" :class="layoutClasses">
+  <main v-else class="layout" :class="[layoutClasses, {
+    'compact-toggle-sinking': compactAnimPhase === 'sinking',
+    'compact-nav-slide-out': compactAnimPhase === 'nav-slide-out',
+    'compact-nav-slide-in-prep': compactAnimPhase === 'nav-slide-in-prep',
+    'compact-nav-slide-in': compactAnimPhase === 'nav-slide-in',
+    'compact-toggle-rising': compactAnimPhase === 'rising',
+  }]">
     <section ref="logoRef" class="logo-area">
       <div class="inset-shell static-shell">
         <LogoArea />
@@ -23,7 +29,7 @@
           </div>
         </section>
 
-        <section class="content-area">
+        <section ref="contentAreaRef" class="content-area">
           <div class="content-inset" :class="{ 'tree-visible': treeOverlayActive }">
             <div ref="treeMaskRef" class="tree-mask" :class="{ 'tree-mask-visible': treeMaskVisible }" aria-hidden="true"></div>
             <div ref="contentGlassRef" class="content-glass" :class="{
@@ -44,14 +50,8 @@
                     :is="displayedNonTreeContent"
                     :key="displayedKey"
                   />
-                  <div v-else class="activity-layout">
-                    <div class="activity-glass-host">
-                      <GlassWrapper>
-                        <div class="activity-scroll">
-                          <component :is="displayedNonTreeContent" :key="displayedKey" />
-                        </div>
-                      </GlassWrapper>
-                    </div>
+                  <div v-else class="activity-scroll">
+                    <component :is="displayedNonTreeContent" :key="displayedKey" />
                   </div>
                 </template>
               </div>
@@ -78,7 +78,6 @@ import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
 import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
-import GlassWrapper from '../components/ui/GlassWrapper.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
 import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
@@ -90,7 +89,7 @@ import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDevStore } from '../stores/devStore';
 import { useAppInit } from '../composables/useAppInit';
-import { useKnobDispatch } from '../composables/useKnobDispatch';
+import { useKnobDispatch, type CompactMode } from '../composables/useKnobDispatch';
 import { usePageTransition } from '../composables/usePageTransition';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
@@ -115,6 +114,7 @@ const { registerRegion, unregisterRegion, startTransition, isTransitioning } = u
 const logoRef = ref<HTMLElement | null>(null);
 const breadcrumbsRef = ref<HTMLElement | null>(null);
 const navigationRef = ref<HTMLElement | null>(null);
+const contentAreaRef = ref<HTMLElement | null>(null);
 const contentGlassRef = ref<HTMLElement | null>(null);
 const knobRef = ref<HTMLElement | null>(null);
 
@@ -130,6 +130,9 @@ const treeMaskRef = ref<HTMLElement | null>(null);
 // Compact layout tracking
 const isCompact = ref(false);
 const isTooSmall = ref(false);
+
+// Compact toggle animation
+const compactAnimPhase = ref<'idle' | 'sinking' | 'nav-slide-out' | 'nav-slide-in-prep' | 'nav-slide-in' | 'rising'>('idle');
 
 // Content slide animation
 const CONTENT_SINK_MS = 240;
@@ -201,6 +204,12 @@ let contentAnimToken = 0;
 const contentAnimating = ref(false);
 provide('contentAnimating', contentAnimating);
 
+// Track previous viewState to detect small-layout special-state transitions.
+// In small layout, Navigation runs its own internal animation for
+// add/daily_quiz/welcome enter/exit — Content must skip its slide animation
+// to avoid the two systems fighting over DOM and CSS classes simultaneously.
+let prevCompactViewState = nodeStore.viewState;
+
 const displayedKey = ref('');
 const displayedShowTree = ref(false);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -271,6 +280,8 @@ onMounted(() => {
       element: navigationRef,
       shouldShow: (state) => {
         if (state.layout === 'small') {
+          const specialStates = ['add', 'daily_quiz', 'welcome'];
+          if (specialStates.includes(state.viewState)) return true;
           return state.compactMode === 'nav';
         }
         return true;
@@ -278,12 +289,19 @@ onMounted(() => {
     });
   }
 
-  if (contentGlassRef.value) {
+  if (contentAreaRef.value) {
     registerRegion({
       id: 'content',
       type: 'glass',
-      element: contentGlassRef,
-      shouldShow: () => true,
+      element: contentAreaRef,
+      shouldShow: (state) => {
+        if (state.layout === 'small') {
+          const specialStates = ['add', 'daily_quiz', 'welcome'];
+          if (specialStates.includes(state.viewState)) return true;
+          return state.compactMode !== 'nav';
+        }
+        return true;
+      },
     });
   }
 
@@ -321,15 +339,23 @@ watch(
 );
 
 watch(compactMode, (newMode, oldMode) => {
-  if (newMode !== oldMode && isCompact.value) {
-    startTransition({ type: 'layout', newLayout: 'small' }, 'small');
-  }
+  if (newMode === oldMode || !isCompact.value) return;
+  if (isTransitioning.value) return;
+  if (contentAnimating.value) return;
+  animateCompactToggle(oldMode as CompactMode, newMode as CompactMode);
+});
+
+const isSmallLayoutMixed = computed(() => {
+  if (!isCompact.value || compactMode.value !== 'nav') return false;
+  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  return specialStates.includes(nodeStore.viewState);
 });
 
 const layoutClasses = computed(() => ({
   'compact': isCompact.value,
   'compact-content': isCompact.value && compactMode.value === 'content',
   'compact-nav': isCompact.value && compactMode.value === 'nav',
+  'compact-mixed': isSmallLayoutMixed.value,
   'is-too-small': isTooSmall.value,
 }));
 
@@ -383,7 +409,34 @@ async function animateContentTransition() {
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
     treeMaskVisible.value = false;
+    treeOverlayActive.value = showTree.value;
     contentAnimating.value = false;
+    return;
+  }
+
+  // Skip animation when content area is hidden in compact nav mode.
+  // The deferred compactMode switch will trigger animateCompactToggle
+  // which handles the nav→content transition with proper animation.
+  if (isCompact.value && compactMode.value === 'nav') {
+    nodeStore.applyPendingData();
+    return;
+  }
+
+  // Small layout: Navigation runs its own animation (animateSmallLayoutOfficial,
+  // animateSmallLayoutAdd, animateSmallLayoutReturn) for special-state enter/exit.
+  // Skip content slide to avoid two independent animation systems fighting over
+  // DOM and CSS classes at the same time. Just swap the content instantly.
+  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  const wasSpecial = specialStates.includes(prevCompactViewState);
+  const isSpecial = specialStates.includes(nodeStore.viewState);
+  prevCompactViewState = nodeStore.viewState;
+
+  if (isCompact.value && (wasSpecial || isSpecial)) {
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    treeMaskVisible.value = false;
+    treeOverlayActive.value = showTree.value;
     return;
   }
 
@@ -549,6 +602,155 @@ async function animateContentTransition() {
   contentAnimating.value = false;
 }
 
+// ================================================================
+// Compact toggle animation (small layout only)
+// Tree path: mask fade-in/out (same mechanism as large layout)
+// Non-tree path: sink → slide-out → slide-in → rise
+// ================================================================
+async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode) {
+  const navEl = navigationRef.value;
+  const contentEl = contentAreaRef.value;
+  if (!navEl || !contentEl) return;
+
+  contentAnimating.value = true;
+  const token = ++contentAnimToken;
+  const toNav = newMode === 'nav';
+
+  if (toNav) {
+    // ================================================================
+    // Content → Nav
+    // ================================================================
+
+    if (displayedShowTree.value) {
+      // ---- TREE PATH: mask fade-in covers the tree ----
+
+      // Mask fades in over tree
+      treeMaskVisible.value = true;
+      contentPhase.value = 'tree-mask';
+      await sleep(TREE_MASK_FADE_MS);
+      if (token !== contentAnimToken) return;
+
+      // Snap mask off — content area is about to be hidden
+      const maskEl = treeMaskRef.value;
+      if (maskEl) maskEl.style.transition = 'none';
+      treeMaskVisible.value = false;
+      treeOverlayActive.value = false;
+      contentPhase.value = 'idle';
+
+      await nextTick();
+      void maskEl?.offsetHeight;
+      if (maskEl) maskEl.style.transition = '';
+      if (token !== contentAnimToken) return;
+    } else {
+      // ---- NON-TREE PATH: slide-out right ----
+
+      contentPhase.value = 'sinking';
+      await nextTick();
+      if (token !== contentAnimToken) return;
+      await sleep(CONTENT_SINK_MS);
+      if (token !== contentAnimToken) return;
+
+      contentPhase.value = 'slide-out';
+      await sleep(CONTENT_SLIDE_MS);
+      if (token !== contentAnimToken) return;
+
+      contentPhase.value = 'idle';
+    }
+
+    // Swap visibility — hide content, show nav in prep position
+    contentEl.style.display = 'none';
+    navEl.style.display = '';
+    compactAnimPhase.value = 'nav-slide-in-prep';
+
+    await nextTick();
+    void navEl.offsetHeight;
+
+    // Nav slides in from left as sunken
+    compactAnimPhase.value = 'nav-slide-in';
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== contentAnimToken) return;
+
+    // Nav rises — glass items regain shadow
+    compactAnimPhase.value = 'rising';
+    await nextTick();
+    await sleep(CONTENT_RISE_MS);
+  } else {
+    // ================================================================
+    // Nav → Content
+    // ================================================================
+
+    // Nav sinks
+    compactAnimPhase.value = 'sinking';
+    await nextTick();
+    await sleep(CONTENT_SINK_MS);
+
+    // Nav slides out left
+    compactAnimPhase.value = 'nav-slide-out';
+    await sleep(CONTENT_SLIDE_MS);
+
+    // Apply pending node data so showTree reflects the actual state
+    nodeStore.applyPendingData();
+
+    // Swap visibility — hide nav, show content
+    compactAnimPhase.value = 'idle';
+    navEl.style.display = 'none';
+    contentEl.style.display = '';
+
+    if (showTree.value) {
+      // ---- TREE PATH: mask covers tree while it loads, then fades out ----
+
+      // Snap mask to visible instantly (no fade-in)
+      treeOverlayActive.value = true;
+      const maskEl = treeMaskRef.value;
+      if (maskEl) maskEl.style.transition = 'none';
+      treeMaskVisible.value = true;
+
+      // Swap DOM: tree loads under the fully opaque mask
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      contentPhase.value = 'tree-mask';
+
+      await nextTick();
+      if (token !== contentAnimToken) return;
+      void contentGlassRef.value?.offsetHeight;
+      if (maskEl) maskEl.style.transition = '';
+
+      // Wait for tree scene to be ready, then fade mask out
+      await waitForSceneReady(token);
+      if (token !== contentAnimToken) return;
+      treeMaskVisible.value = false;
+      await sleep(TREE_MASK_FADE_MS);
+      if (token !== contentAnimToken) return;
+    } else {
+      // ---- NON-TREE PATH: slide-in from right ----
+
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+
+      contentPhase.value = 'slide-in-prep';
+
+      await nextTick();
+      if (token !== contentAnimToken) return;
+
+      void contentGlassRef.value?.offsetHeight;
+      contentPhase.value = 'slide-in';
+      await sleep(CONTENT_SLIDE_MS);
+      if (token !== contentAnimToken) return;
+
+      // Content rises — glass items regain shadow
+      contentPhase.value = 'rising';
+      await nextTick();
+      await sleep(CONTENT_RISE_MS);
+    }
+  }
+
+  contentPhase.value = 'idle';
+  compactAnimPhase.value = 'idle';
+  contentAnimating.value = false;
+}
+
 // Tree curtain: tracks visibility across transitions
 const treeWasVisible = ref(false);
 
@@ -564,6 +766,7 @@ watch(isTransitioning, (transitioning) => {
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
       treeMaskVisible.value = false;
+      treeOverlayActive.value = showTree.value;
       contentAnimating.value = false;
     }
     animateContentTransition();
@@ -825,11 +1028,9 @@ watch(
   }
 
   .navigation-shell {
-    display: contents !important;
-  }
-
-  .content-inset::after {
-    display: none !important;
+    box-shadow:
+      inset 9px 9px 18px var(--shadow-inset-a),
+      inset -9px -9px 18px var(--shadow-inset-b);
   }
 
   .content-area {
@@ -893,6 +1094,43 @@ watch(
     justify-self: center;
     width: min(100%, 260px);
   }
+
+  /* Compact mixed mode: both nav (anchor only) and content visible in row 2.
+     merged-shell serves as the SINGLE unified bottom area for this row —
+     keep its inset styling, strip individual inset visuals from children. */
+  .layout.compact-mixed .merged-area,
+  .layout.compact-mixed .merged-shell {
+    display: flex !important;
+    flex-direction: column-reverse;
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+  }
+
+  .layout.compact-mixed .content-area {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .layout.compact-mixed .navigation-area {
+    flex: 0 0 58px;
+    min-height: 0;
+  }
+
+  /* Strip individual bottom area visuals — merged-shell is the one bottom area */
+  .layout.compact-mixed .navigation-shell {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .layout.compact-mixed .content-inset::after {
+    display: none;
+  }
+
+  .layout.compact-mixed .content-glass {
+    border-radius: 0;
+  }
 }
 
 /* ================================================================
@@ -948,6 +1186,62 @@ watch(
 
 /* Phase 3: Slide in from right */
 .content-slide-in > .glass-content {
+  transform: translateX(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
+}
+
+/* ================================================================
+   Compact toggle animation (small layout)
+   Nav slide: sink → slide-out-left → slide-in-from-left → rise
+   Content slide: reuse content-sinking/content-slide-out/etc.
+   ================================================================ */
+
+/* Nav sink/sunken states — glass items flat */
+.compact-toggle-sinking .navigation-area :deep(.glass-raised),
+.compact-nav-slide-out .navigation-area :deep(.glass-raised),
+.compact-nav-slide-in-prep .navigation-area :deep(.glass-raised),
+.compact-nav-slide-in .navigation-area :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.compact-toggle-sinking .navigation-area :deep(.glass-content),
+.compact-nav-slide-out .navigation-area :deep(.glass-content),
+.compact-nav-slide-in-prep .navigation-area :deep(.glass-content),
+.compact-nav-slide-in .navigation-area :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.compact-toggle-sinking .navigation-area :deep(.official-content),
+.compact-nav-slide-out .navigation-area :deep(.official-content),
+.compact-nav-slide-in-prep .navigation-area :deep(.official-content),
+.compact-nav-slide-in .navigation-area :deep(.official-content) {
+  background: transparent;
+}
+
+/* Nav slide out left — animate inner glass content, NOT the inset area */
+.compact-nav-slide-out .navigation-area :deep(.nav-shell) {
+  transform: translateX(-80px);
+  opacity: 0;
+  transition:
+    transform 280ms cubic-bezier(0.4, 0, 0.6, 1),
+    opacity 280ms ease;
+}
+
+/* Nav prep off-screen left (no transition, forced by reflow in JS) */
+.compact-nav-slide-in-prep .navigation-area :deep(.nav-shell) {
+  transform: translateX(-80px);
+  opacity: 0;
+  transition: none;
+}
+
+/* Nav slide in from left */
+.compact-nav-slide-in .navigation-area :deep(.nav-shell) {
   transform: translateX(0);
   opacity: 1;
   transition:

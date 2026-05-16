@@ -57,6 +57,25 @@ Pinia stores (`frontend/src/stores/`):
 
 所有界面切换都会触发统一的加载动画，确保视觉体验一致。
 
+**小布局动画冲突规则**：小布局下 Navigation 组件有独立的内部动画（`animateSmallLayoutOfficial`、`animateSmallLayoutAdd`、`animateSmallLayoutReturn`），而 MainLayout 的 `animateContentTransition` 由 `isTransitioning` watch 触发。两者同时运行会互相踩踏。规则：小布局进出特殊状态（add/daily_quiz/welcome）时，Content 跳过 slide 动画，只做瞬间 DOM 交换，让 Navigation 的动画独占视觉过渡。
+
+### 设计系统：区域层级
+
+内容区的区域层级有严格定义，**修改时禁止违反以下规则**：
+
+**底部区域**（`inset` type）：不可交互的凹陷容器，内阴影由 `::after` 承载。
+**活动区域**（`glass` type）：可交互的凸起容器，必须出现在底部区域内，带有外阴影。
+
+层级关系：底部区域 → 活动区域 → 内容。活动区域必须在视觉上盖住底部区域的内阴影，不能被阴影遮挡。
+
+**各布局下的具体实现**：
+- **大/中布局**：`content-inset` 是底部区域（`::after` z-index:1），`content-glass`（z-index:2）承载活动区域，活动区域自然在阴影之上
+- **小布局**：底部区域和活动区域的层级关系与大布局相同（`content-inset::after` z-index:1, `content-glass` z-index:2），活动区域盖住底部区域阴影。**禁止把 `content-inset::after` 设为 `display: none`**，这会消除底部区域
+
+**内容区活动区域结构**：每个内容组件（MarkdownEditor、ConfirmPanel、DailyQuizPanel、WelcomePanel）必须自己包含活动区域（`activity-layout > activity-glass-host > GlassWrapper > activity-scroll`）。这些 class 的样式定义在 `MainLayout.vue` 的非 scoped `<style>` 块中，**禁止在组件的 scoped style 中重复定义**，否则 scoped attribute 会导致样式不匹配。
+
+**禁止在 MainLayout 中统一包裹 GlassWrapper**。活动区域属于各内容组件内部，MainLayout 只提供全局 class 定义。
+
 
 ### UI Structure
 
