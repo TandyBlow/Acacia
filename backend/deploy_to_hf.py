@@ -66,7 +66,7 @@ def deploy_to_hf_spaces():
         print(f"API URL: https://{username}-{space_name}.hf.space")
         print("\nDon't forget to add Secrets in Space settings:")
         print("  JWT_SECRET")
-        print("  SILICONFLOW_API_KEY")
+        print("  DEEPSEEK_API_KEY")
     except Exception as e:
         print(f"Error uploading files: {e}")
         sys.exit(1)

@@ -56,3 +56,15 @@ export interface TreeDataAdapter {
 }
 
 export type DataAdapter = CoreDataAdapter & Partial<TreeDataAdapter>;
+
+export interface DueReviewItem {
+  node_id: string;
+  node_name: string;
+  content: string;
+  retrievability: number;
+  stability: number;
+  difficulty: number;
+  review_count: number;
+  review_state: 'new' | 'review' | 'relearning';
+  next_review_at: string | null;
+}

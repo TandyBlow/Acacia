@@ -219,3 +219,80 @@ def get_review_stats_sqlite(owner_id: str, conn: sqlite3.Connection) -> dict:
         "avg_stability": round(avg_stability, 2),
         "new_count": new_count,
     }
+
+
+def get_daily_review_queue(owner_id: str, conn: sqlite3.Connection, new_card_limit: int = 10, max_total: int = 50) -> dict:
+    """Build the daily review queue: new cards first (limited), then due review cards
+    ordered by retrievability ascending (most urgent first)."""
+    now = datetime_now()
+
+    # New cards: never reviewed, limit per day
+    new_rows = conn.execute(
+        """SELECT id, name, content, stability, difficulty, review_count,
+                  review_state, last_review_at, next_review_at, mastery_score
+           FROM nodes
+           WHERE owner_id = ? AND is_deleted = 0
+             AND (review_state = 'new' OR review_state IS NULL OR stability <= 0)
+             AND content != ''
+           ORDER BY created_at ASC
+           LIMIT ?""",
+        (owner_id, new_card_limit),
+    ).fetchall()
+
+    # Due review cards: past their next_review_at
+    review_rows = conn.execute(
+        """SELECT id, name, content, stability, difficulty, review_count,
+                  review_state, last_review_at, next_review_at, mastery_score
+           FROM nodes
+           WHERE owner_id = ? AND is_deleted = 0
+             AND review_state IN ('review', 'relearning')
+             AND stability > 0
+             AND content != ''
+             AND (next_review_at IS NULL OR next_review_at <= ?)
+           ORDER BY mastery_score ASC
+           LIMIT ?""",
+        (owner_id, now, max_total - len(new_rows)),
+    ).fetchall()
+
+    def _build_item(r) -> dict:
+        S = float(r["stability"] or 0)
+        last = r["last_review_at"] or None
+        R = _calculate_retrievability(S, last)
+        return {
+            "node_id": r["id"],
+            "node_name": r["name"],
+            "content": r["content"] or "",
+            "retrievability": round(R, 4),
+            "stability": round(S, 4),
+            "difficulty": round(float(r["difficulty"] or 0.3), 4),
+            "review_count": int(r["review_count"] or 0),
+            "review_state": r["review_state"] or "new",
+            "next_review_at": r["next_review_at"] or None,
+        }
+
+    queue = [_build_item(r) for r in new_rows] + [_build_item(r) for r in review_rows]
+
+    # Count totals for stats
+    total_new = conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE owner_id = ? AND is_deleted = 0 AND (review_state = 'new' OR review_state IS NULL OR stability <= 0) AND content != ''",
+        (owner_id,),
+    ).fetchone()[0]
+
+    total_due = conn.execute(
+        """SELECT COUNT(*) FROM nodes
+           WHERE owner_id = ? AND is_deleted = 0
+             AND (stability <= 0 OR last_review_at IS NULL
+                  OR next_review_at <= ?)""",
+        (owner_id, now),
+    ).fetchone()[0]
+
+    return {
+        "queue": queue,
+        "stats": {
+            "total_queue": len(queue),
+            "new_count": len(new_rows),
+            "review_count": len(review_rows),
+            "total_new": total_new,
+            "total_due": total_due,
+        },
+    }

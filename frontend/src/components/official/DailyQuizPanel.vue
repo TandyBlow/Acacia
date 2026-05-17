@@ -1,112 +1,158 @@
 <template>
   <div class="daily-quiz-panel">
-    <template v-if="isBusy">
-      <div class="quiz-loading">出题中...</div>
+    <!-- Loading -->
+    <template v-if="isBusy && queue.length === 0">
+      <div class="quiz-loading">加载中...</div>
     </template>
 
-    <template v-else-if="errorMessage">
+    <!-- Error -->
+    <template v-else-if="errorMessage && queue.length === 0">
       <div class="quiz-error">{{ errorMessage }}</div>
       <div class="quiz-actions">
-        <button class="quiz-btn" @click="retry">重试</button>
+        <button class="quiz-btn" @click="startSession">重试</button>
         <button class="quiz-btn secondary" @click="goBack">返回</button>
       </div>
     </template>
 
-    <template v-else-if="isCompleted">
+    <!-- Empty queue -->
+    <template v-else-if="queue.length === 0 && !isBusy">
       <div class="quiz-completed">
-        <div class="completed-icon">?</div>
-        <div class="completed-text">{{ UI.official.quizCompleted }}</div>
-        <button class="quiz-btn" @click="goBack">返回主页</button>
+        <div class="completed-icon">&#10003;</div>
+        <div class="completed-text">{{ UI.official.noDueItems }}</div>
+        <button class="quiz-btn" @click="goBack">{{ UI.official.backToHome }}</button>
       </div>
     </template>
 
-    <template v-else-if="currentQuestion">
-      <div class="quiz-type-row">
-        <span class="quiz-type-badge">{{ typeLabel }}</span>
-        <span v-if="currentQuestion.difficulty" class="quiz-difficulty">{{ currentQuestion.difficulty }}</span>
-      </div>
-
-      <div class="quiz-question">{{ currentQuestion.question }}</div>
-
-      <!-- Single choice options -->
-      <div v-if="currentQuestion.question_type === 'single_choice'" class="quiz-options">
-        <GlassWrapper
-          v-for="(option, idx) in currentQuestion.options"
-          :key="idx"
-          class="quiz-option"
-          :class="optionClasses(idx)"
-          interactive
-          @click="onOptionClick(idx)"
-        >
-          <div class="quiz-option-content">
-            <span class="quiz-option-label">{{ optionLabels[idx] }}</span>
-            <span class="quiz-option-text">{{ option }}</span>
-          </div>
-        </GlassWrapper>
-      </div>
-
-      <!-- True/False options -->
-      <div v-else-if="currentQuestion.question_type === 'true_false'" class="quiz-tf-options">
-        <GlassWrapper
-          class="quiz-tf-option"
-          :class="tfOptionClasses(0)"
-          interactive
-          @click="onOptionClick(0)"
-        >
-          <div class="quiz-tf-content">正确</div>
-        </GlassWrapper>
-        <GlassWrapper
-          class="quiz-tf-option"
-          :class="tfOptionClasses(1)"
-          interactive
-          @click="onOptionClick(1)"
-        >
-          <div class="quiz-tf-content">错误</div>
-        </GlassWrapper>
-      </div>
-
-      <!-- Short answer input -->
-      <div v-else-if="currentQuestion.question_type === 'short_answer'" class="quiz-sa-area">
-        <textarea
-          v-model="shortAnswerText"
-          class="quiz-sa-input"
-          placeholder="请输入你的答案..."
-          :disabled="showResult"
-          rows="4"
-        />
-      </div>
-
-      <!-- Result feedback -->
-      <template v-if="showResult">
-        <div class="quiz-result" :class="isCorrect ? 'correct' : 'wrong'">
-          {{ resultText }}
+    <!-- Session finished -->
+    <template v-else-if="sessionFinished">
+      <div class="quiz-completed">
+        <div class="completed-icon">&#10003;</div>
+        <div class="completed-text">{{ UI.official.sessionComplete }}</div>
+        <div class="quiz-stats">
+          <div class="stat-item">{{ UI.official.reviewStats(sessionCorrect, queue.length) }}</div>
+          <div class="stat-item">{{ UI.official.reviewedToday(queue.length) }}</div>
         </div>
-        <div v-if="currentQuestion.explanation" class="quiz-explanation">
-          {{ currentQuestion.explanation }}
+        <button class="quiz-btn" @click="goBack">{{ UI.official.backToHome }}</button>
+      </div>
+    </template>
+
+    <!-- Review session active -->
+    <template v-else>
+      <!-- Progress bar -->
+      <div class="quiz-progress-row">
+        <span class="quiz-progress-text">{{ UI.official.sessionProgress(progress.current, progress.total) }}</span>
+        <div class="quiz-progress-bar">
+          <div class="quiz-progress-fill" :style="{ width: progress.percent + '%' }"></div>
         </div>
+        <button class="quiz-finish-btn" @click="finishSession">{{ UI.official.finishEarly }}</button>
+      </div>
+
+      <!-- Current node name -->
+      <div class="quiz-node-name">{{ currentItem?.node_name ?? '' }}</div>
+
+      <!-- Generating question -->
+      <template v-if="isBusy && !currentQuestion">
+        <div class="quiz-loading">出题中...</div>
+      </template>
+
+      <!-- Question error (non-fatal, skip to next) -->
+      <template v-else-if="errorMessage && !currentQuestion">
+        <div class="quiz-error">{{ errorMessage }}</div>
         <div class="quiz-actions">
-          <button class="quiz-btn" @click="finishQuiz">{{ UI.official.quizCompleted }}</button>
+          <button class="quiz-btn" @click="generateQuestion">重试</button>
+          <button class="quiz-btn secondary" @click="skipQuestion">跳过</button>
         </div>
       </template>
 
-      <!-- Confirm button -->
-      <button
-        v-else
-        class="quiz-btn"
-        :disabled="!canConfirm"
-        @click="confirmAndSubmit"
-      >
-        确认
-      </button>
-    </template>
+      <!-- Question active -->
+      <template v-else-if="currentQuestion">
+        <div class="quiz-type-row">
+          <span class="quiz-type-badge">{{ typeLabel }}</span>
+          <span v-if="currentQuestion.difficulty" class="quiz-difficulty">{{ currentQuestion.difficulty }}</span>
+        </div>
 
-    <!-- Generate mode (no question yet) -->
-    <template v-else>
-      <div class="quiz-generate">
-        <h3 class="quiz-generate-title">{{ UI.official.dailyQuiz }}</h3>
-        <p class="quiz-generate-desc">根据你的所有知识点随机出题，每天一道</p>
-        <button class="quiz-btn" @click="retry">{{ UI.official.startQuiz }}</button>
-      </div>
+        <div class="quiz-question">{{ currentQuestion.question }}</div>
+
+        <!-- Single choice options -->
+        <div v-if="currentQuestion.question_type === 'single_choice'" class="quiz-options">
+          <GlassWrapper
+            v-for="(option, idx) in currentQuestion.options"
+            :key="idx"
+            class="quiz-option"
+            :class="optionClasses(idx)"
+            interactive
+            @click="onOptionClick(idx)"
+          >
+            <div class="quiz-option-content">
+              <span class="quiz-option-label">{{ optionLabels[idx] }}</span>
+              <span class="quiz-option-text">{{ option }}</span>
+            </div>
+          </GlassWrapper>
+        </div>
+
+        <!-- True/False options -->
+        <div v-else-if="currentQuestion.question_type === 'true_false'" class="quiz-tf-options">
+          <GlassWrapper
+            class="quiz-tf-option"
+            :class="tfOptionClasses(0)"
+            interactive
+            @click="onOptionClick(0)"
+          >
+            <div class="quiz-tf-content">正确</div>
+          </GlassWrapper>
+          <GlassWrapper
+            class="quiz-tf-option"
+            :class="tfOptionClasses(1)"
+            interactive
+            @click="onOptionClick(1)"
+          >
+            <div class="quiz-tf-content">错误</div>
+          </GlassWrapper>
+        </div>
+
+        <!-- Short answer input -->
+        <div v-else-if="currentQuestion.question_type === 'short_answer'" class="quiz-sa-area">
+          <textarea
+            v-model="shortAnswerText"
+            class="quiz-sa-input"
+            placeholder="请输入你的答案..."
+            :disabled="showResult"
+            rows="4"
+          />
+        </div>
+
+        <!-- Result feedback -->
+        <template v-if="showResult">
+          <div class="quiz-result" :class="isCorrect ? 'correct' : 'wrong'">
+            {{ resultText }}
+          </div>
+          <div v-if="currentQuestion.explanation" class="quiz-explanation">
+            {{ currentQuestion.explanation }}
+          </div>
+          <div class="quiz-actions">
+            <button class="quiz-btn" @click="advanceToNext">
+              {{ hasNext ? UI.official.nextQuestion : '完成' }}
+            </button>
+          </div>
+        </template>
+
+        <!-- Confirm button -->
+        <button
+          v-else
+          class="quiz-btn"
+          :disabled="!canConfirm"
+          @click="confirmAndSubmit"
+        >
+          确认
+        </button>
+      </template>
+
+      <!-- No question generated yet (first load) -->
+      <template v-else>
+        <div class="quiz-generate">
+          <p class="quiz-generate-desc">准备为你出题...</p>
+        </div>
+      </template>
     </template>
   </div>
 </template>
@@ -122,13 +168,14 @@ const nodeStore = useNodeStore();
 
 const {
   isBusy, errorMessage, currentQuestion, selectedOption, showResult,
+  queue, currentIndex, sessionCorrect, sessionFinished,
+  currentItem, progress, hasNext,
   generateQuestion, submitAnswer, selectOption, confirmSelection, reset,
-  markCompleted, checkStatus,
+  markCompleted, fetchQueue, nextQuestion,
 } = useDailyQuiz();
 
 const optionLabels = ['A', 'B', 'C', 'D'];
 const shortAnswerText = ref('');
-const isCompleted = ref(false);
 
 const typeLabel = computed(() => {
   return currentQuestion.value?.type_label ?? '选择题';
@@ -150,10 +197,6 @@ const isCorrect = computed(() => {
 });
 
 const resultText = computed(() => {
-  if (!currentQuestion.value) return '';
-  if (currentQuestion.value.question_type === 'short_answer') {
-    return isCorrect.value ? UI.official.correct : UI.official.incorrect;
-  }
   return isCorrect.value ? UI.official.correct : UI.official.incorrect;
 });
 
@@ -196,32 +239,45 @@ async function confirmAndSubmit(): Promise<void> {
   }
 }
 
-async function finishQuiz(): Promise<void> {
-  await markCompleted();
-  isCompleted.value = true;
-  nodeStore.dailyQuizVisible = false;
+async function advanceToNext(): Promise<void> {
+  shortAnswerText.value = '';
+  await nextQuestion();
 }
 
-function retry(): void {
+async function skipQuestion(): Promise<void> {
+  shortAnswerText.value = '';
+  await nextQuestion();
+}
+
+async function startSession(): Promise<void> {
   reset();
   shortAnswerText.value = '';
-  generateQuestion();
+  await fetchQueue();
+  if (queue.value.length > 0) {
+    await generateQuestion();
+  }
+}
+
+async function finishSession(): Promise<void> {
+  await markCompleted();
+  nodeStore.checkDailyQuizStatus();
+  reset();
+  shortAnswerText.value = '';
+  sessionFinished.value = true;
 }
 
 function goBack(): void {
   reset();
   shortAnswerText.value = '';
+  nodeStore.checkDailyQuizStatus();
   nodeStore.onKnobClick();
 }
 
 onMounted(async () => {
-  const status = await checkStatus().catch(() => ({ completed: false }));
-  if (status.completed) {
-    isCompleted.value = true;
-    nodeStore.dailyQuizVisible = false;
-    return;
+  await fetchQueue();
+  if (queue.value.length > 0) {
+    await generateQuestion();
   }
-  generateQuestion();
 });
 </script>
 
@@ -232,7 +288,7 @@ onMounted(async () => {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow: auto;
 }
 
@@ -260,6 +316,62 @@ onMounted(async () => {
   justify-content: center;
 }
 
+/* Progress bar */
+.quiz-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.quiz-progress-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  opacity: 0.7;
+  white-space: nowrap;
+  min-width: 36px;
+}
+
+.quiz-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.quiz-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: rgba(102, 255, 229, 0.5);
+  transition: width 0.3s ease;
+}
+
+.quiz-finish-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.quiz-finish-btn:hover {
+  opacity: 1;
+}
+
+/* Current node name */
+.quiz-node-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #FFBB33;
+  opacity: 0.8;
+}
+
 /* Completed state */
 .quiz-completed {
   flex: 1;
@@ -267,11 +379,12 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
 }
 
 .completed-icon {
   font-size: 48px;
+  color: #27ae60;
 }
 
 .completed-text {
@@ -279,6 +392,19 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--color-primary);
   text-align: center;
+}
+
+.quiz-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-item {
+  font-size: 14px;
+  color: var(--color-primary);
+  opacity: 0.6;
 }
 
 /* Question type row */
@@ -312,13 +438,6 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-}
-
-.quiz-generate-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: #FFBB33;
 }
 
 .quiz-generate-desc {

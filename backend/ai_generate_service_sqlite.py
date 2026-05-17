@@ -1,6 +1,6 @@
 """
 AI-assisted knowledge node generation service (SQLite version).
-Calls SiliconFlow API, parses LLM output, matches parents, creates nodes.
+Calls DeepSeek API, parses LLM output, matches parents, creates nodes.
 """
 import json
 import os
@@ -10,10 +10,9 @@ from uuid import uuid4
 
 import httpx
 
-SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
-SILICONFLOW_MODEL = os.getenv("SILICONFLOW_MODEL", "Qwen/Qwen2.5-7B-Instruct")
-_raw_llm_url = os.getenv("LLM_API_URL", "https://api.siliconflow.cn/v1/chat/completions")
-SILICONFLOW_URL = _raw_llm_url if _raw_llm_url.endswith("/chat/completions") else _raw_llm_url.rstrip("/") + "/chat/completions"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-fe13ac5f49fa4b9dae15fb4937387203")
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-chat"
 
 SYSTEM_PROMPT = (
     "你是一个知识点整理助手。用户会输入一些零散的词或句子，你需要："
@@ -33,22 +32,23 @@ ANALYSIS_PROMPT = (
 
 
 def call_llm(user_input: str, system_prompt: str = SYSTEM_PROMPT) -> str:
-    if not SILICONFLOW_API_KEY:
-        raise ValueError("未配置SILICONFLOW_API_KEY环境变量，无法调用AI服务")
+    if not DEEPSEEK_API_KEY:
+        raise ValueError("未配置DEEPSEEK_API_KEY环境变量，无法调用AI服务")
     headers = {
-        "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": SILICONFLOW_MODEL,
+        "model": DEEPSEEK_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input},
         ],
         "temperature": 0.7,
+        "response_format": {"type": "json_object"},
     }
     with httpx.Client(timeout=30) as client:
-        resp = client.post(SILICONFLOW_URL, headers=headers, json=payload)
+        resp = client.post(f"{DEEPSEEK_BASE_URL}/v1/chat/completions", headers=headers, json=payload)
         resp.raise_for_status()
     data = resp.json()
     return data["choices"][0]["message"]["content"]
