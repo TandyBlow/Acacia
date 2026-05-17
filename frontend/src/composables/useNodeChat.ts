@@ -30,7 +30,7 @@ export interface ChatMessage {
   metadata?: Record<string, unknown>;
 }
 
-export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'conversing' | 'completed';
+export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'conversing';
 
 interface ChatCheckpoint {
   sessionId: string;
@@ -39,7 +39,8 @@ interface ChatCheckpoint {
   timestamp: number;
 }
 
-const CHECKPOINT_KEY = 'acacia_chat_checkpoint_v1';
+const CHECKPOINT_MAP_KEY = 'acacia_chat_checkpoint_map_v1';
+const MAX_CHECKPOINT_ENTRIES = 50;
 
 // ── Reactive state ──────────────────────────────────────────────────
 
@@ -69,11 +70,15 @@ const hasActiveConversation = computed(() =>
 );
 
 const hasResumableSession = computed(() => {
-  const cp = loadCheckpoint();
-  return cp !== null && cp.nodeId === currentNodeId.value;
+  const cp = loadCheckpointForNode(currentNodeId.value || '');
+  return cp !== null && (cp.mode === 'conversing' || cp.mode === 'paused');
 });
 
-// ── Checkpoint persistence ──────────────────────────────────────────
+// ── Checkpoint persistence (per-node map) ──────────────────────────────
+
+interface CheckpointMap {
+  [nodeId: string]: ChatCheckpoint;
+}
 
 function saveCheckpoint() {
   if (!sessionId.value || !currentNodeId.value) return;
@@ -84,22 +89,36 @@ function saveCheckpoint() {
     timestamp: Date.now(),
   };
   try {
-    localStorage.setItem(CHECKPOINT_KEY, JSON.stringify(checkpoint));
+    const map = loadCheckpointMap();
+    map[currentNodeId.value] = checkpoint;
+    const entries = Object.entries(map);
+    if (entries.length > MAX_CHECKPOINT_ENTRIES) {
+      entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
+      const trimmed: CheckpointMap = {};
+      entries.slice(0, MAX_CHECKPOINT_ENTRIES).forEach(([k, v]) => trimmed[k] = v);
+      localStorage.setItem(CHECKPOINT_MAP_KEY, JSON.stringify(trimmed));
+    } else {
+      localStorage.setItem(CHECKPOINT_MAP_KEY, JSON.stringify(map));
+    }
   } catch { /* ignore */ }
 }
 
-function loadCheckpoint(): ChatCheckpoint | null {
+function loadCheckpointMap(): CheckpointMap {
   try {
-    const raw = localStorage.getItem(CHECKPOINT_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as ChatCheckpoint;
-  } catch {
-    return null;
-  }
+    const raw = localStorage.getItem(CHECKPOINT_MAP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
 }
 
-function clearCheckpoint() {
-  localStorage.removeItem(CHECKPOINT_KEY);
+function loadCheckpointForNode(nodeId: string): ChatCheckpoint | null {
+  const map = loadCheckpointMap();
+  return map[nodeId] || null;
+}
+
+function clearCheckpointForNode(nodeId: string) {
+  const map = loadCheckpointMap();
+  delete map[nodeId];
+  localStorage.setItem(CHECKPOINT_MAP_KEY, JSON.stringify(map));
 }
 
 // ── Public functions ────────────────────────────────────────────────
@@ -228,7 +247,7 @@ export function useNodeChat() {
     }
   }
 
-  async function sendMessage(answer: string) {
+  async function sendMessage(answer: string, options?: { skipInsertContent?: boolean }) {
     if (!sessionId.value || isBusy.value) return;
     isBusy.value = true;
     errorMessage.value = '';
@@ -258,7 +277,9 @@ export function useNodeChat() {
 
       if (data.generated_content) {
         generatedContent.value += (generatedContent.value ? '\n\n' : '') + data.generated_content;
-        insertGeneratedContent(data.generated_content);
+        if (!options?.skipInsertContent) {
+          insertGeneratedContent(data.generated_content);
+        }
       }
 
       if (data.sub_topic) {
@@ -267,7 +288,6 @@ export function useNodeChat() {
 
       if (data.completed) {
         isCompleted.value = true;
-        mode.value = 'completed';
       }
 
       totalKp.value = data.total_kp || totalKp.value;
@@ -314,7 +334,6 @@ export function useNodeChat() {
 
       if (data.completed) {
         isCompleted.value = true;
-        mode.value = 'completed';
       }
 
       totalKp.value = data.total_kp || totalKp.value;
@@ -351,7 +370,6 @@ export function useNodeChat() {
 
       const data = await resp.json();
       isCompleted.value = true;
-      mode.value = 'completed';
 
       if (data.ai_message) {
         messages.value.push({
@@ -453,8 +471,8 @@ export function useNodeChat() {
   }
 
   async function resumeChat(nodeId: string): Promise<boolean> {
-    const cp = loadCheckpoint();
-    if (!cp || cp.nodeId !== nodeId) return false;
+    const cp = loadCheckpointForNode(nodeId);
+    if (!cp) return false;
 
     isBusy.value = true;
     setGlobalLoading('nodeChat', true);
@@ -464,7 +482,7 @@ export function useNodeChat() {
         headers: getAuthHeaders(),
       });
       if (!resp.ok) {
-        clearCheckpoint();
+        clearCheckpointForNode(nodeId);
         return false;
       }
 
@@ -479,7 +497,7 @@ export function useNodeChat() {
       mode.value = 'conversing';
       return true;
     } catch {
-      clearCheckpoint();
+      clearCheckpointForNode(nodeId);
       return false;
     } finally {
       isBusy.value = false;
@@ -487,11 +505,55 @@ export function useNodeChat() {
     }
   }
 
+  function exitChat() {
+    if (currentNodeId.value && sessionId.value) {
+      const checkpoint: ChatCheckpoint = {
+        sessionId: sessionId.value,
+        nodeId: currentNodeId.value,
+        mode: 'conversing',
+        timestamp: Date.now(),
+      };
+      try {
+        const map = loadCheckpointMap();
+        map[currentNodeId.value] = checkpoint;
+        localStorage.setItem(CHECKPOINT_MAP_KEY, JSON.stringify(map));
+      } catch { /* ignore */ }
+    }
+    mode.value = 'idle';
+  }
+
+  async function resumeOrStartChat(): Promise<boolean> {
+    if (currentNodeId.value) {
+      const cp = loadCheckpointForNode(currentNodeId.value);
+      if (cp && cp.mode === 'conversing') {
+        const success = await resumeChat(currentNodeId.value);
+        if (success) return true;
+      }
+
+      try {
+        const resp = await fetchWithTimeout(
+          `${backendUrl}/chat/sessions/by-node/${currentNodeId.value}`,
+          { headers: getAuthHeaders() }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.session_id) {
+            sessionId.value = data.session_id;
+            saveCheckpoint();
+            const success = await resumeChat(currentNodeId.value);
+            if (success) return true;
+          }
+        }
+      } catch { /* fall through to new chat */ }
+    }
+
+    return false;
+  }
+
   function resetForNewNode() {
     sessionId.value = null;
     messages.value = [];
     generatedContent.value = '';
-    mode.value = 'idle';
     errorMessage.value = '';
     referenceText.value = '';
     referenceFileName.value = null;
@@ -500,10 +562,10 @@ export function useNodeChat() {
     currentKpIndex.value = 0;
     currentKpData.value = null;
     isCompleted.value = false;
-    clearCheckpoint();
   }
 
   function abandonChat() {
+    const nodeId = currentNodeId.value;
     sessionId.value = null;
     messages.value = [];
     generatedContent.value = '';
@@ -516,7 +578,7 @@ export function useNodeChat() {
     currentKpIndex.value = 0;
     currentKpData.value = null;
     isCompleted.value = false;
-    clearCheckpoint();
+    if (nodeId) clearCheckpointForNode(nodeId);
   }
 
   function setTextMode() {
@@ -537,12 +599,6 @@ export function useNodeChat() {
       if (msgs[i]?.role === 'ai') return i;
     }
     return -1;
-  }
-
-  function closeChatPanel() {
-    if (mode.value !== 'conversing') {
-      mode.value = 'idle';
-    }
   }
 
   return {
@@ -578,8 +634,9 @@ export function useNodeChat() {
     resumeChat,
     resetForNewNode,
     abandonChat,
+    exitChat,
     setTextMode,
     setFileMode,
-    closeChatPanel,
+    resumeOrStartChat,
   };
 }

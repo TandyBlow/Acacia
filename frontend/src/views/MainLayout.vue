@@ -144,10 +144,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const activeSceneWatchers = new Set<() => void>();
+
 function waitForSceneReady(token: number): Promise<void> {
   return new Promise((resolve) => {
-    if (treeCanvasRef.value?.sceneReady && !devStore.manualSceneReady) {
+    let resolved = false;
+    const watchers: (() => void)[] = [];
+
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      watchers.forEach(stop => {
+        stop();
+        activeSceneWatchers.delete(stop);
+      });
       resolve();
+    };
+
+    if (treeCanvasRef.value?.sceneReady && !devStore.manualSceneReady) {
+      done();
       return;
     }
 
@@ -157,22 +172,22 @@ function waitForSceneReady(token: number): Promise<void> {
     // In manual mode, wait for dev-scene-ready event
     if (devStore.manualSceneReady) {
       const onManualReady = () => {
-        console.log('[waitForSceneReady] dev-scene-ready received!');
         window.removeEventListener('dev-scene-ready', onManualReady);
-        resolve();
+        done();
       };
       window.addEventListener('dev-scene-ready', onManualReady);
 
       const checkCancel = watch(
-        () => contentAnimToken,
+        () => contentAnimToken.value,
         (currentToken) => {
           if (currentToken !== token) {
-            checkCancel();
             window.removeEventListener('dev-scene-ready', onManualReady);
-            resolve();
+            done();
           }
         },
       );
+      watchers.push(checkCancel);
+      activeSceneWatchers.add(checkCancel);
       return;
     }
 
@@ -181,26 +196,28 @@ function waitForSceneReady(token: number): Promise<void> {
       () => treeCanvasRef.value?.sceneReady,
       (ready) => {
         if (ready) {
-          stop();
-          resolve();
+          done();
         }
       },
     );
+    watchers.push(stop);
+    activeSceneWatchers.add(stop);
+
     const checkCancel = watch(
-      () => contentAnimToken,
+      () => contentAnimToken.value,
       (currentToken) => {
         if (currentToken !== token) {
-          stop();
-          checkCancel();
-          resolve();
+          done();
         }
       },
     );
+    watchers.push(checkCancel);
+    activeSceneWatchers.add(checkCancel);
   });
 }
 
 const contentPhase = ref('idle');
-let contentAnimToken = 0;
+const contentAnimToken = ref(0);
 const contentAnimating = ref(false);
 provide('contentAnimating', contentAnimating);
 
@@ -318,6 +335,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
 
+  // Clean up any lingering waitForSceneReady watchers
+  activeSceneWatchers.forEach(stop => stop());
+  activeSceneWatchers.clear();
+
   unregisterRegion('logo');
   unregisterRegion('breadcrumbs');
   unregisterRegion('navigation');
@@ -403,7 +424,7 @@ treeOverlayActive.value = showTree.value;
 // ================================================================
 async function animateContentTransition() {
   if (contentAnimating.value) {
-    contentAnimToken++;
+    contentAnimToken.value++;
     contentPhase.value = 'idle';
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
@@ -441,16 +462,16 @@ async function animateContentTransition() {
   }
 
   contentAnimating.value = true;
-  const token = ++contentAnimToken;
+  const token = ++contentAnimToken.value;
   const oldKey = displayedKey.value;
   const wasShowingTree = displayedShowTree.value;
 
   // Phase 1: Sink — glass frame loses shadow, content fades
   contentPhase.value = 'sinking';
   await nextTick();
-  if (token !== contentAnimToken) return;
+  if (token !== contentAnimToken.value) return;
   await sleep(CONTENT_SINK_MS);
-  if (token !== contentAnimToken) return;
+  if (token !== contentAnimToken.value) return;
 
   if (wasShowingTree) {
     // ================================================================
@@ -465,9 +486,9 @@ async function animateContentTransition() {
       // Staying in tree — just rise
       contentPhase.value = 'rising';
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       await sleep(CONTENT_RISE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       contentPhase.value = 'idle';
       contentAnimating.value = false;
       return;
@@ -477,16 +498,16 @@ async function animateContentTransition() {
     treeMaskVisible.value = true;
     contentPhase.value = 'tree-mask';
     await sleep(TREE_MASK_FADE_MS);
-    if (token !== contentAnimToken) return;
+    if (token !== contentAnimToken.value) return;
 
     if (contentKey.value === oldKey) {
       treeMaskVisible.value = false;
       treeOverlayActive.value = false;
       contentPhase.value = 'rising';
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       await sleep(CONTENT_RISE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       contentPhase.value = 'idle';
       contentAnimating.value = false;
       return;
@@ -499,7 +520,7 @@ async function animateContentTransition() {
     contentPhase.value = 'slide-in-prep';
 
     await nextTick();
-    if (token !== contentAnimToken) return;
+    if (token !== contentAnimToken.value) return;
     void contentGlassRef.value?.offsetHeight;
 
     // Snap mask off (content is invisible at prep position, no visual change)
@@ -515,7 +536,7 @@ async function animateContentTransition() {
     // Trigger slide-in from right
     contentPhase.value = 'slide-in';
     await sleep(CONTENT_SLIDE_MS);
-    if (token !== contentAnimToken) return;
+    if (token !== contentAnimToken.value) return;
 
   } else {
     // ================================================================
@@ -525,7 +546,7 @@ async function animateContentTransition() {
     // Phase 2: Slide out — old content leaves
     contentPhase.value = 'slide-out';
     await sleep(CONTENT_SLIDE_MS);
-    if (token !== contentAnimToken) return;
+    if (token !== contentAnimToken.value) return;
 
     // Apply pending data NOW — viewState is updated, so showTree is current
     nodeStore.applyPendingData();
@@ -535,9 +556,9 @@ async function animateContentTransition() {
     if (contentKey.value === oldKey) {
       contentPhase.value = 'rising';
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       await sleep(CONTENT_RISE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       contentPhase.value = 'idle';
       contentAnimating.value = false;
       return;
@@ -553,7 +574,7 @@ async function animateContentTransition() {
       treeMaskVisible.value = true;
 
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       void contentGlassRef.value?.offsetHeight; // force reflow so opacity:1 is painted
       if (maskEl) maskEl.style.transition = ''; // re-enable transition for fade-out
 
@@ -565,10 +586,10 @@ async function animateContentTransition() {
 
       // Wait for tree scene to be ready, then fade mask out
       await waitForSceneReady(token);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       treeMaskVisible.value = false;
       await sleep(TREE_MASK_FADE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
     } else {
       // ---- NON-TREE: standard slide-in from right ----
@@ -580,23 +601,23 @@ async function animateContentTransition() {
       contentPhase.value = 'slide-in-prep';
 
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
       // Force reflow so prep position is painted, then trigger slide-in
       void contentGlassRef.value?.offsetHeight;
       contentPhase.value = 'slide-in';
 
       await sleep(CONTENT_SLIDE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
     }
   }
 
   // Phase: Rise — glass frame regains shadow
   contentPhase.value = 'rising';
   await nextTick();
-  if (token !== contentAnimToken) return;
+  if (token !== contentAnimToken.value) return;
   await sleep(CONTENT_RISE_MS);
-  if (token !== contentAnimToken) return;
+  if (token !== contentAnimToken.value) return;
 
   contentPhase.value = 'idle';
   contentAnimating.value = false;
@@ -613,7 +634,7 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
   if (!navEl || !contentEl) return;
 
   contentAnimating.value = true;
-  const token = ++contentAnimToken;
+  const token = ++contentAnimToken.value;
   const toNav = newMode === 'nav';
 
   if (toNav) {
@@ -628,7 +649,7 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
       treeMaskVisible.value = true;
       contentPhase.value = 'tree-mask';
       await sleep(TREE_MASK_FADE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
       // Snap mask off — content area is about to be hidden
       const maskEl = treeMaskRef.value;
@@ -640,19 +661,19 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
       await nextTick();
       void maskEl?.offsetHeight;
       if (maskEl) maskEl.style.transition = '';
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
     } else {
       // ---- NON-TREE PATH: slide-out right ----
 
       contentPhase.value = 'sinking';
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       await sleep(CONTENT_SINK_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
       contentPhase.value = 'slide-out';
       await sleep(CONTENT_SLIDE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
       contentPhase.value = 'idle';
     }
@@ -668,7 +689,7 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
     // Nav slides in from left as sunken
     compactAnimPhase.value = 'nav-slide-in';
     await sleep(CONTENT_SLIDE_MS);
-    if (token !== contentAnimToken) return;
+    if (token !== contentAnimToken.value) return;
 
     // Nav rises — glass items regain shadow
     compactAnimPhase.value = 'rising';
@@ -712,16 +733,16 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
       contentPhase.value = 'tree-mask';
 
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       void contentGlassRef.value?.offsetHeight;
       if (maskEl) maskEl.style.transition = '';
 
       // Wait for tree scene to be ready, then fade mask out
       await waitForSceneReady(token);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
       treeMaskVisible.value = false;
       await sleep(TREE_MASK_FADE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
     } else {
       // ---- NON-TREE PATH: slide-in from right ----
 
@@ -732,12 +753,12 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
       contentPhase.value = 'slide-in-prep';
 
       await nextTick();
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
       void contentGlassRef.value?.offsetHeight;
       contentPhase.value = 'slide-in';
       await sleep(CONTENT_SLIDE_MS);
-      if (token !== contentAnimToken) return;
+      if (token !== contentAnimToken.value) return;
 
       // Content rises — glass items regain shadow
       contentPhase.value = 'rising';
@@ -760,7 +781,7 @@ watch(isTransitioning, (transitioning) => {
     treeWasVisible.value = showTree.value;
 
     if (contentAnimating.value) {
-      contentAnimToken++;
+      contentAnimToken.value++;
       contentPhase.value = 'idle';
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
