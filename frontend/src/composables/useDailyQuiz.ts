@@ -43,7 +43,7 @@ export function useDailyQuiz() {
   // Computed
   const currentItem = computed<DueReviewItem | null>(() => {
     if (currentIndex.value < queue.value.length) {
-      return queue.value[currentIndex.value];
+      return queue.value[currentIndex.value] ?? null;
     }
     return null;
   });
