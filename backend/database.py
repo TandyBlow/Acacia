@@ -125,6 +125,7 @@ def init_db():
             );
 
             CREATE INDEX IF NOT EXISTS idx_conversation_sessions_owner ON conversation_sessions(owner_id, last_activity_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_conversation_sessions_node ON conversation_sessions(node_id, owner_id, status);
         """)
 
         # Migration: add missing columns

@@ -901,6 +901,17 @@ def get_chat_session_endpoint(
         )
 
 
+@app.get("/chat/sessions/by-node/{node_id}")
+def get_chat_session_by_node(
+    node_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Find the most recent active chat session for a node."""
+    from chat_service import get_active_session_by_node
+    session_id = get_active_session_by_node(node_id, user["sub"])
+    return {"session_id": session_id}
+
+
 # --- Quiz ---
 
 class QuizAnswerRequest(BaseModel):

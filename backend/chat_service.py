@@ -975,6 +975,18 @@ def get_chat_session(session_id: str, owner_id: str) -> Dict[str, Any]:
     }
 
 
+def get_active_session_by_node(node_id: str, owner_id: str) -> str | None:
+    """Return the session_id of the most recent active session for a node, or None."""
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            """SELECT id FROM conversation_sessions
+               WHERE node_id = ? AND owner_id = ? AND status = 'active'
+               ORDER BY last_activity_at DESC LIMIT 1""",
+            (node_id, owner_id),
+        ).fetchone()
+    return row["id"] if row else None
+
+
 def end_chat(session_id: str) -> Dict[str, Any]:
     """Manually end a chat session (user-initiated)."""
     session = _load_session(session_id)
