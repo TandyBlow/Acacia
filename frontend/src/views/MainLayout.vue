@@ -1017,7 +1017,7 @@ async function startSmallLayoutOfficialTransition(item: { id: string; name: stri
     contentPhase.value = 'slide-in-prep';
     await nextTick();
     if (token !== otAnimToken.value) return;
-    const reflowEl = document.querySelector('.content-direct');
+    const reflowEl = document.querySelector('.content-direct') as HTMLElement | null;
     void reflowEl?.offsetHeight;
     contentPhase.value = 'slide-in';
     await sleep(CONTENT_SLIDE_MS);

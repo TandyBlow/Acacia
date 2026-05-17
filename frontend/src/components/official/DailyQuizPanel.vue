@@ -168,7 +168,7 @@ const nodeStore = useNodeStore();
 
 const {
   isBusy, errorMessage, currentQuestion, selectedOption, showResult,
-  queue, currentIndex, sessionCorrect, sessionFinished,
+  queue, sessionCorrect, sessionFinished,
   currentItem, progress, hasNext,
   generateQuestion, submitAnswer, selectOption, confirmSelection, reset,
   markCompleted, fetchQueue, nextQuestion,
