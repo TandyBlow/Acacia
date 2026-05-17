@@ -62,6 +62,16 @@ export const UI = {
     startQuiz: '开始答题',
     correct: '回答正确！',
     incorrect: '回答错误',
+    // Daily review session
+    noDueItems: '没有需要复习的知识点',
+    dueCount: (n: number) => `${n} 个待复习`,
+    sessionProgress: (current: number, total: number) => `${current}/${total}`,
+    sessionComplete: '今日复习完成！',
+    reviewedToday: (n: number) => `今日已复习: ${n} 个`,
+    finishEarly: '结束复习',
+    nextQuestion: '下一题',
+    backToHome: '返回主页',
+    reviewStats: (correct: number, total: number) => `正确: ${correct}/${total}`,
   },
 
   // Error messages

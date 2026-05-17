@@ -54,6 +54,23 @@ async function executeDataLoading(trigger: TransitionTrigger): Promise<void> {
   }
 }
 
+function applyRegionVisibility(state: PageState, skipIds?: Set<string>): void {
+  for (const [, reg] of regions.entries()) {
+    if (skipIds?.has(reg.id)) continue;
+    const el = reg.element.value;
+    if (!el) continue;
+
+    const shouldBeVisible = reg.shouldShow(state);
+    const currentDisplay = window.getComputedStyle(el).display;
+
+    if (shouldBeVisible && currentDisplay === 'none') {
+      el.style.display = '';
+    } else if (!shouldBeVisible && currentDisplay !== 'none') {
+      el.style.display = 'none';
+    }
+  }
+}
+
 export function usePageTransition() {
   function registerRegion(registration: RegionRegistration): void {
     regions.set(registration.id, registration);
@@ -92,25 +109,8 @@ export function usePageTransition() {
 
       const newState = getCurrentPageState(layout);
 
-      for (const [, reg] of regions.entries()) {
-        const el = reg.element.value;
-        if (!el) continue;
-
-        // Skip nav/content region swap when compact mode switch is deferred
-        // — animateCompactToggle will handle the swap with proper animation
-        if (deferredCompactSwitch && (reg.id === 'navigation' || reg.id === 'content')) {
-          continue;
-        }
-
-        const shouldBeVisible = reg.shouldShow(newState);
-        const currentDisplay = window.getComputedStyle(el).display;
-
-        if (shouldBeVisible && currentDisplay === 'none') {
-          el.style.display = '';
-        } else if (!shouldBeVisible && currentDisplay !== 'none') {
-          el.style.display = 'none';
-        }
-      }
+      const skipIds = deferredCompactSwitch ? new Set(['navigation', 'content']) : undefined;
+      applyRegionVisibility(newState, skipIds);
     } catch (error) {
       console.error('Page transition failed:', error);
     } finally {
@@ -125,10 +125,15 @@ export function usePageTransition() {
     }
   }
 
+  function syncRegionVisibility(layout: LayoutType): void {
+    applyRegionVisibility(getCurrentPageState(layout));
+  }
+
   return {
     registerRegion,
     unregisterRegion,
     startTransition,
+    syncRegionVisibility,
     isTransitioning: computed(() => isTransitioning.value),
   };
 }

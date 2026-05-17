@@ -60,8 +60,13 @@ export const useNodeStore = defineStore('node', () => {
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
 
-  // 每日答题可见性
-  const dailyQuizVisible = ref(false);
+  // 账号是否有任何知识点（乐观默认为 true，加载后确定）
+  const hasAnyNodes = ref(true);
+  const isEmpty = computed(() => !hasAnyNodes.value);
+
+  // 每日复习
+  const dailyQuizVisible = ref(true);
+  const dailyQuizDueCount = ref(0);
 
   const isEditState = computed(
     () =>
@@ -100,10 +105,17 @@ export const useNodeStore = defineStore('node', () => {
   const currentNodeId = computed(() => activeNode.value?.id ?? null);
 
   // 官方知识点列表
+  const dailyQuizLabel = computed(() => {
+    if (dailyQuizDueCount.value > 0) {
+      return `${UI.official.dailyQuiz} (${dailyQuizDueCount.value})`;
+    }
+    return UI.official.dailyQuiz;
+  });
+
   const officialNodes = computed<OfficialNode[]>(() => [
     {
       id: 'daily_quiz',
-      name: UI.official.dailyQuiz,
+      name: dailyQuizLabel.value,
       visible: dailyQuizVisible.value,
       action: () => startDailyQuiz(),
     },
@@ -161,6 +173,11 @@ export const useNodeStore = defineStore('node', () => {
     if (pendingNodeContext.value) {
       pathNodes.value = pendingNodeContext.value.pathNodes;
       childNodes.value = pendingNodeContext.value.children;
+      hasAnyNodes.value = !!(
+        pendingNodeContext.value.nodeInfo ||
+        pendingNodeContext.value.children.length > 0 ||
+        pendingNodeContext.value.pathNodes.length > 0
+      );
     }
   }
 
@@ -274,12 +291,10 @@ export const useNodeStore = defineStore('node', () => {
       });
       if (res.ok) {
         const data = await res.json();
-        dailyQuizVisible.value = !data.completed;
-      } else {
-        dailyQuizVisible.value = true;
+        dailyQuizDueCount.value = data.due_count ?? 0;
       }
     } catch {
-      dailyQuizVisible.value = true;
+      dailyQuizDueCount.value = 0;
     }
   }
 
@@ -387,9 +402,11 @@ export const useNodeStore = defineStore('node', () => {
     isDailyQuizState,
     isWelcomeState,
     isConfirmState,
+    isEmpty,
     canConfirm,
     currentNodeId,
     dailyQuizVisible,
+    dailyQuizDueCount,
     officialNodes,
     initialize,
     loadNode,

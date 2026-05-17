@@ -8,6 +8,9 @@
     'compact-nav-slide-in-prep': compactAnimPhase === 'nav-slide-in-prep',
     'compact-nav-slide-in': compactAnimPhase === 'nav-slide-in',
     'compact-toggle-rising': compactAnimPhase === 'rising',
+    'official-sinking': otPhase === 'sinking',
+    'official-nav-slide': otPhase === 'sliding',
+    'official-rising': otPhase === 'rising',
   }]">
     <section ref="logoRef" class="logo-area">
       <div class="inset-shell static-shell">
@@ -32,7 +35,7 @@
         <section ref="contentAreaRef" class="content-area">
           <div class="content-inset" :class="{ 'tree-visible': treeOverlayActive }">
             <div ref="treeMaskRef" class="tree-mask" :class="{ 'tree-mask-visible': treeMaskVisible }" aria-hidden="true"></div>
-            <div ref="contentGlassRef" class="content-glass" :class="{
+            <div v-if="!skipContentGlass" ref="contentGlassRef" class="content-glass" :class="{
               'content-sinking': contentPhase === 'sinking',
               'content-tree-mask': contentPhase === 'tree-mask',
               'content-slide-out': contentPhase === 'slide-out',
@@ -41,10 +44,10 @@
               'content-rising': contentPhase === 'rising',
             }">
               <div class="glass-content" style="width:100%;height:100%">
-                <div v-if="displayedShowTree" key="tree" class="content-host">
+                <div v-if="displayedShowTree && !showEmptyBackground" key="tree" class="content-host">
                   <TreeCanvas ref="treeCanvasRef" :visible="displayedShowTree" />
                 </div>
-                <template v-if="!displayedShowTree">
+                <template v-if="!displayedShowTree && !showEmptyBackground">
                   <component
                     v-if="displayedNonTreeContent === MarkdownEditor"
                     :is="displayedNonTreeContent"
@@ -56,6 +59,24 @@
                 </template>
               </div>
               <div class="tree-curtain" :class="{ drawn: treeCurtainDrawn }" aria-hidden="true"></div>
+            </div>
+            <div v-else class="content-direct" :class="{
+              'direct-prep': contentPhase === 'slide-in-prep',
+              'direct-slide': contentPhase === 'slide-in',
+            }">
+              <div v-if="displayedShowTree && !showEmptyBackground" key="tree" class="content-host">
+                <TreeCanvas ref="treeCanvasRef" :visible="displayedShowTree" />
+              </div>
+              <template v-if="!displayedShowTree && !showEmptyBackground">
+                <component
+                  v-if="displayedNonTreeContent === MarkdownEditor"
+                  :is="displayedNonTreeContent"
+                  :key="displayedKey"
+                />
+                <div v-else class="activity-scroll">
+                  <component :is="displayedNonTreeContent" :key="displayedKey" />
+                </div>
+              </template>
             </div>
           </div>
         </section>
@@ -91,6 +112,7 @@ import { useDevStore } from '../stores/devStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch, type CompactMode } from '../composables/useKnobDispatch';
 import { usePageTransition } from '../composables/usePageTransition';
+import { useOfficialTransition } from '../composables/useOfficialTransition';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
 
@@ -99,7 +121,7 @@ const isDev = import.meta.env.DEV;
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
 const devStore = useDevStore();
-const { activeNode } = storeToRefs(nodeStore);
+const { activeNode, isEmpty } = storeToRefs(nodeStore);
 const {
   mode: authMode,
   isAuthenticated,
@@ -108,7 +130,19 @@ const {
 useAppInit();
 const { compactMode, isCompactLayout } = useKnobDispatch();
 
-const { registerRegion, unregisterRegion, startTransition, isTransitioning } = usePageTransition();
+const { registerRegion, unregisterRegion, startTransition, syncRegionVisibility, isTransitioning } = usePageTransition();
+
+const {
+  phase: otPhase,
+  animating: otAnimating,
+  animToken: otAnimToken,
+  anchorItemId,
+  clickedItemId,
+  anchorDeltaY,
+  anchorPrep,
+  hideNonAnchorItems,
+  anchorItemAction,
+} = useOfficialTransition();
 
 // Region refs for page transition system
 const logoRef = ref<HTMLElement | null>(null);
@@ -221,6 +255,18 @@ const contentAnimToken = ref(0);
 const contentAnimating = ref(false);
 provide('contentAnimating', contentAnimating);
 
+// Global click shield: block all pointer events while any CSS animation is playing.
+// CSS animations are timer/transition-driven, so they don't need pointer events.
+// Excludes 'tree-mask' phase: waitForSceneReady can take seconds while the tree
+// loads, and the mask itself already has pointer-events: none.
+// Excludes isTransitioning: data fetching is not an animation and can hang
+// indefinitely if the backend is unreachable (fetch has no default timeout).
+const isPageAnimating = computed(() =>
+  (contentPhase.value !== 'idle' && contentPhase.value !== 'tree-mask') ||
+  compactAnimPhase.value !== 'idle' ||
+  otAnimating.value
+);
+
 // Track previous viewState to detect small-layout special-state transitions.
 // In small layout, Navigation runs its own internal animation for
 // add/daily_quiz/welcome enter/exit — Content must skip its slide animation
@@ -266,8 +312,19 @@ function updateCompactState(): void {
 
 const handleResize = debounce(updateCompactState, 150);
 
+// Non-debounced: immediately fix region visibility when crossing the compact
+// threshold to prevent nav/content overlap during the 150ms debounce window.
+// CSS @media applies instantly on resize; this keeps JS display state in sync.
+function handleResizeImmediate(): void {
+  const newCompact = window.innerWidth <= COMPACT_BREAKPOINT || window.innerHeight <= COMPACT_HEIGHT_BREAKPOINT;
+  if (newCompact !== isCompactLayout.value) {
+    isCompactLayout.value = newCompact;
+    syncRegionVisibility(newCompact ? 'small' : 'large');
+  }
+}
+
 onMounted(() => {
-  updateCompactState();
+  window.addEventListener('resize', handleResizeImmediate);
   window.addEventListener('resize', handleResize);
 
   if (logoRef.value) {
@@ -330,9 +387,13 @@ onMounted(() => {
       shouldShow: () => true,
     });
   }
+
+  // Initial visibility sync — must run after regions are registered
+  updateCompactState();
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResizeImmediate);
   window.removeEventListener('resize', handleResize);
 
   // Clean up any lingering waitForSceneReady watchers
@@ -372,16 +433,30 @@ const isSmallLayoutMixed = computed(() => {
   return specialStates.includes(nodeStore.viewState);
 });
 
+// In special states (add/daily_quiz/welcome), skip the outer content-glass
+// active area. The content components bring their own GlassWrappers, which
+// become direct children of the content-inset bottom area — avoiding nested
+// active areas. Applies to all layouts.
+const skipContentGlass = computed(() => {
+  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  return specialStates.includes(nodeStore.viewState);
+});
+
 const layoutClasses = computed(() => ({
   'compact': isCompact.value,
   'compact-content': isCompact.value && compactMode.value === 'content',
   'compact-nav': isCompact.value && compactMode.value === 'nav',
   'compact-mixed': isSmallLayoutMixed.value,
   'is-too-small': isTooSmall.value,
+  'page-animating': isPageAnimating.value,
 }));
 
+const showEmptyBackground = computed(() =>
+  isEmpty.value && !nodeStore.activeNode && nodeStore.viewState === 'display'
+);
+
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isWelcomeState;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isWelcomeState && !isEmpty.value;
 });
 
 const nonTreeContent = computed(() => {
@@ -443,28 +518,48 @@ async function animateContentTransition() {
     return;
   }
 
-  // Small layout: Navigation runs its own animation (animateSmallLayoutOfficial,
-  // animateSmallLayoutAdd, animateSmallLayoutReturn) for special-state enter/exit.
-  // Skip content slide to avoid two independent animation systems fighting over
-  // DOM and CSS classes at the same time. Just swap the content instantly.
+  // When entering or leaving a special state (add/daily_quiz/welcome),
+  // the wrapper element changes between content-glass and content-direct.
   const specialStates = ['add', 'daily_quiz', 'welcome'];
   const wasSpecial = specialStates.includes(prevCompactViewState);
   const isSpecial = specialStates.includes(nodeStore.viewState);
   prevCompactViewState = nodeStore.viewState;
 
-  if (isCompact.value && (wasSpecial || isSpecial)) {
-    displayedKey.value = contentKey.value;
-    displayedShowTree.value = showTree.value;
-    displayedNonTreeContent.value = nonTreeContent.value;
-    treeMaskVisible.value = false;
-    treeOverlayActive.value = showTree.value;
-    return;
+  if (wasSpecial || isSpecial) {
+    // Official transition orchestrator handles its own animation
+    if (otAnimating.value) return;
+
+    if (!wasSpecial && isSpecial) {
+      // Entering special state: fall through to animation below.
+      // Old content (in content-glass) sinks + slides out,
+      // new content (in content-direct) slides in, no rise.
+    } else {
+      // Exiting special state or special→special: instant swap
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      treeMaskVisible.value = false;
+      treeOverlayActive.value = showTree.value;
+      return;
+    }
   }
 
   contentAnimating.value = true;
   const token = ++contentAnimToken.value;
   const oldKey = displayedKey.value;
   const wasShowingTree = displayedShowTree.value;
+
+  // Empty account with no nodes: skip animation, just show background
+  if (showEmptyBackground.value) {
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = false;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    treeMaskVisible.value = false;
+    treeOverlayActive.value = false;
+    contentPhase.value = 'idle';
+    contentAnimating.value = false;
+    return;
+  }
 
   // Phase 1: Sink — glass frame loses shadow, content fades
   contentPhase.value = 'sinking';
@@ -480,6 +575,19 @@ async function animateContentTransition() {
 
     // Apply pending data early to know the destination state
     nodeStore.applyPendingData();
+
+    // If account became empty, skip to background
+    if (showEmptyBackground.value) {
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = false;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      treeMaskVisible.value = false;
+      treeOverlayActive.value = false;
+      contentPhase.value = 'idle';
+      contentAnimating.value = false;
+      return;
+    }
+
     const willShowTree = showTree.value;
 
     if (willShowTree) {
@@ -550,6 +658,19 @@ async function animateContentTransition() {
 
     // Apply pending data NOW — viewState is updated, so showTree is current
     nodeStore.applyPendingData();
+
+    // If account became empty (last node deleted), skip to background
+    if (showEmptyBackground.value) {
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = false;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      treeMaskVisible.value = false;
+      treeOverlayActive.value = false;
+      contentPhase.value = 'idle';
+      contentAnimating.value = false;
+      return;
+    }
+
     const willShowTree = showTree.value;
 
     // Content didn't change — skip slide, just rise
@@ -603,8 +724,10 @@ async function animateContentTransition() {
       await nextTick();
       if (token !== contentAnimToken.value) return;
 
-      // Force reflow so prep position is painted, then trigger slide-in
-      void contentGlassRef.value?.offsetHeight;
+      // Force reflow so prep position is painted, then trigger slide-in.
+      // When entering a special state content-glass is replaced by content-direct.
+      const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+      void reflowEl?.offsetHeight;
       contentPhase.value = 'slide-in';
 
       await sleep(CONTENT_SLIDE_MS);
@@ -612,12 +735,15 @@ async function animateContentTransition() {
     }
   }
 
-  // Phase: Rise — glass frame regains shadow
-  contentPhase.value = 'rising';
-  await nextTick();
-  if (token !== contentAnimToken.value) return;
-  await sleep(CONTENT_RISE_MS);
-  if (token !== contentAnimToken.value) return;
+  // Phase: Rise — glass frame regains shadow (skip for special states
+  // where content-glass is replaced by content-direct)
+  if (!skipContentGlass.value) {
+    contentPhase.value = 'rising';
+    await nextTick();
+    if (token !== contentAnimToken.value) return;
+    await sleep(CONTENT_RISE_MS);
+    if (token !== contentAnimToken.value) return;
+  }
 
   contentPhase.value = 'idle';
   contentAnimating.value = false;
@@ -772,6 +898,156 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
   contentAnimating.value = false;
 }
 
+// ================================================================
+// Small layout official knowledge point click orchestration
+// Sink → non-clicked slide left (clicked stays) → clicked slides
+// down to anchor → content slides in from right → rise
+// ================================================================
+async function startSmallLayoutOfficialTransition(item: { id: string; name: string; action?: () => void }, rowEl: HTMLElement): Promise<void> {
+  // Cancel existing official animation
+  if (otAnimating.value) {
+    otAnimToken.value++;
+    otPhase.value = 'idle';
+    otAnimating.value = false;
+    hideNonAnchorItems.value = false;
+    anchorItemId.value = null;
+    clickedItemId.value = null;
+    anchorDeltaY.value = 0;
+    anchorPrep.value = false;
+    anchorItemAction.value = null;
+  }
+
+  // Cancel any in-flight content animation
+  if (contentAnimating.value) {
+    contentAnimToken.value++;
+    contentPhase.value = 'idle';
+    contentAnimating.value = false;
+  }
+
+  otAnimating.value = true;
+  contentAnimating.value = true;
+  const token = ++otAnimToken.value;
+  anchorItemAction.value = item.action ?? null;
+  clickedItemId.value = item.id;
+
+  // ---- Phase 1: SINK (240ms) ----
+  otPhase.value = 'sinking';
+  await nextTick();
+  await sleep(CONTENT_SINK_MS);
+  if (token !== otAnimToken.value) return;
+
+  // ---- Measurement: capture clicked row position before it moves ----
+  const rowRect = rowEl.getBoundingClientRect();
+
+  // ---- Phase 2: NAV SLIDE (280ms) — non-clicked rows slide left, clicked stays ----
+  otPhase.value = 'sliding';
+  await sleep(CONTENT_SLIDE_MS);
+  if (token !== otAnimToken.value) return;
+
+  // ---- DOM swap: show anchor, change viewState ----
+  anchorItemId.value = item.id;
+  hideNonAnchorItems.value = true;
+
+  // Fire the action to change viewState (starts async startTransition)
+  const action = anchorItemAction.value;
+  if (action) {
+    action();
+  }
+
+  // Wait for startTransition to finish — it sets content display to '' asynchronously
+  if (isTransitioning.value) {
+    await new Promise<void>(resolve => {
+      const stop = watch(isTransitioning, (v) => {
+        if (!v) { stop(); resolve(); }
+      });
+    });
+  }
+  await nextTick();
+  if (token !== otAnimToken.value) return;
+
+  // Keep content hidden during anchor slide so it doesn't block the animation.
+  // startTransition re-enabled it; we override that until the anchor finishes sliding.
+  const contentEl = contentAreaRef.value;
+  if (contentEl) contentEl.style.display = 'none';
+
+  // Measure anchor final position
+  const anchorEl = document.querySelector('.anchor-official-shell') as HTMLElement | null;
+  const anchorRect = anchorEl?.getBoundingClientRect();
+  if (anchorRect) {
+    anchorDeltaY.value = anchorRect.top - rowRect.top;
+  }
+
+  // Set anchor in prep position (at clicked item's original location, invisible)
+  anchorPrep.value = true;
+  await nextTick();
+  void document.body.offsetHeight; // force reflow
+
+  // ---- Phase 3: ANCHOR SLIDE DOWN (280ms) ----
+  // Anchor slides from clicked row position down to its final spot
+  anchorPrep.value = false;
+  otPhase.value = 'anchor-sliding';
+
+  // Wait for anchor slide transition to complete
+  await new Promise<void>((resolve) => {
+    const shell = document.querySelector('.anchor-official-shell') as HTMLElement | null;
+    if (!shell) { resolve(); return; }
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName === 'transform') {
+        shell.removeEventListener('transitionend', onEnd);
+        resolve();
+      }
+    };
+    shell.addEventListener('transitionend', onEnd);
+    setTimeout(() => {
+      shell.removeEventListener('transitionend', onEnd);
+      resolve();
+    }, CONTENT_SLIDE_MS + 80);
+  });
+  if (token !== otAnimToken.value) return;
+
+  // ---- Phase 4: CONTENT SLIDE IN (280ms) ----
+  // Show content area, sync displayed refs
+  if (contentEl) contentEl.style.display = '';
+  displayedKey.value = contentKey.value;
+  displayedShowTree.value = showTree.value;
+  displayedNonTreeContent.value = nonTreeContent.value;
+
+  if (skipContentGlass.value) {
+    // Animate content-direct sliding in from right (no rise after)
+    contentPhase.value = 'slide-in-prep';
+    await nextTick();
+    if (token !== otAnimToken.value) return;
+    const reflowEl = document.querySelector('.content-direct');
+    void reflowEl?.offsetHeight;
+    contentPhase.value = 'slide-in';
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== otAnimToken.value) return;
+  } else {
+    contentPhase.value = 'slide-in-prep';
+    await nextTick();
+    if (token !== otAnimToken.value) return;
+    void contentGlassRef.value?.offsetHeight;
+
+    contentPhase.value = 'slide-in';
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== otAnimToken.value) return;
+  }
+
+  // ---- Cleanup ----
+  otPhase.value = 'idle';
+  contentPhase.value = 'idle';
+  otAnimating.value = false;
+  contentAnimating.value = false;
+  anchorDeltaY.value = 0;
+  anchorPrep.value = false;
+  anchorItemAction.value = null;
+  clickedItemId.value = null;
+  // anchorItemId and hideNonAnchorItems stay set — anchor remains visible
+  // during the special state so the user can click it to return.
+}
+
+provide('startSmallLayoutOfficialTransition', startSmallLayoutOfficialTransition);
+
 // Tree curtain: tracks visibility across transitions
 const treeWasVisible = ref(false);
 
@@ -851,6 +1127,11 @@ watch(
   grid-template-columns: 241px minmax(0, 1fr) 82px;
   grid-template-rows: 54px minmax(0, 1fr);
   gap: 12px;
+}
+
+/* Global click shield: block all interaction while any animation is playing */
+.layout.page-animating {
+  pointer-events: none;
 }
 
 .logo-area,
@@ -988,6 +1269,49 @@ watch(
   }
 }
 
+/* ================================================================
+   content-direct: replaces content-glass in special states
+   (add/daily_quiz/welcome) across all layouts.
+   Content sits directly in the content-inset bottom area without
+   an outer active-area wrapper. Content components' own GlassWrappers
+   are flattened so they don't introduce a second raised layer.
+   ================================================================ */
+.content-direct {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.content-direct :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.content-direct :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Slide-in animation for content-direct (reuses contentPhase state machine).
+   Mirrors the content-glass > .glass-content slide but targets the
+   content-direct wrapper itself. */
+.direct-prep {
+  transform: translateX(80px);
+  opacity: 0;
+}
+
+.direct-slide {
+  transform: translateX(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
+}
+
 .content-glass {
   position: relative;
   z-index: 2;
@@ -1117,8 +1441,10 @@ watch(
   }
 
   /* Compact mixed mode: both nav (anchor only) and content visible in row 2.
-     merged-shell serves as the SINGLE unified bottom area for this row —
-     keep its inset styling, strip individual inset visuals from children. */
+     merged-shell serves as the outer container for this row.
+     content-inset keeps its ::after bottom-area visual; content sits directly
+     in the inset without content-glass, so content components' own
+     GlassWrappers are the sole active areas. */
   .layout.compact-mixed .merged-area,
   .layout.compact-mixed .merged-shell {
     display: flex !important;
@@ -1138,7 +1464,7 @@ watch(
     min-height: 0;
   }
 
-  /* Strip individual bottom area visuals — merged-shell is the one bottom area */
+  /* Navigation anchor area — no bottom-area visual of its own */
   .layout.compact-mixed .navigation-shell {
     background: transparent;
     border-color: transparent;
@@ -1146,11 +1472,17 @@ watch(
   }
 
   .layout.compact-mixed .content-inset::after {
-    display: none;
+    /* Keep bottom-area inner shadow — content sits directly in inset
+       without content-glass, so inset is the sole bottom area. */
   }
 
-  .layout.compact-mixed .content-glass {
-    border-radius: 0;
+  /* In compact-mixed mode, merged-shell is a flex container, not a visual
+     bottom area. Strip its inset styling so content-inset::after is the
+     only bottom-area visual, avoiding doubled inner shadows. */
+  .layout.compact-mixed .merged-shell {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
   }
 }
 

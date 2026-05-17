@@ -36,6 +36,7 @@ from quiz_service_sqlite import (
     submit_quiz_answer_sqlite,
 )
 from review_service_sqlite import (
+    get_daily_review_queue,
     get_due_reviews_sqlite,
     submit_review_sqlite,
     get_review_stats_sqlite,
@@ -1015,7 +1016,7 @@ def quiz_stats_endpoint(user: dict = Depends(get_current_user)):
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-# --- Daily Quiz ---
+# --- Daily Review ---
 
 class DailyQuizCompleteRequest(BaseModel):
     pass
@@ -1031,23 +1032,91 @@ def _get_refresh_at() -> str:
     now = datetime.now()
     today_630 = now.replace(hour=6, minute=30, second=0, microsecond=0)
     if now < today_630:
-        # Before 6:30 AM — refresh_at is today 6:30 AM
         return today_630.isoformat()
-    # After 6:30 AM — refresh_at is tomorrow 6:30 AM
     return (today_630 + timedelta(days=1)).isoformat()
+
+
+def _pick_question_type(review_state: str) -> str:
+    """Pick question type based on review state.
+    New nodes: easier recognition (true_false or single_choice).
+    Relearning nodes: active recall (short_answer).
+    Review nodes: random among all three."""
+    import random
+    if review_state == 'new':
+        return random.choice(['true_false', 'single_choice'])
+    elif review_state == 'relearning':
+        return 'short_answer'
+    else:
+        return random.choice(['single_choice', 'true_false', 'short_answer'])
 
 
 @app.get("/daily-quiz/status")
 def daily_quiz_status(user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
-    today = _get_today_date()
     refresh_at = _get_refresh_at()
     with get_db_ctx() as conn:
-        row = conn.execute(
-            "SELECT completed FROM daily_quiz_completion WHERE user_id = ? AND date = ?",
-            (owner_id, today),
-        ).fetchone()
-        return {"completed": bool(row and row["completed"]), "refresh_at": refresh_at}
+        stats = get_review_stats_sqlite(owner_id, conn)
+        return {
+            "due_count": stats["due_count"],
+            "today_reviewed": stats["today_reviewed"],
+            "new_count": stats["new_count"],
+            "refresh_at": refresh_at,
+        }
+
+
+@app.get("/daily-review/queue")
+def daily_review_queue(
+    new_card_limit: int = 10,
+    max_total: int = 50,
+    user: dict = Depends(get_current_user),
+):
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        try:
+            return get_daily_review_queue(owner_id, conn, new_card_limit, max_total)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/daily-review/generate-question")
+def daily_review_generate_question(
+    payload: dict = None,
+    user: dict = Depends(get_current_user),
+):
+    import random
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        if payload and "node_id" in payload:
+            node_id = payload["node_id"]
+            # Verify ownership
+            row = conn.execute(
+                "SELECT id, review_state FROM nodes WHERE id = ? AND owner_id = ? AND is_deleted = 0",
+                (node_id, owner_id),
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="知识点不存在")
+            review_state = row["review_state"] or "new"
+            question_type = payload.get("question_type") or _pick_question_type(review_state)
+        else:
+            # Fallback: random node (backward compatibility)
+            nodes = conn.execute(
+                """SELECT id FROM nodes
+                   WHERE owner_id = ? AND is_deleted = 0 AND content != ''
+                   ORDER BY RANDOM() LIMIT 1""",
+                (owner_id,),
+            ).fetchall()
+            if not nodes:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="没有可用的知识点")
+            node_id = nodes[0]["id"]
+            question_type = random.choice(["single_choice", "true_false", "short_answer"])
+
+        try:
+            computed_difficulty = compute_adaptive_difficulty(conn, node_id, owner_id)
+            return generate_quiz_question_sqlite(node_id, owner_id, conn, question_type, computed_difficulty)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @app.post("/daily-quiz/complete")
@@ -1062,32 +1131,6 @@ def daily_quiz_complete(user: dict = Depends(get_current_user)):
             (completion_id, owner_id, today),
         )
         return {"completed": True, "date": today}
-
-
-@app.post("/generate-daily-quiz")
-def generate_daily_quiz(user: dict = Depends(get_current_user)):
-    import random
-    owner_id = user["sub"]
-    question_types = ["single_choice", "true_false", "short_answer"]
-    question_type = random.choice(question_types)
-    with get_db_ctx() as conn:
-        # Select a random non-deleted node owned by this user that has content
-        nodes = conn.execute(
-            """SELECT id FROM nodes
-               WHERE owner_id = ? AND is_deleted = 0 AND content != ''
-               ORDER BY RANDOM() LIMIT 1""",
-            (owner_id,),
-        ).fetchall()
-        if not nodes:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="没有可用的知识点")
-        node_id = nodes[0]["id"]
-        try:
-            computed_difficulty = compute_adaptive_difficulty(conn, node_id, owner_id)
-            return generate_quiz_question_sqlite(node_id, owner_id, conn, question_type, computed_difficulty)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @app.get("/due-reviews")
