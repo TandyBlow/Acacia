@@ -1394,6 +1394,12 @@ watch(
       inset -9px -9px 18px var(--shadow-inset-b);
   }
 
+  .content-inset::after {
+    box-shadow:
+      inset 9px 9px 18px var(--shadow-inset-a),
+      inset -9px -9px 18px var(--shadow-inset-b);
+  }
+
   .content-area {
     padding: 0;
   }
@@ -1457,10 +1463,9 @@ watch(
   }
 
   /* Compact mixed mode: both nav (anchor only) and content visible in row 2.
-     merged-shell serves as the outer container for this row.
-     content-inset keeps its ::after bottom-area visual; content sits directly
-     in the inset without content-glass, so content components' own
-     GlassWrappers are the sole active areas. */
+     merged-shell is the sole bottom area filling row 2 with its inherent
+     inset-shell styling. Both children are stripped of their own bottom-area
+     visuals to avoid doubled inner shadows. */
   .layout.compact-mixed .merged-area,
   .layout.compact-mixed .merged-shell {
     display: flex !important;
@@ -1487,17 +1492,9 @@ watch(
     box-shadow: none;
   }
 
+  /* merged-shell is the sole bottom area in compact-mixed.
+     content-inset::after must be stripped to avoid doubled inner shadows. */
   .layout.compact-mixed .content-inset::after {
-    /* Keep bottom-area inner shadow — content sits directly in inset
-       without content-glass, so inset is the sole bottom area. */
-  }
-
-  /* In compact-mixed mode, merged-shell is a flex container, not a visual
-     bottom area. Strip its inset styling so content-inset::after is the
-     only bottom-area visual, avoiding doubled inner shadows. */
-  .layout.compact-mixed .merged-shell {
-    background: transparent;
-    border-color: transparent;
     box-shadow: none;
   }
 }
