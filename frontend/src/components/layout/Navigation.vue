@@ -454,41 +454,6 @@ async function animateSmallLayoutAdd() {
   store.startAdd();
 }
 
-async function animateSmallLayoutReturn() {
-  if (navAnimating.value) {
-    navAnimToken++;
-    navPhase.value = 'idle';
-    navAnimating.value = false;
-  }
-
-  navAnimating.value = true;
-  const token = ++navAnimToken;
-
-  hideNodeList.value = false;
-  hideNonAnchorItems.value = false;
-  anchorOfficial.value = null;
-  anchorSlidingDown.value = false;
-  otAnchorItemId.value = null;
-  otClickedItemId.value = null;
-
-  navPhase.value = 'sliding-in-prep';
-  await nextTick();
-  const el = nodeListRef.value as HTMLElement | null;
-  if (el) void el.offsetHeight;
-  if (token !== navAnimToken) return;
-
-  navPhase.value = 'sliding-in';
-  await sleep(NAV_SLIDE_MS);
-  if (token !== navAnimToken) return;
-
-  navPhase.value = 'rising';
-  await nextTick();
-  await sleep(NAV_RISE_MS);
-  if (token !== navAnimToken) return;
-
-  navPhase.value = 'idle';
-  navAnimating.value = false;
-}
 
 function onBeforeLeave(el: Element): void {
   const htmlEl = el as HTMLElement;

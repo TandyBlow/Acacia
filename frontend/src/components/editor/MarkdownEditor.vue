@@ -189,7 +189,6 @@ const {
   isBusy,
   isCompleted,
   messages,
-  generatedContent,
   currentSubTopic,
   totalKp,
   currentKpIndex,
@@ -207,7 +206,6 @@ const {
   endConversation,
   regenerateWithTreeContext,
   markConcept,
-  abandonChat,
   clearChat,
 } = useNodeChat();
 
@@ -237,12 +235,6 @@ const ChatPromptParagraph = Paragraph.extend({
   },
 });
 
-const isEmptyNode = computed(() => {
-  if (!activeNode.value) return false;
-  if (hasUserEdited.value) return false;
-  const content = activeNode.value.content || '';
-  return content.trim().length === 0;
-});
 
 const showBottomBar = computed(() => true);
 
@@ -689,7 +681,7 @@ const lockedNodePlugin = new Plugin({
       }
       return false;
     },
-    handleTextInput(view, from, to, text) {
+    handleTextInput(view, from, _to, text) {
       if (chatMode.value !== 'text_input') return false;
       // Block typing inside locked nodes - redirect to end of editable area
       if (isPositionInLockedNode(view.state, from)) {
