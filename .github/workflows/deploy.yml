@@ -20,9 +20,10 @@ jobs:
             LOG=/tmp/acacia-deploy.log
             echo "=== Acacia Deploy $(date -u +'%Y-%m-%dT%H:%M:%SZ') ===" | tee "$LOG"
 
-            echo ">>> git pull" | tee -a "$LOG"
+            echo ">>> git fetch + reset" | tee -a "$LOG"
             cd /opt/acacia
-            git pull origin main 2>&1 | tee -a "$LOG"
+            git fetch origin main 2>&1 | tee -a "$LOG"
+            git reset --hard origin/main 2>&1 | tee -a "$LOG"
 
             echo ">>> write .env" | tee -a "$LOG"
             cat > /opt/acacia/backend/.env << 'ENVEOF'

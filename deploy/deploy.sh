@@ -10,7 +10,8 @@ echo "=== Acacia Deployment ==="
 
 # 1. Pull latest code
 cd "$ACACIA_ROOT"
-git pull origin main
+git fetch origin main
+git reset --hard origin/main
 
 # 2. Check .env exists
 if [ ! -f "$BACKEND_DIR/.env" ]; then
