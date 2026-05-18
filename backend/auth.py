@@ -4,10 +4,27 @@ JWT authentication for local deployment.
 import jwt
 import bcrypt
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+def _load_jwt_secret() -> str:
+    """Load JWT secret from env, file, or auto-generate and persist."""
+    secret = os.getenv("JWT_SECRET")
+    if secret:
+        return secret
+
+    secret_file = os.path.join(os.path.dirname(__file__), ".jwt_secret")
+    try:
+        with open(secret_file) as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        secret = secrets.token_urlsafe(64)
+        with open(secret_file, "w") as f:
+            f.write(secret)
+        return secret
+
+JWT_SECRET = _load_jwt_secret()
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7
 
