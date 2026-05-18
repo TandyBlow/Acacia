@@ -31,6 +31,7 @@ jobs:
             DB_PATH=/opt/acacia/data/acacia.db
             ENVEOF
             chmod 600 /opt/acacia/backend/.env
+            chown acacia:acacia /opt/acacia/backend/.env
 
             echo ">>> pip install" | tee -a "$LOG"
             cd /opt/acacia/backend
