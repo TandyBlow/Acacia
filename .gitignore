@@ -17,11 +17,13 @@ frontend/dist/
 frontend/.vite/
 
 # Env and secrets
+.mcp.json
 connect.sh
 connect.bat
 .env
 .env.*
 !.env.example
+!.mcp.json.example
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
@@ -32,6 +34,32 @@ frontend/.env.*
 
 # Local generated helper files
 frontend/src/combined_project_code.txt
+
+# Database files
+*.db
+
+# Screenshots and debug images (whitelist real assets)
+*.png
+*.jpg
+!frontend/src/assets/**/*.png
+!frontend/public/**/*.png
+!frontend/public/**/*.jpg
+
+# Vite dependency cache
+.vite/
+
+# Temporary files
+grep.exe.stackdump
+gh_search*.json
+plan_output.txt
+migration_session_log.txt
+test_react_hooks.md
+
+# Tool artifacts (auto-generated)
+.gstack/
+.pipeline/
+.planning/
+frontend/.gstack/
 
 # Private notes and local scratch files
 1.*.txt

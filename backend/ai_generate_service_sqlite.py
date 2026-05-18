@@ -10,7 +10,9 @@ from uuid import uuid4
 
 import httpx
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-fe13ac5f49fa4b9dae15fb4937387203")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    raise RuntimeError("DEEPSEEK_API_KEY 环境变量未设置")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
 

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "feishu": {
+      "command": "python",
+      "args": ["backend/mcp/feishu-server/server.py"],
+      "env": {
+        "FEISHU_APP_ID": "your-app-id-here",
+        "FEISHU_APP_SECRET": "your-app-secret-here"
+      }
+    }
+  }
+}

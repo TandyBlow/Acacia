@@ -9,7 +9,9 @@ import httpx
 # 设置输出编码为UTF-8
 sys.stdout.reconfigure(encoding='utf-8')
 
-DEEPSEEK_API_KEY = "sk-fe13ac5f49fa4b9dae15fb4937387203"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    raise RuntimeError("DEEPSEEK_API_KEY 环境变量未设置")
 DEEPSEEK_MODEL = "deepseek-chat"
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 
