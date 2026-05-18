@@ -35,7 +35,7 @@
         <section ref="contentAreaRef" class="content-area">
           <div class="content-inset" :class="{ 'tree-visible': treeOverlayActive }">
             <div ref="treeMaskRef" class="tree-mask" :class="{ 'tree-mask-visible': treeMaskVisible }" aria-hidden="true"></div>
-            <div v-if="!skipContentGlass" ref="contentGlassRef" class="content-glass" :class="{
+            <div v-if="!displayedSkipContentGlass" ref="contentGlassRef" class="content-glass" :class="{
               'content-sinking': contentPhase === 'sinking',
               'content-tree-mask': contentPhase === 'tree-mask',
               'content-slide-out': contentPhase === 'slide-out',
@@ -442,6 +442,11 @@ const skipContentGlass = computed(() => {
   return specialStates.includes(nodeStore.viewState);
 });
 
+// Displayed wrapper state — lags behind skipContentGlass during transitions.
+// Updated only at the DOM-swap phase so the old wrapper stays mounted for
+// sink+slide-out and the new wrapper appears at slide-in-prep.
+const displayedSkipContentGlass = ref(skipContentGlass.value);
+
 const layoutClasses = computed(() => ({
   'compact': isCompact.value,
   'compact-content': isCompact.value && compactMode.value === 'content',
@@ -490,6 +495,7 @@ const contentKey = computed(() => {
 displayedKey.value = contentKey.value;
 displayedShowTree.value = showTree.value;
 displayedNonTreeContent.value = nonTreeContent.value;
+displayedSkipContentGlass.value = skipContentGlass.value;
 treeOverlayActive.value = showTree.value;
 
 // ================================================================
@@ -504,6 +510,7 @@ async function animateContentTransition() {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
+    displayedSkipContentGlass.value = skipContentGlass.value;
     treeMaskVisible.value = false;
     treeOverlayActive.value = showTree.value;
     contentAnimating.value = false;
@@ -538,6 +545,7 @@ async function animateContentTransition() {
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
+      displayedSkipContentGlass.value = skipContentGlass.value;
       treeMaskVisible.value = false;
       treeOverlayActive.value = showTree.value;
       return;
@@ -554,6 +562,7 @@ async function animateContentTransition() {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = false;
     displayedNonTreeContent.value = nonTreeContent.value;
+    displayedSkipContentGlass.value = skipContentGlass.value;
     treeMaskVisible.value = false;
     treeOverlayActive.value = false;
     contentPhase.value = 'idle';
@@ -581,6 +590,7 @@ async function animateContentTransition() {
       displayedKey.value = contentKey.value;
       displayedShowTree.value = false;
       displayedNonTreeContent.value = nonTreeContent.value;
+      displayedSkipContentGlass.value = skipContentGlass.value;
       treeMaskVisible.value = false;
       treeOverlayActive.value = false;
       contentPhase.value = 'idle';
@@ -625,11 +635,13 @@ async function animateContentTransition() {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
+    displayedSkipContentGlass.value = skipContentGlass.value;
     contentPhase.value = 'slide-in-prep';
 
     await nextTick();
     if (token !== contentAnimToken.value) return;
-    void contentGlassRef.value?.offsetHeight;
+    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+    void reflowEl?.offsetHeight;
 
     // Snap mask off (content is invisible at prep position, no visual change)
     const maskEl = treeMaskRef.value;
@@ -638,7 +650,7 @@ async function animateContentTransition() {
     treeOverlayActive.value = false;
 
     await nextTick();
-    void contentGlassRef.value?.offsetHeight;
+    void reflowEl?.offsetHeight;
     if (maskEl) maskEl.style.transition = '';
 
     // Trigger slide-in from right
@@ -664,6 +676,7 @@ async function animateContentTransition() {
       displayedKey.value = contentKey.value;
       displayedShowTree.value = false;
       displayedNonTreeContent.value = nonTreeContent.value;
+      displayedSkipContentGlass.value = skipContentGlass.value;
       treeMaskVisible.value = false;
       treeOverlayActive.value = false;
       contentPhase.value = 'idle';
@@ -696,10 +709,12 @@ async function animateContentTransition() {
 
       await nextTick();
       if (token !== contentAnimToken.value) return;
-      void contentGlassRef.value?.offsetHeight; // force reflow so opacity:1 is painted
+      const enterReflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+      void enterReflowEl?.offsetHeight; // force reflow so opacity:1 is painted
       if (maskEl) maskEl.style.transition = ''; // re-enable transition for fade-out
 
       // Now swap DOM: tree loads under the fully opaque mask
+      displayedSkipContentGlass.value = skipContentGlass.value;
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
@@ -715,7 +730,10 @@ async function animateContentTransition() {
     } else {
       // ---- NON-TREE: standard slide-in from right ----
 
-      // Phase 3: Swap DOM — new content in prep position (off-screen right)
+      // Phase 3: Swap DOM — new content in prep position (off-screen right).
+      // Swap the wrapper first so the new wrapper type is mounted before
+      // new content is placed, avoiding a flash of new content in the old wrapper.
+      displayedSkipContentGlass.value = skipContentGlass.value;
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
@@ -735,9 +753,9 @@ async function animateContentTransition() {
     }
   }
 
-  // Phase: Rise — glass frame regains shadow (skip for special states
-  // where content-glass is replaced by content-direct)
-  if (!skipContentGlass.value) {
+  // Phase: Rise — glass frame regains shadow (skip when current
+  // wrapper is content-direct, which has no glass frame to rise)
+  if (!displayedSkipContentGlass.value) {
     contentPhase.value = 'rising';
     await nextTick();
     if (token !== contentAnimToken.value) return;
@@ -860,7 +878,8 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
 
       await nextTick();
       if (token !== contentAnimToken.value) return;
-      void contentGlassRef.value?.offsetHeight;
+      const ctTreeReflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+      void ctTreeReflowEl?.offsetHeight;
       if (maskEl) maskEl.style.transition = '';
 
       // Wait for tree scene to be ready, then fade mask out
@@ -881,7 +900,8 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
       await nextTick();
       if (token !== contentAnimToken.value) return;
 
-      void contentGlassRef.value?.offsetHeight;
+      const ctReflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+      void ctReflowEl?.offsetHeight;
       contentPhase.value = 'slide-in';
       await sleep(CONTENT_SLIDE_MS);
       if (token !== contentAnimToken.value) return;
@@ -1006,32 +1026,26 @@ async function startSmallLayoutOfficialTransition(item: { id: string; name: stri
   if (token !== otAnimToken.value) return;
 
   // ---- Phase 4: CONTENT SLIDE IN (280ms) ----
-  // Show content area, sync displayed refs
-  if (contentEl) contentEl.style.display = '';
+  // Swap wrapper and content while content area is still hidden,
+  // then show at prep position and animate slide-in.
+  displayedSkipContentGlass.value = skipContentGlass.value;
   displayedKey.value = contentKey.value;
   displayedShowTree.value = showTree.value;
   displayedNonTreeContent.value = nonTreeContent.value;
+  contentPhase.value = 'slide-in-prep';
 
-  if (skipContentGlass.value) {
-    // Animate content-direct sliding in from right (no rise after)
-    contentPhase.value = 'slide-in-prep';
-    await nextTick();
-    if (token !== otAnimToken.value) return;
-    const reflowEl = document.querySelector('.content-direct') as HTMLElement | null;
-    void reflowEl?.offsetHeight;
-    contentPhase.value = 'slide-in';
-    await sleep(CONTENT_SLIDE_MS);
-    if (token !== otAnimToken.value) return;
-  } else {
-    contentPhase.value = 'slide-in-prep';
-    await nextTick();
-    if (token !== otAnimToken.value) return;
-    void contentGlassRef.value?.offsetHeight;
+  await nextTick();
+  if (token !== otAnimToken.value) return;
 
-    contentPhase.value = 'slide-in';
-    await sleep(CONTENT_SLIDE_MS);
-    if (token !== otAnimToken.value) return;
-  }
+  // Show content — wrapper is at prep position (off-screen right, opacity 0)
+  if (contentEl) contentEl.style.display = '';
+
+  // Force reflow, then trigger slide-in
+  const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+  void reflowEl?.offsetHeight;
+  contentPhase.value = 'slide-in';
+  await sleep(CONTENT_SLIDE_MS);
+  if (token !== otAnimToken.value) return;
 
   // ---- Cleanup ----
   otPhase.value = 'idle';
@@ -1062,6 +1076,7 @@ watch(isTransitioning, (transitioning) => {
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
+      displayedSkipContentGlass.value = skipContentGlass.value;
       treeMaskVisible.value = false;
       treeOverlayActive.value = showTree.value;
       contentAnimating.value = false;
@@ -1081,6 +1096,7 @@ watch(contentKey, () => {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
+    displayedSkipContentGlass.value = skipContentGlass.value;
     treeMaskVisible.value = false;
     treeOverlayActive.value = showTree.value;
   }
