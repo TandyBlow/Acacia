@@ -63,6 +63,7 @@
             <div v-else class="content-direct" :class="{
               'direct-prep': contentPhase === 'slide-in-prep',
               'direct-slide': contentPhase === 'slide-in',
+              'direct-slide-out': contentPhase === 'slide-out',
             }">
               <div v-if="displayedShowTree && !showEmptyBackground" key="tree" class="content-host">
                 <TreeCanvas ref="treeCanvasRef" :visible="displayedShowTree" />
@@ -125,6 +126,7 @@ const { activeNode, isEmpty } = storeToRefs(nodeStore);
 const {
   mode: authMode,
   isAuthenticated,
+  initialized,
 } = storeToRefs(authStore);
 
 useAppInit();
@@ -465,6 +467,9 @@ const showTree = computed(() => {
 });
 
 const nonTreeContent = computed(() => {
+  if (!initialized.value) {
+    return null;
+  }
   if (!isAuthenticated.value) {
     return AuthPanel;
   }
@@ -484,6 +489,9 @@ const nonTreeContent = computed(() => {
 });
 
 const contentKey = computed(() => {
+  if (!initialized.value) {
+    return 'loading';
+  }
   if (!isAuthenticated.value) {
     return `auth:${authMode.value}`;
   }
@@ -540,8 +548,89 @@ async function animateContentTransition() {
       // Entering special state: fall through to animation below.
       // Old content (in content-glass) sinks + slides out,
       // new content (in content-direct) slides in, no rise.
+    } else if (wasSpecial && !isSpecial) {
+      // Exiting special state: content-direct slides out right,
+      // then new content (in content-glass) slides in, or tree fades in.
+      contentAnimating.value = true;
+      const token = ++contentAnimToken.value;
+
+      // Phase 1: Slide out right (content-direct slides right, fades out)
+      contentPhase.value = 'slide-out';
+      await nextTick();
+      if (token !== contentAnimToken.value) return;
+      await sleep(CONTENT_SLIDE_MS);
+      if (token !== contentAnimToken.value) return;
+
+      // Apply pending data
+      nodeStore.applyPendingData();
+
+      if (showEmptyBackground.value) {
+        displayedKey.value = contentKey.value;
+        displayedShowTree.value = false;
+        displayedNonTreeContent.value = nonTreeContent.value;
+        displayedSkipContentGlass.value = skipContentGlass.value;
+        treeMaskVisible.value = false;
+        treeOverlayActive.value = false;
+        contentPhase.value = 'idle';
+        contentAnimating.value = false;
+        return;
+      }
+
+      const willShowTree = showTree.value;
+
+      // Swap DOM: content-direct → content-glass, content in prep position
+      displayedSkipContentGlass.value = skipContentGlass.value;
+      displayedKey.value = contentKey.value;
+      displayedShowTree.value = showTree.value;
+      displayedNonTreeContent.value = nonTreeContent.value;
+      contentPhase.value = 'slide-in-prep';
+
+      await nextTick();
+      if (token !== contentAnimToken.value) return;
+
+      if (willShowTree) {
+        // Tree enter with mask (snap mask visible, load tree, fade mask out)
+        treeOverlayActive.value = true;
+        const maskEl = treeMaskRef.value;
+        if (maskEl) maskEl.style.transition = 'none';
+        treeMaskVisible.value = true;
+
+        await nextTick();
+        if (token !== contentAnimToken.value) return;
+        const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+        void reflowEl?.offsetHeight;
+        if (maskEl) maskEl.style.transition = '';
+
+        contentPhase.value = 'tree-mask';
+
+        await waitForSceneReady(token);
+        if (token !== contentAnimToken.value) return;
+        treeMaskVisible.value = false;
+        await sleep(TREE_MASK_FADE_MS);
+        if (token !== contentAnimToken.value) return;
+      } else {
+        // Standard slide-in from right
+        const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+        void reflowEl?.offsetHeight;
+        contentPhase.value = 'slide-in';
+        await sleep(CONTENT_SLIDE_MS);
+        if (token !== contentAnimToken.value) return;
+      }
+
+      // Rise
+      if (!displayedSkipContentGlass.value) {
+        contentPhase.value = 'rising';
+        await nextTick();
+        if (token !== contentAnimToken.value) return;
+        await sleep(CONTENT_RISE_MS);
+        if (token !== contentAnimToken.value) return;
+      }
+
+      contentPhase.value = 'idle';
+      contentAnimating.value = false;
+      return;
     } else {
-      // Exiting special state or special→special: instant swap
+      // special→special: instant swap
       displayedKey.value = contentKey.value;
       displayedShowTree.value = showTree.value;
       displayedNonTreeContent.value = nonTreeContent.value;
@@ -582,8 +671,15 @@ async function animateContentTransition() {
     // TREE EXIT PATH: mask fade-in → DOM swap → slide-in
     // ================================================================
 
-    // Apply pending data early to know the destination state
-    nodeStore.applyPendingData();
+    // Only apply pending data for node navigations, not for
+    // viewState transitions (add/daily_quiz/welcome). For viewState
+    // transitions, executeDataLoading already set the target viewState
+    // and pendingNodeContext may carry stale data from a previous
+    // navigation that would incorrectly revert viewState to 'display'.
+    const specialStates = ['add', 'daily_quiz', 'welcome'];
+    if (!specialStates.includes(nodeStore.viewState)) {
+      nodeStore.applyPendingData();
+    }
 
     // If account became empty, skip to background
     if (showEmptyBackground.value) {
@@ -668,8 +764,12 @@ async function animateContentTransition() {
     await sleep(CONTENT_SLIDE_MS);
     if (token !== contentAnimToken.value) return;
 
-    // Apply pending data NOW — viewState is updated, so showTree is current
-    nodeStore.applyPendingData();
+    // Apply pending data NOW — viewState is updated, so showTree is current.
+    // Skip for special state entry to avoid reverting viewState to 'display'.
+    const specialStates2 = ['add', 'daily_quiz', 'welcome'];
+    if (!specialStates2.includes(nodeStore.viewState)) {
+      nodeStore.applyPendingData();
+    }
 
     // If account became empty (last node deleted), skip to background
     if (showEmptyBackground.value) {
@@ -1062,6 +1162,56 @@ async function startSmallLayoutOfficialTransition(item: { id: string; name: stri
 
 provide('startSmallLayoutOfficialTransition', startSmallLayoutOfficialTransition);
 
+// Dev-only: trigger the tree fade-out animation for testing/debugging.
+// When tree is showing, fades the mask in (tree disappears), holds briefly,
+// then fades the mask out (tree reappears).
+async function triggerTreeFadeTest() {
+  if (contentAnimating.value) {
+    contentAnimToken.value++;
+    contentPhase.value = 'idle';
+    treeMaskVisible.value = false;
+    contentAnimating.value = false;
+  }
+
+  if (!displayedShowTree.value) {
+    console.log('[Dev] triggerTreeFadeTest: tree is not currently showing');
+    return;
+  }
+
+  contentAnimating.value = true;
+  const token = ++contentAnimToken.value;
+
+  // Phase 1: Sink
+  contentPhase.value = 'sinking';
+  await nextTick();
+  await sleep(CONTENT_SINK_MS);
+  if (token !== contentAnimToken.value) return;
+
+  // Phase 2: Mask fades in — tree disappears behind mask
+  treeMaskVisible.value = true;
+  contentPhase.value = 'tree-mask';
+  await sleep(TREE_MASK_FADE_MS);
+  if (token !== contentAnimToken.value) return;
+
+  // Hold for visual observation
+  await sleep(1000);
+
+  // Phase 3: Fade mask back out — tree reappears
+  treeMaskVisible.value = false;
+  await sleep(TREE_MASK_FADE_MS);
+  if (token !== contentAnimToken.value) return;
+
+  // Phase 4: Rise
+  contentPhase.value = 'rising';
+  await nextTick();
+  await sleep(CONTENT_RISE_MS);
+
+  contentPhase.value = 'idle';
+  contentAnimating.value = false;
+  console.log('[Dev] triggerTreeFadeTest: complete');
+}
+provide('triggerTreeFadeTest', triggerTreeFadeTest);
+
 // Tree curtain: tracks visibility across transitions
 const treeWasVisible = ref(false);
 
@@ -1091,7 +1241,8 @@ watch(isTransitioning, (transitioning) => {
 });
 
 // Keep displayed refs in sync when not animating (e.g. dev mode with transitions disabled)
-watch(contentKey, () => {
+watch(contentKey, (_newKey, oldKey) => {
+  if (oldKey === 'loading') return;
   if (!contentAnimating.value && contentPhase.value === 'idle') {
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
@@ -1099,6 +1250,37 @@ watch(contentKey, () => {
     displayedSkipContentGlass.value = skipContentGlass.value;
     treeMaskVisible.value = false;
     treeOverlayActive.value = showTree.value;
+  }
+});
+
+// Directly trigger content animation when viewState enters/leaves
+// special states (add/daily_quiz/welcome). The isTransitioning-based
+// watcher above may not fire for synchronous viewState transitions
+// because isTransitioning goes true→false within the same tick.
+watch(() => nodeStore.viewState, (newState, oldState) => {
+  if (contentAnimating.value) return;
+
+  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  const wasSpecial = specialStates.includes(oldState);
+  const isSpecial = specialStates.includes(newState);
+
+  // Only animate for special ↔ non-special transitions
+  if (wasSpecial === isSpecial) return;
+
+  // Don't double-trigger with isTransitioning watcher
+  if (isTransitioning.value) return;
+
+  treeWasVisible.value = showTree.value;
+  animateContentTransition();
+});
+
+// When auth initialization completes and the user is not authenticated,
+// animate the transition from skeleton to AuthPanel. The authenticated
+// path is handled by the isTransitioning watcher (via useAppInit ->
+// nodeStore.initialize -> startTransition).
+watch(initialized, (nowInitialized, prevInitialized) => {
+  if (nowInitialized && !prevInitialized && !isAuthenticated.value && !contentAnimating.value) {
+    animateContentTransition();
   }
 });
 
@@ -1318,6 +1500,14 @@ watch(
 .direct-prep {
   transform: translateX(80px);
   opacity: 0;
+}
+
+.direct-slide-out {
+  transform: translateX(80px);
+  opacity: 0;
+  transition:
+    transform 280ms cubic-bezier(0.4, 0, 0.6, 1),
+    opacity 280ms ease;
 }
 
 .direct-slide {

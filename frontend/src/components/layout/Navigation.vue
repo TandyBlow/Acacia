@@ -165,8 +165,8 @@ const scrollSource = computed<NavItem[]>(() => {
 const navPhase = ref<'idle' | 'sinking' | 'sliding-out' | 'sliding-in-prep' | 'sliding-in' | 'rising'>('idle');
 const navAnimating = ref(false);
 let navAnimToken = 0;
-let lastActiveNodeId: string | null = null;
 let hasInitialized = false;
+let pendingFirstData = true;
 
 // --- small layout add/official animation state ---
 const hideNodeList = ref(false);
@@ -212,7 +212,9 @@ let scrollCancelToken = 0;
 
 const maxVisible = computed(() => {
   if (containerH.value <= 0) return 20;
-  return Math.floor(containerH.value / ROW_STEP);
+  // ROW_STEP = ROW_H + GAP, but the last row has no trailing gap.
+  // N rows need N*ROW_H + (N-1)*GAP = N*ROW_STEP - GAP pixels.
+  return Math.floor((containerH.value + NAV_ROW_GAP) / ROW_STEP);
 });
 
 // Calculate animation duration based on current speed
@@ -302,39 +304,28 @@ watch(childNodes, () => {
   currentSpeed.value = 0;
   currentAnimMs.value = NAV_ANIM_MS;
 
-  const newActiveId = activeNode.value?.id ?? null;
-  const isPageNav = hasInitialized && newActiveId !== lastActiveNodeId;
-
-  if (isPageNav) {
-    // Page navigation — run 4-phase animation
-    lastActiveNodeId = newActiveId;
-    animateNavPageTransition();
-  } else {
-    // Initial load or non-navigation change — render without animation
-    if (!hasInitialized) hasInitialized = true;
-    lastActiveNodeId = newActiveId;
+  if (!hasInitialized) {
+    // Setup fire (immediate: true)
+    hasInitialized = true;
     showOfficialNodes.value = visibleOfficialNodes.value.length > 0 && !activeNode.value;
     pressedNodeId.value = null;
     displayItems.value = scrollSource.value.slice(0, maxVisible.value);
     transitionName.value = 'none';
     nextTick(() => { transitionName.value = 'cell'; });
+  } else if (pendingFirstData) {
+    // Initial data load
+    pendingFirstData = false;
+    showOfficialNodes.value = visibleOfficialNodes.value.length > 0 && !activeNode.value;
+    pressedNodeId.value = null;
+    displayItems.value = scrollSource.value.slice(0, maxVisible.value);
+    transitionName.value = 'none';
+    nextTick(() => { transitionName.value = 'cell'; });
+  } else {
+    // Page navigation
+    animateNavPageTransition();
   }
 }, { immediate: true });
 
-// Small layout: detect cancel/return from add/official state
-watch(viewState, (newState, oldState) => {
-  if (!isCompactLayout.value) return;
-  const wasSpecial = oldState === 'add' || oldState === 'daily_quiz' || oldState === 'welcome';
-  const isNormal = newState === 'display';
-  if (wasSpecial && isNormal && (hideNodeList.value || hideNonAnchorItems.value)) {
-    animateSmallLayoutReturn();
-  }
-});
-
-// Reset small-layout animation state when exiting compact layout.
-// hideNodeList/hideNonAnchorItems are set by animateSmallLayoutAdd /
-// startSmallLayoutOfficialTransition and only cleared by
-// animateSmallLayoutReturn (which only runs when isCompactLayout is true).
 // Without this reset, resizing to large layout while in add/daily_quiz/welcome
 // leaves the node list permanently hidden.
 watch(isCompactLayout, (compact) => {

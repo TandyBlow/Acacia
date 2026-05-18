@@ -28,7 +28,8 @@
                 spellcheck="false"
               />
 
-              <!-- Conversation input area (only during conversing) -->
+              <!-- @deprecated conversing textarea mode: 当前交互流程中用户始终走 text_input 内联模式，
+                  这个 textarea 只在 API 请求期间短暂闪现，实际不会被用到。修改 AI 对话功能时请改 sendInlineMessage()。 -->
               <div v-if="chatMode === 'conversing'" class="conversation-input-area">
                 <div class="conv-progress">
                   <span class="conv-progress-label">
@@ -82,6 +83,7 @@
                   对话已结束，点击下方"退出对话"保存生成内容。
                 </div>
               </div>
+              <!-- /@deprecated conversing textarea mode -->
             </template>
           </div>
         </GlassWrapper>
@@ -141,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch, computed } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch, computed, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import FileUploadArea from '../ai/FileUploadArea.vue';
@@ -149,17 +151,21 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeChat } from '../../composables/useNodeChat';
 import { usePageTransition } from '../../composables/usePageTransition';
 import type { Editor, JSONContent } from '@tiptap/core';
+import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
 import Image from '@tiptap/extension-image';
 import { Mathematics, mathMigrationRegex, migrateMathStrings } from '@tiptap/extension-mathematics';
 import { Markdown } from '@tiptap/markdown';
+import type { MarkdownManager } from '@tiptap/markdown';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
 import { useNodeStore } from '../../stores/nodeStore';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
+import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import type { EditorState } from 'prosemirror-state';
 import 'highlight.js/styles/github.css';
 
 interface UploadedFile {
@@ -201,6 +207,8 @@ const {
   endConversation,
   regenerateWithTreeContext,
   markConcept,
+  abandonChat,
+  clearChat,
 } = useNodeChat();
 
 const hasUserEdited = ref(false);
@@ -215,12 +223,12 @@ const ChatPromptParagraph = Paragraph.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
-      contenteditable: {
+      locked: {
         default: null,
-        parseHTML: element => element.getAttribute('contenteditable'),
+        parseHTML: element => element.getAttribute('data-locked'),
         renderHTML: attributes => {
-          if (attributes.contenteditable != null) {
-            return { contenteditable: attributes.contenteditable };
+          if (attributes.locked != null) {
+            return { 'data-locked': attributes.locked };
           }
           return {};
         },
@@ -236,10 +244,9 @@ const isEmptyNode = computed(() => {
   return content.trim().length === 0;
 });
 
-const showBottomBar = computed(() =>
-  isEmptyNode.value || chatMode.value !== 'idle'
-);
+const showBottomBar = computed(() => true);
 
+// @deprecated 仅被下方废弃的 conversing textarea 模式使用，当前交互走 sendInlineMessage()
 const canSend = computed(() => userInput.value.trim().length > 0);
 
 const progressPercent = computed(() => {
@@ -252,6 +259,22 @@ const progressPercent = computed(() => {
 
 const SINK_DURATION_MS = 240;
 
+function getMarkdownManager(instance: Editor): MarkdownManager | null {
+  return instance.markdown ?? instance.storage?.markdown?.manager ?? null;
+}
+
+function parseMarkdownContent(instance: Editor, content: string): JSONContent | null {
+  const mgr = getMarkdownManager(instance);
+  if (!mgr) return null;
+  try {
+    const parsed = mgr.parse(content);
+    instance.schema.nodeFromJSON(parsed).check();
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function startChatText() {
   chatMode.value = 'text_input';
   if (editor.value) {
@@ -261,7 +284,7 @@ function startChatText() {
       content: [
         {
           type: 'paragraph',
-          attrs: { contenteditable: 'false' },
+          attrs: { locked: 'true' },
           content: [{ type: 'text', text: CHAT_PROMPT_TEXT }],
         },
         { type: 'paragraph' },
@@ -278,7 +301,7 @@ function getLastInputParagraphText(): string {
   if (!editor.value) return '';
   let lastText = '';
   editor.value.state.doc.descendants((node) => {
-    if (node.type.name === 'paragraph' && node.attrs.contenteditable !== 'false') {
+    if (node.type.name === 'paragraph' && !node.attrs.locked) {
       lastText = node.textContent;
     }
   });
@@ -287,12 +310,34 @@ function getLastInputParagraphText(): string {
 
 function makeAllParagraphsNonEditable(node: JSONContent) {
   if (node.type === 'paragraph') {
-    node.attrs = { ...(node.attrs || {}), contenteditable: 'false' };
+    node.attrs = { ...(node.attrs || {}), locked: 'true' };
   }
   if (Array.isArray(node.content)) {
     for (const child of node.content) {
       makeAllParagraphsNonEditable(child);
     }
+  }
+}
+
+function pushLockedParsedNodes(content: JSONContent[], parsed: JSONContent | null) {
+  if (parsed && Array.isArray(parsed.content)) {
+    for (const node of parsed.content) {
+      makeAllParagraphsNonEditable(node);
+      content.push(node);
+    }
+    return true;
+  }
+  return false;
+}
+
+function pushLockedSeparator(content: JSONContent[]) {
+  const parsed = editor.value ? parseMarkdownContent(editor.value, '---') : null;
+  if (!pushLockedParsedNodes(content, parsed)) {
+    content.push({
+      type: 'paragraph',
+      attrs: { locked: 'true' },
+      content: [{ type: 'text', text: '---' }],
+    });
   }
 }
 
@@ -302,7 +347,7 @@ function buildInlineChatDoc(pendingUserMsg?: string): JSONContent {
   // Prompt paragraph
   content.push({
     type: 'paragraph',
-    attrs: { contenteditable: 'false' },
+    attrs: { locked: 'true' },
     content: [{ type: 'text', text: CHAT_PROMPT_TEXT }],
   });
 
@@ -314,56 +359,38 @@ function buildInlineChatDoc(pendingUserMsg?: string): JSONContent {
     const prefix = msg.role === 'ai' ? '**AI**: ' : '**你**: ';
     const mdText = prefix + msg.content;
 
-    const parsed = (editor.value as any)?.markdown?.parse(mdText);
-    if (parsed && Array.isArray(parsed.content)) {
-      for (const node of parsed.content) {
-        makeAllParagraphsNonEditable(node);
-        content.push(node);
-      }
-    } else {
+    const parsed = editor.value ? parseMarkdownContent(editor.value, mdText) : null;
+    if (!pushLockedParsedNodes(content, parsed)) {
       content.push({
         type: 'paragraph',
-        attrs: { contenteditable: 'false' },
+        attrs: { locked: 'true' },
         content: [{ type: 'text', text: mdText }],
       });
     }
 
     // Separator between messages or before pending
     if (i < msgs.length - 1 || pendingUserMsg) {
-      content.push({
-        type: 'paragraph',
-        attrs: { contenteditable: 'false' },
-        content: [{ type: 'text', text: '---' }],
-      });
+      pushLockedSeparator(content);
     }
   }
 
   // Pending user message
   if (pendingUserMsg) {
-    const parsed = (editor.value as any)?.markdown?.parse('**你**: ' + pendingUserMsg);
-    if (parsed && Array.isArray(parsed.content)) {
-      for (const node of parsed.content) {
-        makeAllParagraphsNonEditable(node);
-        content.push(node);
-      }
-    } else {
+    const parsed = editor.value ? parseMarkdownContent(editor.value, '**你**: ' + pendingUserMsg) : null;
+    if (!pushLockedParsedNodes(content, parsed)) {
       content.push({
         type: 'paragraph',
-        attrs: { contenteditable: 'false' },
+        attrs: { locked: 'true' },
         content: [{ type: 'text', text: '**你**: ' + pendingUserMsg }],
       });
     }
-    content.push({
-      type: 'paragraph',
-      attrs: { contenteditable: 'false' },
-      content: [{ type: 'text', text: '---' }],
-    });
+    pushLockedSeparator(content);
 
     // "让我思考一下" placeholder
     if (isBusy.value) {
       content.push({
         type: 'paragraph',
-        attrs: { contenteditable: 'false' },
+        attrs: { locked: 'true' },
         content: [{ type: 'text', text: '让我思考一下...' }],
       });
     }
@@ -383,6 +410,28 @@ function applyInlineChatDoc(doc: JSONContent) {
   editor.value.commands.setTextSelection(docSize);
   editor.value.commands.focus();
   isApplyingExternalContent.value = false;
+
+  nextTick(() => {
+    const scrollEl = editorRef.value?.querySelector('.activity-scroll');
+    if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+  });
+}
+
+async function appendKnowledgeNote(note: string): Promise<void> {
+  if (!activeNode.value || !note.trim()) return;
+  const nodeId = activeNode.value.id;
+  const currentContent = activeNode.value.content || '';
+  const newContent = currentContent
+    ? currentContent + '\n\n' + note
+    : note;
+  try {
+    await store.saveActiveNodeContent(nodeId, newContent);
+    lastSavedContent.value = newContent;
+    draft.value = newContent;
+    if (activeNode.value) {
+      activeNode.value.content = newContent;
+    }
+  } catch { /* save failed, continue */ }
 }
 
 async function sendInlineMessage() {
@@ -392,6 +441,13 @@ async function sendInlineMessage() {
   const msg = getLastInputParagraphText();
   if (!msg) return;
 
+  if (msg === '/clear') {
+    clearChat();
+    // Reset editor to fresh chat prompt state, not exit to node content
+    startChatText();
+    return;
+  }
+
   const isFirstMessage = !sessionId.value;
 
   try {
@@ -399,14 +455,20 @@ async function sendInlineMessage() {
     applyInlineChatDoc(buildInlineChatDoc(msg));
 
     if (isFirstMessage) {
-      await doStartTextChat(activeNode.value.id, activeNode.value.name, msg);
+      const result = await doStartTextChat(activeNode.value.id, activeNode.value.name, msg);
       // startTextChat overwrites messages with only AI response, prepend user msg
       messages.value = [
         { role: 'user' as const, content: msg },
         ...messages.value,
       ];
+      if (result?.knowledge_note) {
+        await appendKnowledgeNote(result.knowledge_note);
+      }
     } else {
-      await sendMessage(msg, { skipInsertContent: true });
+      const result = await sendMessage(msg, { skipInsertContent: true });
+      if (result?.knowledge_note) {
+        await appendKnowledgeNote(result.knowledge_note);
+      }
     }
 
     // Revert mode from 'conversing' back to 'text_input'
@@ -429,17 +491,26 @@ function rebuildTranscriptFromMessages() {
     .map(m => m.role === 'ai' ? `**AI**: ${m.content}` : `**你**: ${m.content}`)
     .join('\n\n---\n\n');
   isApplyingExternalContent.value = true;
-  const parsed = (editor.value as any).markdown?.parse(md);
+  const parsed = parseMarkdownContent(editor.value, md);
   if (parsed) {
     editor.value.commands.setContent(parsed, { emitUpdate: false });
   }
   isApplyingExternalContent.value = false;
 }
 
+// ── @deprecated conversing textarea 模式专用函数 ──────────────────
+// 当前交互流程始终走 text_input 内联模式 (sendInlineMessage)。
+// 修改 AI 对话功能时请改 sendInlineMessage()，不要在这里改。
 async function sendAnswer() {
   if (!canSend.value || isBusy.value || isCompleted.value) return;
   const answer = userInput.value.trim();
   userInput.value = '';
+
+  if (answer === '/clear') {
+    clearChat();
+    startChatText();
+    return;
+  }
   const result = await sendMessage(answer);
   if (result) {
     rebuildTranscriptFromMessages();
@@ -492,7 +563,7 @@ function buildTreeContext(): string {
   parts.push('当前知识点: ' + activeNode.value.name);
   const children = childNodes.value || [];
   if (children.length > 0) {
-    parts.push('已学习的子知识点: ' + children.map(n => n.name).join(', '));
+    parts.push('子知识点: ' + children.map(n => n.name).join(', '));
   }
   return parts.join('\n');
 }
@@ -503,19 +574,21 @@ async function toggleChat() {
 
   try {
     if (chatMode.value !== 'idle') {
-      // Close: save generated content → exit to idle
-      if (generatedContent.value && activeNode.value) {
-        const currentContent = activeNode.value.content || '';
-        const newContent = currentContent
-          ? currentContent + '\n\n' + generatedContent.value
-          : generatedContent.value;
-        try {
-          await store.saveActiveNodeContent(activeNode.value.id, newContent);
-          lastSavedContent.value = newContent;
-          draft.value = newContent;
-          generatedContent.value = '';
-        } catch { /* save failed, discard */ }
-      }
+      // @removed: 退出时保存 generatedContent 到知识点的功能已废弃。
+      // 现在每轮对话都通过 appendKnowledgeNote() 实时更新知识点内容，
+      // 不再需要在退出时做一次性总结保存。
+      // if (generatedContent.value && activeNode.value) {
+      //   const currentContent = activeNode.value.content || '';
+      //   const newContent = currentContent
+      //     ? currentContent + '\n\n' + generatedContent.value
+      //     : generatedContent.value;
+      //   try {
+      //     await store.saveActiveNodeContent(activeNode.value.id, newContent);
+      //     lastSavedContent.value = newContent;
+      //     draft.value = newContent;
+      //     generatedContent.value = '';
+      //   } catch { /* save failed, discard */ }
+      // }
       exitChat();
       isSunk.value = false;
       userInput.value = '';
@@ -549,6 +622,7 @@ async function startChatFile() {
   isAnimating.value = false;
 }
 
+// @deprecated 仅被上方废弃的 conversing textarea 的 @keydown 使用
 function onConvKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && event.ctrlKey) {
     event.preventDefault();
@@ -590,6 +664,81 @@ const draft = ref('');
 const lastSavedContent = ref('');
 const isApplyingExternalContent = ref(false);
 const isMigratingMath = ref(false);
+
+// ── Locked node plugin ─────────────────────────────────────────────
+
+function isPositionInLockedNode(state: EditorState, pos: number): boolean {
+  const $pos = state.doc.resolve(pos);
+  return $pos.parent.attrs?.locked ?? false;
+}
+
+const lockedNodePluginKey = new PluginKey('lockedNodes');
+const lockedNodePlugin = new Plugin({
+  key: lockedNodePluginKey,
+  props: {
+    handleClick(view, pos) {
+      if (chatMode.value !== 'text_input') return false;
+      // Redirect clicks inside locked nodes to the editable area
+      if (isPositionInLockedNode(view.state, pos)) {
+        const docSize = view.state.doc.content.size;
+        const tr = view.state.tr;
+        tr.setSelection(TextSelection.create(view.state.doc, docSize));
+        view.dispatch(tr);
+        view.focus();
+        return true;
+      }
+      return false;
+    },
+    handleTextInput(view, from, to, text) {
+      if (chatMode.value !== 'text_input') return false;
+      // Block typing inside locked nodes - redirect to end of editable area
+      if (isPositionInLockedNode(view.state, from)) {
+        const docSize = view.state.doc.content.size;
+        const tr = view.state.tr;
+        tr.setSelection(TextSelection.create(view.state.doc, docSize));
+        tr.insertText(text);
+        view.dispatch(tr);
+        return true;
+      }
+      return false;
+    },
+  },
+  filterTransaction(tr, state) {
+    if (!tr.docChanged) return true;
+    if (isApplyingExternalContent.value) return true;
+
+    const lockedRanges: {from: number, to: number}[] = [];
+    state.doc.descendants((node, pos) => {
+      if (node.attrs?.locked) {
+        lockedRanges.push({from: pos, to: pos + node.nodeSize});
+      }
+    });
+
+    if (lockedRanges.length === 0) return true;
+
+    for (const step of tr.steps) {
+      const map = step.getMap();
+      let blocked = false;
+      map.forEach((oldStart: number, oldEnd: number, newStart: number, newEnd: number) => {
+        if (blocked) return;
+        for (const range of lockedRanges) {
+          if (oldStart < range.to && oldEnd > range.from) { blocked = true; return; }
+          if (newStart < range.to && newEnd > range.from) { blocked = true; return; }
+        }
+      });
+      if (blocked) return false;
+    }
+
+    return true;
+  },
+});
+
+const LockedNodes = Extension.create({
+  name: 'lockedNodes',
+  addProseMirrorPlugins() {
+    return [lockedNodePlugin];
+  },
+});
 
 let autoSaveTimer: number | null = null;
 let saveInFlight = false;
@@ -650,17 +799,7 @@ function buildPlainTextDoc(content: string): JSONContent {
 }
 
 function parseMarkdownDoc(instance: Editor, content: string): JSONContent | null {
-  try {
-    if (!instance.markdown) {
-      return null;
-    }
-    const parsed = instance.markdown.parse(content);
-    const parsedNode = instance.schema.nodeFromJSON(parsed);
-    parsedNode.check();
-    return parsed;
-  } catch {
-    return null;
-  }
+  return parseMarkdownContent(instance, content);
 }
 
 function clearAutoSaveTimer(): void {
@@ -763,6 +902,7 @@ const editor = useEditor({
         trust: false,
       },
     }),
+    LockedNodes,
   ],
   editorProps: {
     attributes: {
@@ -809,6 +949,23 @@ const editor = useEditor({
           event.preventDefault();
           sendInlineMessage();
           return true;
+        }
+        // Prevent backspace from deleting into locked nodes
+        if (event.key === 'Backspace') {
+          const { state } = _view;
+          const { from, to } = state.selection;
+          if (from !== to) return false; // let filterTransaction handle selections
+          const $pos = state.doc.resolve(from);
+          // At start of paragraph with locked node before it
+          if ($pos.parentOffset === 0 && ($pos.nodeBefore?.attrs?.locked ?? false)) {
+            event.preventDefault();
+            return true;
+          }
+          // In empty paragraph that follows a locked node
+          if ($pos.parent.textContent === '' && ($pos.nodeBefore?.attrs?.locked ?? false)) {
+            event.preventDefault();
+            return true;
+          }
         }
         return false;
       },
@@ -1323,5 +1480,11 @@ onBeforeUnmount(() => {
   border: 0;
   border-top: 1px solid rgba(102, 128, 255, 0.28);
   margin: 0.9em 0;
+}
+
+.editor-input :deep([data-locked]) {
+  cursor: default;
+  user-select: text;
+  -webkit-user-select: text;
 }
 </style>

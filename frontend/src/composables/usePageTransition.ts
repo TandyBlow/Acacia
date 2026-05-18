@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import type {
   RegionRegistration,
   TransitionTrigger,
@@ -89,6 +89,11 @@ export function usePageTransition() {
     }
 
     isTransitioning.value = true;
+
+    // Yield so Vue watchers (e.g. animateContentTransition in MainLayout)
+    // can observe isTransitioning=true before synchronous executeDataLoading
+    // completes and sets it back to false.
+    await nextTick();
 
     let deferredCompactSwitch = false;
 

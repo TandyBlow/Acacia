@@ -1,7 +1,8 @@
 """
 File parser module for extracting text content from various file formats.
-Supports: .txt, .md, .pdf
+Supports: .txt, .md, .pdf, .ipynb
 """
+import json
 import os
 from pathlib import Path
 
@@ -36,6 +37,24 @@ def parse_pdf(file_path: str) -> str:
         raise ImportError("PyPDF2 is required for PDF parsing. Install it with: pip install PyPDF2")
 
 
+def parse_ipynb(file_path: str) -> str:
+    """Parse Jupyter notebook and extract text from all cells."""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        notebook = json.load(f)
+
+    parts: list[str] = []
+    for cell in notebook.get('cells', []):
+        source = ''.join(cell.get('source', []))
+        cell_type = cell.get('cell_type', 'code')
+
+        if cell_type == 'markdown':
+            parts.append(source)
+        elif cell_type == 'code':
+            parts.append(f'```python\n{source}\n```')
+
+    return '\n\n'.join(parts)
+
+
 def parse_file(file_path: str) -> str:
     """
     Parse file based on extension and return text content.
@@ -59,6 +78,7 @@ def parse_file(file_path: str) -> str:
         '.txt': parse_txt,
         '.md': parse_markdown,
         '.pdf': parse_pdf,
+        '.ipynb': parse_ipynb,
     }
 
     parser = parsers.get(file_ext)

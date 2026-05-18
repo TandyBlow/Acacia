@@ -514,7 +514,7 @@ async def upload_file_endpoint(
 ):
     """
     Upload a file for knowledge point extraction.
-    Supports: .txt, .md, .pdf (max 10MB)
+    Supports: .txt, .md, .pdf, .ipynb (max 10MB)
     """
     owner_id = user["sub"]
 
@@ -529,10 +529,10 @@ async def upload_file_endpoint(
 
     # Validate file extension
     file_ext = os.path.splitext(file.filename)[1].lower()
-    if file_ext not in ['.txt', '.md', '.pdf']:
+    if file_ext not in ['.txt', '.md', '.pdf', '.ipynb']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件类型：{file_ext}。支持的类型：.txt, .md, .pdf"
+            detail=f"不支持的文件类型：{file_ext}。支持的类型：.txt, .md, .pdf, .ipynb"
         )
 
     # Create upload directory

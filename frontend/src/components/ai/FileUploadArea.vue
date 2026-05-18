@@ -11,7 +11,7 @@
       <input
         ref="fileInput"
         type="file"
-        accept=".txt,.md,.pdf"
+        accept=".txt,.md,.pdf,.ipynb"
         @change="handleFileSelect"
         style="display: none"
       />
@@ -20,7 +20,7 @@
         <div class="upload-icon">📄</div>
         <div class="upload-text">
           <div class="upload-primary">点击或拖拽文件到此处</div>
-          <div class="upload-secondary">支持 .txt, .md, .pdf 文件（最大10MB）</div>
+          <div class="upload-secondary">支持 .txt, .md, .pdf, .ipynb 文件（最大10MB）</div>
         </div>
       </template>
 
@@ -105,7 +105,7 @@ async function uploadFile(file: File) {
   }
 
   // Validate file extension
-  const validExtensions = ['.txt', '.md', '.pdf'];
+  const validExtensions = ['.txt', '.md', '.pdf', '.ipynb'];
   const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
   if (!validExtensions.includes(fileExt)) {
     errorMessage.value = `不支持的文件类型：${fileExt}`;

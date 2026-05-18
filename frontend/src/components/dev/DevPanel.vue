@@ -28,6 +28,14 @@
             <span class="dev-toggle-thumb" />
           </button>
         </div>
+        <button
+          type="button"
+          class="dev-action-btn"
+          :disabled="treeFadeRunning"
+          @click="onTreeFadeTest"
+        >
+          {{ treeFadeRunning ? '动画中...' : '测试树消失动画' }}
+        </button>
       </div>
     </div>
     <!-- Floating Scene Ready button — always visible when waiting -->
@@ -49,12 +57,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, inject } from 'vue';
 import { useDevStore } from '../../stores/devStore';
 
 const devStore = useDevStore();
 const isExpanded = ref(false);
 const waitingForScene = ref(false);
+const treeFadeRunning = ref(false);
+
+const triggerTreeFadeTest = inject<() => Promise<void>>('triggerTreeFadeTest', () => Promise.resolve());
+
+async function onTreeFadeTest() {
+  if (treeFadeRunning.value) return;
+  treeFadeRunning.value = true;
+  try {
+    await triggerTreeFadeTest();
+  } finally {
+    treeFadeRunning.value = false;
+  }
+}
 
 function emitSceneReady() {
   window.dispatchEvent(new CustomEvent('dev-scene-ready'));

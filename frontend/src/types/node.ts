@@ -68,3 +68,16 @@ export interface DueReviewItem {
   review_state: 'new' | 'review' | 'relearning';
   next_review_at: string | null;
 }
+
+export interface KnowledgeNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+  depth: number;
+  domainTag: string;
+  masteryScore: number;
+  stability: number;
+  difficulty: number;
+  reviewCount: number;
+  reviewState: string;
+}

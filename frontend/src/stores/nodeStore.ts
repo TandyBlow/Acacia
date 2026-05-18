@@ -5,7 +5,7 @@ import * as nodeCache from '../services/nodeCache';
 import type { DataAdapter, NodeRecord, TreeNode, ViewState } from '../types/node';
 import { ViewStates } from '../types/node';
 import { UI } from '../constants/uiStrings';
-import { LAST_ACTIVE_NODE_KEY } from '../constants/app';
+
 import { usePageTransition } from '../composables/usePageTransition';
 import { getToken } from '../utils/api';
 
@@ -189,17 +189,11 @@ export const useNodeStore = defineStore('node', () => {
       viewState.value = ViewStates.DISPLAY;
       clearTransientState();
       pendingNodeContext.value = null;
-      try {
-        localStorage.setItem(LAST_ACTIVE_NODE_KEY, activeNode.value?.id ?? '');
-      } catch { /* ignore */ }
     }
   }
 
   async function initialize(): Promise<void> {
-    const lastNodeId = (() => {
-      try { return localStorage.getItem(LAST_ACTIVE_NODE_KEY) || null; } catch { return null; }
-    })();
-    await loadNode(lastNodeId);
+    await loadNode(null);
   }
 
   function setViewState(state: string): void {
@@ -307,7 +301,6 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
     dataAdapter?.clearCache?.();
     nodeCache.invalidateAll();
-    try { localStorage.removeItem(LAST_ACTIVE_NODE_KEY); } catch { /* ignore */ }
   }
 
   async function saveActiveNodeContent(nodeId: string, content: string): Promise<boolean> {

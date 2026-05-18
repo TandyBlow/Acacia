@@ -190,7 +190,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || null;
       mode.value = 'conversing';
       saveCheckpoint();
-      return { question: data.question, action: data.action, sub_topic: data.sub_topic };
+      return { question: data.question, action: data.action, sub_topic: data.sub_topic, knowledge_note: data.knowledge_note || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '启动对话失败';
       throw e;
@@ -237,7 +237,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || null;
       mode.value = 'conversing';
       saveCheckpoint();
-      return { question: data.question, action: data.action, sub_topic: data.sub_topic };
+      return { question: data.question, action: data.action, sub_topic: data.sub_topic, knowledge_note: data.knowledge_note || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '启动对话失败';
       throw e;
@@ -295,7 +295,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || currentKpData.value;
 
       saveCheckpoint();
-      return { ai_message: data.ai_message, generated_content: data.generated_content, action: data.action, sub_topic: data.sub_topic };
+      return { ai_message: data.ai_message, generated_content: data.generated_content, knowledge_note: data.knowledge_note || '', action: data.action, sub_topic: data.sub_topic };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '对话处理失败';
     } finally {
@@ -564,6 +564,23 @@ export function useNodeChat() {
     isCompleted.value = false;
   }
 
+  function clearChat() {
+    const nodeId = currentNodeId.value;
+    sessionId.value = null;
+    messages.value = [];
+    generatedContent.value = '';
+    mode.value = 'text_input';
+    errorMessage.value = '';
+    referenceText.value = '';
+    referenceFileName.value = null;
+    currentSubTopic.value = '';
+    totalKp.value = 1;
+    currentKpIndex.value = 0;
+    currentKpData.value = null;
+    isCompleted.value = false;
+    if (nodeId) clearCheckpointForNode(nodeId);
+  }
+
   function abandonChat() {
     const nodeId = currentNodeId.value;
     sessionId.value = null;
@@ -634,6 +651,7 @@ export function useNodeChat() {
     resumeChat,
     resetForNewNode,
     abandonChat,
+    clearChat,
     exitChat,
     setTextMode,
     setFileMode,
