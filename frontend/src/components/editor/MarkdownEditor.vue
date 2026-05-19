@@ -241,7 +241,6 @@ const {
   hasResumableSession,
   sessionId,
   startTextChat: doStartTextChat,
-  startFileChat: doStartFileChat,
   startLineByLineChat: doStartLineByLine,
   sendMessage,
   skipTurn,
