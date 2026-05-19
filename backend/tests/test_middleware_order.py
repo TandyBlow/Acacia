@@ -45,7 +45,7 @@ async def test_429_responses_are_logged(caplog):
             "method": "GET",
             "path": "/health",
             "headers": [],
-            "client": ("127.0.0.1", 54321),
+            "client": ("10.0.0.1", 54321),
         }
 
         await chained(scope, receive, collector)

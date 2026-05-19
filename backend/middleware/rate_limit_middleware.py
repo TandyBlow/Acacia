@@ -6,7 +6,7 @@ from auth import verify_token
 
 logger = logging.getLogger("acacia.ratelimit")
 
-GLOBAL_LIMIT = 100
+GLOBAL_LIMIT = 300
 GLOBAL_WINDOW = 60
 LOGIN_LIMIT = 5
 LOGIN_WINDOW = 900
@@ -34,6 +34,10 @@ class RateLimitMiddleware:
         path = scope.get("path", "/")
         ip = self._get_ip(scope)
         now = time.time()
+
+        if ip in ("127.0.0.1", "::1", "localhost"):
+            await self.app(scope, receive, send)
+            return
 
         if path == "/auth/login":
             if not self._check_rate_limit(ip, "login_failed", LOGIN_LIMIT, LOGIN_WINDOW):

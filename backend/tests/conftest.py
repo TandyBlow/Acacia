@@ -20,7 +20,7 @@ def mock_scope():
         "method": "GET",
         "path": "/health",
         "headers": [],
-        "client": ("127.0.0.1", 54321),
+        "client": ("10.0.0.1", 54321),
     }
 
 

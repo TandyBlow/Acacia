@@ -116,8 +116,8 @@ async def test_login_success_resets_counter(mock_scope, mock_receive, mock_send)
 
 
 @pytest.mark.asyncio
-async def test_global_rate_limit_blocks_after_100(mock_scope, mock_receive, mock_send):
-    """NF-03: 101st request in 60s window returns 429."""
+async def test_global_rate_limit_blocks_after_limit(mock_scope, mock_receive, mock_send):
+    """NF-03: (GLOBAL_LIMIT+1)th request in 60s window returns 429."""
     mock_scope["method"] = "GET"
     mock_scope["path"] = "/health"
 
@@ -131,16 +131,16 @@ async def test_global_rate_limit_blocks_after_100(mock_scope, mock_receive, mock
 
     middleware = RateLimitMiddleware(echo_app)
 
-    # 100 requests should succeed
-    for i in range(100):
+    # GLOBAL_LIMIT requests should succeed
+    for i in range(GLOBAL_LIMIT):
         collector = type(mock_send)()
         await middleware(mock_scope, mock_receive(), collector)
         assert collector.status == 200, f"Request {i+1}: expected 200, got {collector.status}"
 
-    # 101st should be blocked
+    # (GLOBAL_LIMIT+1)th should be blocked
     collector = type(mock_send)()
     await middleware(mock_scope, mock_receive(), collector)
-    assert collector.status == 429, f"101st request should be 429, got {collector.status}"
+    assert collector.status == 429, f"Request {GLOBAL_LIMIT+1}: expected 429, got {collector.status}"
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,8 @@ import os
 from contextlib import contextmanager
 from db_migrate import run_migrations
 
-DB_PATH = os.getenv("DB_PATH", "acacia.db")
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.getenv("DB_PATH", os.path.join(_BACKEND_DIR, "acacia.db"))
 
 
 def get_db() -> sqlite3.Connection:

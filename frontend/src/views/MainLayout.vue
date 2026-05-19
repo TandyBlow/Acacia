@@ -11,6 +11,9 @@
     'official-sinking': otPhase === 'sinking',
     'official-nav-slide': otPhase === 'sliding',
     'official-rising': otPhase === 'rising',
+    'entrance-prep': entrancePhase === 'prep',
+    'entrance-sliding': entrancePhase === 'sliding',
+    'entrance-rising': entrancePhase === 'rising',
   }]">
     <section ref="logoRef" class="logo-area">
       <div class="inset-shell static-shell">
@@ -167,6 +170,14 @@ const treeMaskRef = ref<HTMLElement | null>(null);
 const isCompact = ref(false);
 const isTooSmall = ref(false);
 
+// Initial page load: content starts sunken (only bottom areas visible),
+// then animates slide-in + rise after initialization.
+const initialRender = ref(true);
+
+// Entrance animation: coordinates slide-in for nav/breadcrumbs/knob
+// Phases: idle | prep | sliding | rising
+const entrancePhase = ref<'idle' | 'prep' | 'sliding' | 'rising'>('idle');
+
 // Compact toggle animation
 const compactAnimPhase = ref<'idle' | 'sinking' | 'nav-slide-out' | 'nav-slide-in-prep' | 'nav-slide-in' | 'rising'>('idle');
 
@@ -266,7 +277,8 @@ provide('contentAnimating', contentAnimating);
 const isPageAnimating = computed(() =>
   (contentPhase.value !== 'idle' && contentPhase.value !== 'tree-mask') ||
   compactAnimPhase.value !== 'idle' ||
-  otAnimating.value
+  otAnimating.value ||
+  entrancePhase.value !== 'idle'
 );
 
 // Track previous viewState to detect small-layout special-state transitions.
@@ -456,6 +468,7 @@ const layoutClasses = computed(() => ({
   'compact-mixed': isSmallLayoutMixed.value,
   'is-too-small': isTooSmall.value,
   'page-animating': isPageAnimating.value,
+  'initial-loading': initialRender.value,
 }));
 
 const showEmptyBackground = computed(() =>
@@ -530,6 +543,38 @@ async function animateContentTransition() {
   // which handles the nav→content transition with proper animation.
   if (isCompact.value && compactMode.value === 'nav') {
     nodeStore.applyPendingData();
+    return;
+  }
+
+  // Initial page load: content starts sunken (only bottom areas visible).
+  // Data loads silently; entrance animation auto-plays when ready.
+  if (initialRender.value) {
+    const sameContent = contentKey.value === displayedKey.value && showTree.value === displayedShowTree.value;
+    if (sameContent && nodeStore.viewState === prevCompactViewState) {
+      nodeStore.applyPendingData();
+      return;
+    }
+
+    // Wait for data loading to complete (executeDataLoading runs in startTransition).
+    if (isTransitioning.value) {
+      await new Promise<void>(resolve => {
+        const stop = watch(isTransitioning, (v) => {
+          if (!v) { stop(); resolve(); }
+        });
+      });
+    }
+
+    nodeStore.applyPendingData();
+
+    // Update displayed refs silently — content stays hidden by initial-loading CSS
+    displayedSkipContentGlass.value = skipContentGlass.value;
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = showTree.value;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    treeOverlayActive.value = showTree.value;
+
+    // Trigger the coordinated entrance animation (content, nav, breadcrumbs, knob)
+    playInitialAnimation();
     return;
   }
 
@@ -864,6 +909,74 @@ async function animateContentTransition() {
   }
 
   contentPhase.value = 'idle';
+  contentAnimating.value = false;
+}
+
+// Trigger the "enter main page" animation from the initial sunken state.
+// All areas slide in together: content from right, nav/breadcrumbs from left, knob fades in.
+async function playInitialAnimation(): Promise<void> {
+  if (!initialRender.value || contentAnimating.value) return;
+
+  contentAnimating.value = true;
+  const token = ++contentAnimToken.value;
+
+  // Phase 0: Set up prep positions for ALL areas while initial-loading CSS still hides them.
+  // Content at prep-right, nav+breadcrumbs at prep-left, knob hidden.
+  contentPhase.value = 'slide-in-prep';
+  entrancePhase.value = 'prep';
+
+  // Now remove initial-loading — prep classes take over, so no visual jump.
+  initialRender.value = false;
+
+  await nextTick();
+  if (token !== contentAnimToken.value) return;
+
+  const willShowTree = showTree.value;
+
+  if (willShowTree) {
+    // Tree enter with mask
+    treeOverlayActive.value = true;
+    const maskEl = treeMaskRef.value;
+    if (maskEl) maskEl.style.transition = 'none';
+    treeMaskVisible.value = true;
+
+    await nextTick();
+    if (token !== contentAnimToken.value) return;
+    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+    void reflowEl?.offsetHeight;
+    if (maskEl) maskEl.style.transition = '';
+
+    contentPhase.value = 'tree-mask';
+    // Nav/breadcrumbs/knob slide in while tree mask is up
+    entrancePhase.value = 'sliding';
+
+    await waitForSceneReady(token);
+    if (token !== contentAnimToken.value) return;
+    treeMaskVisible.value = false;
+    await sleep(TREE_MASK_FADE_MS);
+    if (token !== contentAnimToken.value) return;
+  } else {
+    // Phase 1: Reflow, then trigger slide-in for content AND nav/breadcrumbs/knob.
+    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+    void reflowEl?.offsetHeight;
+    contentPhase.value = 'slide-in';
+    entrancePhase.value = 'sliding';
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== contentAnimToken.value) return;
+  }
+
+  // Phase 2: Rise — glass items regain shadow
+  if (!displayedSkipContentGlass.value) {
+    contentPhase.value = 'rising';
+    entrancePhase.value = 'rising';
+    await nextTick();
+    if (token !== contentAnimToken.value) return;
+    await sleep(CONTENT_RISE_MS);
+    if (token !== contentAnimToken.value) return;
+  }
+
+  contentPhase.value = 'idle';
+  entrancePhase.value = 'idle';
   contentAnimating.value = false;
 }
 
@@ -1688,6 +1801,139 @@ watch(
     box-shadow: none;
   }
 }
+
+/* ================================================================
+   Initial page load: content starts sunken with all inner content hidden.
+   Only bottom areas (inset shells) are visually present — empty containers
+   with inner shadows and borders, no text, no glass items.
+   After playInitialAnimation(), slide-in + rise animation plays.
+   ================================================================ */
+
+/* Content area: hide glass content (already handled by slide-in-prep later) */
+.layout.initial-loading .content-glass > .glass-content {
+  transform: translateX(80px);
+  opacity: 0;
+}
+
+.layout.initial-loading .content-glass :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.layout.initial-loading .content-glass :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.layout.initial-loading .content-direct {
+  transform: translateX(80px);
+  opacity: 0;
+}
+
+/* Breadcrumbs area: hide entire breadcrumbs-shell — off-screen above */
+.layout.initial-loading .breadcrumbs-area :deep(.breadcrumbs-shell) {
+  transform: translateY(-40px);
+  opacity: 0;
+}
+
+/* Navigation area: hide entire inner content — off-screen left */
+.layout.initial-loading .navigation-area :deep(.nav-shell) {
+  transform: translateX(-80px);
+  opacity: 0;
+}
+
+/* Knob area: hide GlassWrapper knob body (keep knob-well inset shell visible),
+   hide hint text columns */
+.layout.initial-loading .knob-area :deep(.knob-body) {
+  opacity: 0;
+}
+
+.layout.initial-loading .knob-area :deep(.knob-hint),
+.layout.initial-loading .knob-area :deep(.knob-hint-compact) {
+  opacity: 0;
+}
+
+/* ================================================================
+   Entrance animation: coordinated slide-in for all areas.
+   Content slides from right (via contentPhase classes on .content-glass),
+   nav/breadcrumbs slide from left, knob fades in.
+   Phases: prep → sliding → rising → idle
+   ================================================================ */
+
+/* Prep: nav off-screen left, breadcrumbs off-screen above, knob hidden */
+.entrance-prep .navigation-area :deep(.nav-shell) {
+  transform: translateX(-80px);
+  opacity: 0;
+  transition: none;
+}
+
+.entrance-prep .breadcrumbs-area :deep(.breadcrumbs-shell) {
+  transform: translateY(-40px);
+  opacity: 0;
+  transition: none;
+}
+
+.entrance-prep .navigation-area :deep(.glass-raised),
+.entrance-sliding .navigation-area :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.entrance-prep .navigation-area :deep(.glass-content),
+.entrance-sliding .navigation-area :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.entrance-prep .navigation-area :deep(.official-content),
+.entrance-sliding .navigation-area :deep(.official-content) {
+  background: transparent;
+}
+
+.entrance-prep .breadcrumbs-area :deep(.glass-raised),
+.entrance-sliding .breadcrumbs-area :deep(.glass-raised) {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.entrance-prep .breadcrumbs-area :deep(.glass-content),
+.entrance-sliding .breadcrumbs-area :deep(.glass-content) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.entrance-prep .knob-area :deep(.knob-body) {
+  opacity: 0;
+  transition: none;
+}
+
+/* Sliding: nav slides in from left, breadcrumbs drop from above, knob fades in */
+.entrance-sliding .navigation-area :deep(.nav-shell) {
+  transform: translateX(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
+}
+
+.entrance-sliding .breadcrumbs-area :deep(.breadcrumbs-shell) {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 280ms ease;
+}
+
+.entrance-sliding .knob-area :deep(.knob-body) {
+  opacity: 1;
+  transition: opacity 280ms ease;
+}
+
+/* Rising: glass items regain shadow — no explicit rules needed,
+   removing the prep/sliding classes restores default raised styles. */
 
 /* ================================================================
    Content area slide animation

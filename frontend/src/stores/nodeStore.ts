@@ -75,7 +75,7 @@ export const useNodeStore = defineStore('node', () => {
       viewState.value === ViewStates.DELETE,
   );
 
-  const isTreeState = computed(() => viewState.value === ViewStates.TREE);
+  const isTreeState = computed(() => viewState.value === ViewStates.TREE || viewState.value === ViewStates.MOVE);
   const isDailyQuizState = computed(() => viewState.value === ViewStates.DAILY_QUIZ);
   const isWelcomeState = computed(() => viewState.value === ViewStates.WELCOME);
   const isConfirmState = computed(() => isEditState.value);
