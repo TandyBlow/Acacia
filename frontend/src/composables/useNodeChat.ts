@@ -30,7 +30,7 @@ export interface ChatMessage {
   metadata?: Record<string, unknown>;
 }
 
-export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'conversing';
+export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'file_uploaded' | 'conversing';
 
 interface ChatCheckpoint {
   sessionId: string;
@@ -240,6 +240,53 @@ export function useNodeChat() {
       return { question: data.question, action: data.action, sub_topic: data.sub_topic, knowledge_note: data.knowledge_note || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '启动对话失败';
+      throw e;
+    } finally {
+      isBusy.value = false;
+      setGlobalLoading('nodeChat', false);
+    }
+  }
+
+  async function startLineByLineChat(nodeId: string, nodeName: string, fileId: string, fileName: string) {
+    isBusy.value = true;
+    errorMessage.value = '';
+    setGlobalLoading('nodeChat', true);
+
+    try {
+      const resp = await fetchWithTimeout(`${backendUrl}/chat/start`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          node_id: nodeId,
+          node_name: nodeName,
+          file_id: fileId,
+          chat_mode: 'line_by_line',
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: '启动逐句讲解失败' }));
+        throw new Error(err.detail || '启动逐句讲解失败');
+      }
+
+      const data = await resp.json();
+      sessionId.value = data.session_id;
+      currentNodeId.value = nodeId;
+      referenceFileName.value = fileName;
+      messages.value = [{
+        role: 'ai',
+        content: data.question,
+        metadata: { action: data.action },
+      }];
+      currentSubTopic.value = data.sub_topic || '';
+      totalKp.value = 1;
+      currentKpIndex.value = 0;
+      currentKpData.value = null;
+      mode.value = 'text_input';
+      saveCheckpoint();
+      return { question: data.question, action: data.action };
+    } catch (e: unknown) {
+      errorMessage.value = e instanceof Error ? e.message : '启动逐句讲解失败';
       throw e;
     } finally {
       isBusy.value = false;
@@ -643,6 +690,7 @@ export function useNodeChat() {
     insertGeneratedContent,
     startTextChat,
     startFileChat,
+    startLineByLineChat,
     sendMessage,
     skipTurn,
     endConversation,

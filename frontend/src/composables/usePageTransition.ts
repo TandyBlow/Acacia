@@ -88,6 +88,16 @@ export function usePageTransition() {
       return;
     }
 
+    // Any navigation exits special states (add/move/delete/daily_quiz/welcome).
+    // Must happen before isTransitioning=true so animateContentTransition
+    // sees the correct viewState and routes to the proper animation path.
+    if (trigger.type === 'navigate') {
+      const nodeStore = useNodeStore();
+      if (nodeStore.isEditState || nodeStore.isDailyQuizState || nodeStore.isWelcomeState) {
+        nodeStore.setViewState('display');
+      }
+    }
+
     isTransitioning.value = true;
 
     // Yield so Vue watchers (e.g. animateContentTransition in MainLayout)

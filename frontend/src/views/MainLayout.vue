@@ -999,6 +999,14 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
     // Content → Nav
     // ================================================================
 
+    // Exit any special state (add/move/delete/daily_quiz/welcome) so the
+    // user returns to display mode when switching back. Use setViewState
+    // directly to avoid triggering a competing page transition.
+    const specialStates = ['add', 'move', 'delete', 'daily_quiz', 'welcome'];
+    if (specialStates.includes(nodeStore.viewState)) {
+      nodeStore.setViewState('display');
+    }
+
     if (displayedShowTree.value) {
       // ---- TREE PATH: mask fade-in covers the tree ----
 

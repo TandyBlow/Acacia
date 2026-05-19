@@ -275,6 +275,43 @@ def _save_session(session: dict):
         )
 
 
+LINE_BY_LINE_SYSTEM = """你是一个耐心细致的导师，正在逐句逐词地向学生讲解一份文档。
+
+核心原则：
+- 将文档内容按逻辑分段（句子、短段落或概念单元），每次只讲解一段
+- 每轮讲解一段内容：解释其含义、关键术语、上下文关联和隐含意义
+- 讲解要深入浅出，用学生能理解的语言，必要时使用类比和例子
+- 等待学生回应后再继续下一段。学生可能提问、确认理解、要求深入解释，或简单说"继续"
+- 通过对话历史自然追踪讲解进度，知道哪些已经讲过、接下来该讲什么
+- 如果学生提问，先回答问题再继续讲解
+- 全部内容讲解完毕后，做一个温暖的总结，回顾关键要点
+
+讲解风格：
+- 自然口语化，像老师在课堂上逐句带读课文
+- 不要用模板化的开头（如"这一段讲的是..."），直接进入讲解
+- 对于专业术语，停下来解释清楚再继续
+- 对于重要概念，可以联系学生已掌握的知识（如果知识档案中有相关信息）
+- 每段讲解控制在2-5句话，保持节奏感
+
+知识档案使用指南：
+- 每次对话你都会收到一份【用户知识档案】，这是用户整个知识树的完整镜像
+- 讲解时如果遇到用户已掌握的相关概念，主动提及联系："这个概念和你之前学过的XXX很相似..."
+- 用用户已有的知识作为桥梁来解释新内容
+
+返回JSON格式：
+{
+  "action": "explain|end_explanation",
+  "message": "本段的讲解内容（自然口语风格）",
+  "reason": "简短说明当前讲解进度（如'正在讲解第3段关于XXX的内容'）"
+}
+
+结束讲解的判断标准：
+- 文档所有内容已讲解完毕
+- 用户明确表示想结束（"好的"、"懂了"、"可以了"、"先这样吧"等）
+- 对话轮次过多且用户回应变短，表现出疲劳
+- 结束时在message中做一个温暖的总结合，回顾要点，鼓励用户"""
+
+
 # ── Public API ───────────────────────────────────────────────────────
 
 def start_chat(
@@ -282,10 +319,17 @@ def start_chat(
     owner_id: str,
     node_name: str,
     reference_text: str = "",
-    file_id: str = ""
+    file_id: str = "",
+    chat_mode: str = ""
 ) -> Dict[str, Any]:
-    """Start a new Socratic chat. Multi-KP extraction when file_id is provided."""
+    """Start a new Socratic chat. Multi-KP extraction when file_id is provided.
+
+    chat_mode: "" (auto-detect), "line_by_line" (sequential file explanation)
+    """
     session_id = str(uuid4())
+
+    if chat_mode == "line_by_line" and file_id:
+        return _start_line_by_line(session_id, node_id, owner_id, file_id)
 
     # Try multi-KP extraction if file is provided
     knowledge_points = []
@@ -319,6 +363,7 @@ def _start_single_topic(
         "node_id": node_id,
         "owner_id": owner_id,
         "file_id": file_id,
+        "reference_text": reference_text,
         "knowledge_points": [{"id": "topic", "title": node_name, "type": "concept"}],
         "current_index": 0,
         "messages": [],
@@ -444,19 +489,86 @@ def _start_multi_kp(
     }
 
 
+def _start_line_by_line(
+    session_id: str,
+    node_id: str,
+    owner_id: str,
+    file_id: str
+) -> Dict[str, Any]:
+    """Start a line-by-line explanation chat for a file."""
+    full_text = _read_uploaded_file(owner_id, file_id) or ""
+    node_name = _get_node_name(node_id)
+
+    session = {
+        "session_id": session_id,
+        "node_id": node_id,
+        "owner_id": owner_id,
+        "file_id": file_id,
+        "knowledge_points": [{"id": "file", "title": node_name or "文件讲解", "type": "concept", "source_content": full_text}],
+        "current_index": 0,
+        "messages": [],
+        "generated_content": "",
+        "status": "active",
+        "created_at": time.time(),
+        "last_activity_at": time.time(),
+        "follow_up_count": 0,
+        "self_correction_count": 0,
+        "uncertainty_count": 0,
+        "pending_example": None,
+        "example_history": [],
+        "chat_mode": "line_by_line",
+    }
+
+    user_content = f"请开始逐句讲解以下文档内容。先简要介绍文档主题（1-2句话），然后从第一句开始讲解。\n\n文档内容：\n{full_text}"
+
+    messages = [
+        {"role": "system", "content": LINE_BY_LINE_SYSTEM},
+        {"role": "user", "content": user_content}
+    ]
+
+    try:
+        raw = call_deepseek(messages)
+        result = parse_json_response(raw)
+    except Exception as e:
+        raise RuntimeError(f"启动逐句讲解失败：{str(e)}")
+
+    ai_message = result.get("message", "")
+    action = result.get("action", "explain")
+
+    session["messages"].append({
+        "role": "ai",
+        "content": ai_message,
+        "timestamp": time.time(),
+        "metadata": {"action": action, "reason": result.get("reason", "")}
+    })
+
+    _save_session(session)
+
+    return {
+        "session_id": session_id,
+        "question": ai_message,
+        "action": action,
+        "sub_topic": node_name or "",
+        "total_kp": 1,
+        "current_kp_index": 0,
+    }
+
+
 def process_chat_turn(
     session_id: str,
     user_answer: str,
     skip: bool = False
 ) -> Dict[str, Any]:
-    """Process one turn of a chat. Dispatches to single-topic or multi-KP handler."""
+    """Process one turn of a chat. Dispatches to single-topic, multi-KP, or line-by-line handler."""
     session = _load_session(session_id)
     if not session:
         raise ValueError(f"Session not found: {session_id}")
 
     session["last_activity_at"] = time.time()
 
-    if session.get("chat_mode") == "multi_kp":
+    if session.get("chat_mode") == "line_by_line":
+        return _process_line_by_line_turn(session, user_answer, skip)
+    elif session.get("chat_mode") == "multi_kp":
         return _process_multi_kp_turn(session, user_answer, skip)
     else:
         return _process_single_topic_turn(session, user_answer, skip)
@@ -788,6 +900,147 @@ def _process_multi_kp_turn(
     return _make_multi_kp_response(session, "unknown", ai_message)
 
 
+MAX_LINE_BY_LINE_TURNS = 30
+
+
+def _process_line_by_line_turn(
+    session: dict,
+    user_answer: str,
+    skip: bool
+) -> Dict[str, Any]:
+    """Process one turn of a line-by-line explanation chat."""
+    user_turn_count = sum(1 for m in session["messages"] if m["role"] == "user") + 1
+
+    session["messages"].append({
+        "role": "user",
+        "content": user_answer,
+        "timestamp": time.time(),
+    })
+
+    if skip:
+        session["messages"].append({
+            "role": "ai",
+            "content": "好的，我们继续下一段。",
+            "timestamp": time.time(),
+            "metadata": {"action": "skip"}
+        })
+
+    # Build context: file text + conversation history
+    full_text = ""
+    kps = session.get("knowledge_points", [])
+    if kps:
+        full_text = kps[0].get("source_content", "")
+
+    # Get existing node content tail for dedup
+    existing_content_tail = _get_node_content_tail(session["node_id"], session["owner_id"])
+
+    # Build conversation context
+    context_lines = []
+    if full_text:
+        context_lines.append(f"正在讲解的文档完整内容：\n{full_text}")
+        context_lines.append("\n请根据对话历史判断当前讲解进度，继续讲解下一段内容。")
+
+    if existing_content_tail.strip():
+        context_lines.append(f"\n【已有笔记内容（尾部）】避免重复记录：\n{existing_content_tail}")
+
+    # Include conversation history
+    messages = session.get("messages", [])
+    recent = messages[-20:] if len(messages) > 20 else messages
+    if recent:
+        context_lines.append("\n对话历史：")
+        for msg in recent:
+            role_label = "AI" if msg["role"] == "ai" else "用户"
+            context_lines.append(f"{role_label}: {msg['content']}")
+
+    # Safety: force end if too many turns
+    if user_turn_count >= MAX_LINE_BY_LINE_TURNS:
+        session["status"] = "completed"
+        session["messages"].append({
+            "role": "ai",
+            "content": "我们已经讲解了不少内容了，让我为你做个总结吧。感谢你的参与！",
+            "timestamp": time.time(),
+            "metadata": {"action": "end_explanation"}
+        })
+        _save_session(session)
+        return {
+            "action": "end_explanation",
+            "ai_message": session["messages"][-1]["content"],
+            "sub_topic": "",
+            "generated_content": "",
+            "knowledge_note": "",
+            "total_kp": 1,
+            "current_kp_index": 0,
+            "completed": True,
+        }
+
+    prompt_suffix = ""
+    if skip:
+        prompt_suffix = "\n\n用户选择跳过当前段落。请直接讲解下一段内容。请严格按照系统提示的JSON格式回复。"
+    else:
+        prompt_suffix = f"\n\n用户刚才的回应：{user_answer}\n\n请根据用户的回应（可能是在提问、确认理解或要求继续），自然地回应后继续讲解下一段。请严格按照系统提示的JSON格式回复。"
+
+    eval_messages = [
+        {"role": "system", "content": LINE_BY_LINE_SYSTEM},
+        {"role": "user", "content": "\n".join(context_lines) + prompt_suffix}
+    ]
+
+    try:
+        raw = call_deepseek(eval_messages)
+        result = parse_json_response(raw)
+    except Exception as e:
+        raise RuntimeError(f"讲解处理失败：{str(e)}")
+
+    action = result.get("action", "explain")
+    ai_message = result.get("message", "")
+
+    session["messages"].append({
+        "role": "ai",
+        "content": ai_message,
+        "timestamp": time.time(),
+        "metadata": {"action": action, "reason": result.get("reason", "")}
+    })
+
+    if action == "end_explanation":
+        session["status"] = "completed"
+        _save_session(session)
+        return {
+            "action": "end_explanation",
+            "ai_message": ai_message,
+            "sub_topic": result.get("reason", ""),
+            "generated_content": "",
+            "knowledge_note": "",
+            "total_kp": 1,
+            "current_kp_index": 0,
+            "completed": True,
+        }
+
+    _save_session(session)
+
+    return {
+        "action": action,
+        "ai_message": ai_message,
+        "sub_topic": result.get("reason", ""),
+        "generated_content": "",
+        "knowledge_note": "",
+        "total_kp": 1,
+        "current_kp_index": 0,
+        "completed": False,
+    }
+
+
+def _get_node_name(node_id: str) -> str:
+    """Get the name of a node by its ID."""
+    try:
+        with get_db_ctx() as conn:
+            row = conn.execute(
+                "SELECT name FROM nodes WHERE id = ? AND is_deleted = 0",
+                (node_id,),
+            ).fetchone()
+        return row["name"] if row else ""
+    except Exception:
+        return ""
+
+
 def _get_kp_messages(session: dict, kp_id: str) -> list:
     """Get conversation messages relevant to a specific knowledge point."""
     kp_messages = []
@@ -1080,7 +1333,8 @@ def _read_uploaded_file(owner_id: str, file_id: str) -> str | None:
 def _build_conversation_context(session: dict, owner_id: str = "", current_node_id: str = "", existing_content_tail: str = "") -> str:
     """Build conversation context string for the AI prompt.
 
-    Includes: current topic name, full knowledge profile, conversation history, and existing note content tail.
+    Includes: reference material (file content or reference text), current topic name,
+    full knowledge profile, conversation history, and existing note content tail.
     """
     lines = []
     node_name = ""
@@ -1093,8 +1347,19 @@ def _build_conversation_context(session: dict, owner_id: str = "", current_node_
     if node_name:
         lines.append(f"\n你正在帮助用户理解「{node_name}」。")
 
-    # Inject full knowledge profile
+    # Include reference material so AI doesn't forget what it's teaching
     oid = owner_id or session.get("owner_id", "")
+    file_id = session.get("file_id", "")
+    reference_text = session.get("reference_text", "")
+    full_reference = ""
+    if file_id:
+        full_reference = _read_uploaded_file(oid, file_id) or ""
+    if not full_reference and reference_text.strip():
+        full_reference = reference_text
+    if full_reference.strip():
+        lines.append(f"\n【参考资料】以下是你正在讲解的原始资料，请始终基于此内容进行对话：\n{full_reference}")
+
+    # Inject full knowledge profile
     nid = current_node_id or session.get("node_id", "")
     if oid and nid:
         profile = build_knowledge_profile(oid, nid)

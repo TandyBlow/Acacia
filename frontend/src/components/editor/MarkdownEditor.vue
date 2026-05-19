@@ -19,6 +19,42 @@
               <FileUploadArea @uploaded="onFileUploaded" @removed="onFileRemoved" />
             </div>
 
+            <!-- file_uploaded mode: file received, show action choice -->
+            <div v-else-if="chatMode === 'file_uploaded' && pendingFile" class="file-uploaded-choice">
+              <div class="choice-file-info">
+                <span class="choice-file-icon">📄</span>
+                <span class="choice-file-name">{{ pendingFile.filename }}</span>
+                <span class="choice-file-size">{{ formatFileSize(pendingFile.size) }}</span>
+              </div>
+              <div class="choice-prompt">文件上传完成，请选择操作：</div>
+              <div v-if="errorMessage" class="choice-error">{{ errorMessage }}</div>
+              <div class="choice-actions">
+                <div class="action-glass-host choice-glass">
+                  <GlassWrapper
+                    interactive
+                    @click="fillContentFromFile()"
+                  >
+                    <div class="choice-inner">
+                      <span class="choice-label">填入内容</span>
+                      <span class="choice-desc">将文件原文一字不差地填入知识点</span>
+                    </div>
+                  </GlassWrapper>
+                </div>
+                <div class="action-glass-host choice-glass">
+                  <GlassWrapper
+                    interactive
+                    @click="startLineByLineChat()"
+                  >
+                    <div class="choice-inner">
+                      <span class="choice-label">开始讲解</span>
+                      <span class="choice-desc">AI逐句逐词讲解文件内容</span>
+                    </div>
+                  </GlassWrapper>
+                </div>
+              </div>
+              <button class="choice-cancel" @click="cancelFileUpload()">取消</button>
+            </div>
+
             <!-- idle or conversing: editor + optional conversation controls -->
             <template v-else>
               <EditorContent
@@ -93,11 +129,11 @@
     <!-- Bottom action bar: context-sensitive -->
     <div v-if="showBottomBar" class="bottom-actions">
       <!-- idle / text_input / file_upload: chat action buttons -->
-      <template v-if="chatMode === 'idle' || chatMode === 'text_input' || chatMode === 'file_upload'">
+      <template v-if="chatMode === 'idle' || chatMode === 'text_input' || chatMode === 'file_upload' || chatMode === 'file_uploaded'">
         <div class="action-glass-host">
           <GlassWrapper
             interactive
-            :pressed="isSunk"
+            :pressed="isChatSunk"
             @click="toggleChat()"
           >
             <div class="action-inner">
@@ -105,8 +141,12 @@
             </div>
           </GlassWrapper>
         </div>
-        <div v-if="chatMode !== 'file_upload'" class="action-glass-host">
-          <GlassWrapper interactive @click="startChatFile()">
+        <div class="action-glass-host">
+          <GlassWrapper
+            interactive
+            :pressed="isFileSunk"
+            @click="startChatFile()"
+          >
             <div class="action-inner">
               <span class="action-label">文件导入</span>
             </div>
@@ -188,6 +228,7 @@ const {
   mode: chatMode,
   isBusy,
   isCompleted,
+  errorMessage,
   messages,
   currentSubTopic,
   totalKp,
@@ -201,6 +242,7 @@ const {
   sessionId,
   startTextChat: doStartTextChat,
   startFileChat: doStartFileChat,
+  startLineByLineChat: doStartLineByLine,
   sendMessage,
   skipTurn,
   endConversation,
@@ -210,7 +252,8 @@ const {
 } = useNodeChat();
 
 const hasUserEdited = ref(false);
-const isSunk = ref(false);
+const isChatSunk = ref(false);
+const isFileSunk = ref(false);
 const isAnimating = ref(false);
 const userInput = ref('');
 const pendingFile = ref<UploadedFile | null>(null);
@@ -582,7 +625,8 @@ async function toggleChat() {
       //   } catch { /* save failed, discard */ }
       // }
       exitChat();
-      isSunk.value = false;
+      isChatSunk.value = false;
+      isFileSunk.value = false;
       userInput.value = '';
       pendingFile.value = null;
       if (activeNode.value && editor.value) {
@@ -590,7 +634,7 @@ async function toggleChat() {
       }
     } else {
       // Open: sink button first, then start
-      isSunk.value = true;
+      isChatSunk.value = true;
       await new Promise(r => setTimeout(r, SINK_DURATION_MS));
       const resumed = await resumeOrStartChat();
       if (!resumed) {
@@ -608,7 +652,7 @@ async function toggleChat() {
 async function startChatFile() {
   if (isAnimating.value) return;
   isAnimating.value = true;
-  isSunk.value = true;
+  isFileSunk.value = true;
   await new Promise(r => setTimeout(r, SINK_DURATION_MS));
   setFileMode();
   isAnimating.value = false;
@@ -630,22 +674,69 @@ function onFileRemoved() {
   pendingFile.value = null;
 }
 
-// Watch for file_upload mode with a pending file to auto-start
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function fillContentFromFile() {
+  if (!pendingFile.value || !activeNode.value) return;
+  isBusy.value = true;
+  try {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+    const token = localStorage.getItem('acacia_backend_token');
+    const resp = await fetch(`${backendUrl}/file-content/${pendingFile.value.file_id}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error('获取文件内容失败');
+    const data = await resp.json();
+    const fullText = data.full_text || '';
+    await store.saveActiveNodeContent(activeNode.value.id, fullText);
+    lastSavedContent.value = fullText;
+    draft.value = fullText;
+    if (activeNode.value) {
+      activeNode.value.content = fullText;
+    }
+    syncEditorContent(fullText);
+    // Exit back to idle
+    chatMode.value = 'idle';
+    pendingFile.value = null;
+    isFileSunk.value = false;
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : '填入内容失败';
+  } finally {
+    isBusy.value = false;
+  }
+}
+
+async function startLineByLineChat() {
+  if (!pendingFile.value || !activeNode.value) return;
+  try {
+    await doStartLineByLine(
+      activeNode.value.id,
+      activeNode.value.name,
+      pendingFile.value.file_id,
+      pendingFile.value.filename
+    );
+    pendingFile.value = null;
+    chatMode.value = 'text_input';
+    applyInlineChatDoc(buildInlineChatDoc());
+  } catch {
+    // Failed — stay on choice screen
+  }
+}
+
+function cancelFileUpload() {
+  pendingFile.value = null;
+  chatMode.value = 'idle';
+  isFileSunk.value = false;
+}
+
+// Watch for file_upload mode with a pending file — switch to choice UI
 watch(pendingFile, async (file) => {
   if (file && chatMode.value === 'file_upload' && activeNode.value) {
-    try {
-      await doStartFileChat(
-        activeNode.value.id,
-        activeNode.value.name,
-        file.file_id,
-        file.filename,
-        file.text_preview || ''
-      );
-      rebuildTranscriptFromMessages();
-      userInput.value = '';
-    } catch {
-      // Failed — stay in file_upload mode
-    }
+    chatMode.value = 'file_uploaded';
   }
 });
 
@@ -1045,7 +1136,8 @@ watch(
     draft.value = content;
 
     hasUserEdited.value = false;
-    isSunk.value = false;
+    isChatSunk.value = false;
+    isFileSunk.value = false;
     userInput.value = '';
     pendingFile.value = null;
     setEditor(editor.value || null);
@@ -1136,6 +1228,121 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 12px;
   height: 100%;
+}
+
+/* ── File uploaded choice UI ─────────────────────────────────────── */
+
+.file-uploaded-choice {
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  height: 100%;
+}
+
+.choice-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: rgba(102, 128, 255, 0.10);
+  border: 1px solid rgba(102, 128, 255, 0.20);
+}
+
+.choice-file-icon {
+  font-size: 28px;
+}
+
+.choice-file-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.choice-file-size {
+  font-size: 12px;
+  color: var(--color-secondary);
+}
+
+.choice-prompt {
+  font-size: 15px;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.choice-error {
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255, 80, 80, 0.12);
+  color: #c0392b;
+  font-size: 13px;
+  text-align: center;
+}
+
+.choice-actions {
+  display: flex;
+  gap: 1px;
+  width: 100%;
+}
+
+.choice-glass {
+  flex: 1;
+  min-width: 0;
+}
+
+.choice-glass :deep(.glass) {
+  cursor: pointer;
+  transition: border-color 240ms ease, background 240ms ease;
+}
+
+.choice-glass:hover :deep(.glass) {
+  border-color: var(--color-hint, rgba(102, 255, 229, 0.54));
+}
+
+.choice-glass:hover :deep(.glass-content) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.choice-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 12px;
+  pointer-events: none;
+}
+
+.choice-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.choice-desc {
+  font-size: 12px;
+  color: var(--color-secondary);
+  text-align: center;
+}
+
+.choice-cancel {
+  border: none;
+  background: transparent;
+  color: var(--color-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.choice-cancel:hover {
+  color: var(--color-primary);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ── Chat: conversation input area ───────────────────────────────── */

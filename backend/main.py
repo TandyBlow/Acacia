@@ -569,6 +569,37 @@ async def upload_file_endpoint(
         )
 
 
+@app.get("/file-content/{file_id}")
+def get_file_content_endpoint(
+    file_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Get the full text content of an uploaded file."""
+    import glob as glob_mod
+    owner_id = user["sub"]
+    upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+    pattern = os.path.join(upload_dir, f"{file_id}.*")
+    matches = glob_mod.glob(pattern)
+    if not matches:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文件不存在或已过期"
+        )
+    try:
+        text_content = parse_file(matches[0])
+        file_info = get_file_info(matches[0])
+        return {
+            "file_id": file_id,
+            "filename": file_info.get("filename", ""),
+            "full_text": text_content,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"文件读取失败：{str(e)}"
+        )
+
+
 class ExtractKnowledgeRequest(BaseModel):
     file_id: str
 
@@ -631,6 +662,7 @@ class ChatStartRequest(BaseModel):
     node_name: str
     reference_text: str = ""
     file_id: str = ""
+    chat_mode: str = ""  # "" (auto), "line_by_line" (sequential file explanation)
 
 
 class ChatTurnRequest(BaseModel):
@@ -797,7 +829,8 @@ def chat_start_endpoint(
             owner_id,
             request.node_name,
             request.reference_text,
-            request.file_id
+            request.file_id,
+            request.chat_mode
         )
     except RuntimeError as e:
         raise HTTPException(
