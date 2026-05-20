@@ -263,14 +263,3 @@ export function applyParamsToUniforms(
     }
   }
 }
-
-/** DebugGUI group definition (consumed by DebugGUI in Plan 01-04). */
-export interface GuiGroupDef {
-  category: string;
-  label: string;
-  controls: Array<{
-    entry: SdfParamEntry;
-    get: () => number | number[];
-    set: (v: number | number[]) => void;
-  }>;
-}

@@ -122,6 +122,27 @@ function sleep(ms: number): Promise<void> {
 
 async function goTo(nodeId: string): Promise<void> {
   if (busy.value) return;
+
+  // Record navigation transition (fire-and-forget)
+  const fromId = store.activeNode?.id ?? null;
+  if (fromId && fromId !== nodeId) {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+    const token = localStorage.getItem('acacia_backend_token');
+    fetch(`${backendUrl}/context/record-transition`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        from_node_id: fromId,
+        to_node_id: nodeId,
+        transition_type: 'navigation',
+        reason: '',
+      }),
+    }).catch(() => {});
+  }
+
   await store.loadNode(nodeId);
 }
 
@@ -452,6 +473,7 @@ function onTouchEnd(e: TouchEvent): void {
   white-space: nowrap;
   color: var(--color-primary);
   font-size: 14px;
+  transition: filter 160ms ease, text-shadow 160ms ease;
 }
 
 .crumb {
@@ -477,6 +499,13 @@ function onTouchEnd(e: TouchEvent): void {
 
 .crumb-wrap :deep(.glass-pressed) {
   box-shadow: none;
+}
+
+.crumb-wrap :deep(.glass-pressed) .crumb,
+.crumb-wrap :deep(.glass-pressed) .current-node {
+  filter: brightness(0.88);
+  transform: translateY(1px);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* ================================================================

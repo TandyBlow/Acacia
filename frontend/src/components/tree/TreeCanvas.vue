@@ -13,9 +13,7 @@ import { useTreeSkeleton, invalidateSkeleton } from '../../composables/useTreeSk
 import { useStats } from '../../composables/useStats';
 import { usePageTransition } from '../../composables/usePageTransition';
 import { SceneManager } from './scene/SceneManager';
-import { DebugGUI } from './scene/DebugGUI';
 import type { SkeletonData } from '../../types/tree';
-import type { ThemeStyle } from '../../stores/styleStore';
 import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
@@ -26,12 +24,10 @@ const { isAuthenticated } = storeToRefs(authStore);
 const styleStore = useStyleStore();
 const { fetchSkeleton } = useTreeSkeleton();
 const { nodes: statsNodes, fetchStats } = useStats();
-const isDev = import.meta.env.DEV;
 const noTreeData = ref(false);
 const sceneReady = ref(false);
 
 let manager: SceneManager | null = null;
-let debugGUI: DebugGUI | null = null;
 let lastSkeleton: SkeletonData | null = null;
 
 const isResizing = ref(false);
@@ -115,24 +111,6 @@ async function loadTree() {
     if (gen !== loadGeneration) return;
 
     sceneReady.value = true;
-
-    // Dev debug GUI
-    if (isDev && manager) {
-      debugGUI = new DebugGUI({
-        getEzTreeOptions: () => manager!.getEzTreeOptions(),
-        setEzTreeOptions: (opts) => manager!.setEzTreeOptions(opts),
-        loadEzTreePreset: (name) => manager!.loadEzTreePreset(name),
-        setMainLightPos: (x, y, z) => manager!.setMainLightPos(x, y, z),
-        setLeafTexture: (i) => manager!.setLeafTexture(i),
-        switchTheme: (style) => manager!.switchTheme(style as ThemeStyle),
-        simulateUserData: (n, d, g) => manager!.simulateUserData(n, d, g),
-        reloadRealUserData: () => manager!.reloadRealUserData(),
-      });
-
-      // Expose manager to window for debugging
-      (window as any).__SCENE_MANAGER__ = manager;
-      console.log('[TreeCanvas] SceneManager exposed to window.__SCENE_MANAGER__');
-    }
 
     // Set up resize observer
     resizeObserver = new ResizeObserver(() => {
@@ -236,10 +214,6 @@ watch(() => props.visible, async (nowVisible, wasVisible) => {
 });
 
 function cleanup() {
-  if (debugGUI) {
-    debugGUI.dispose();
-    debugGUI = null;
-  }
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;
@@ -275,36 +249,5 @@ defineExpose({ sceneReady });
   opacity: 0.6;
   font-size: 16px;
   font-weight: 600;
-}
-
-.dev-buttons {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
-  display: flex;
-  gap: 8px;
-}
-
-.dev-btn {
-  padding: 6px 14px;
-  border: 1px solid var(--color-glass-border);
-  border-radius: 12px;
-  background: var(--color-glass-bg);
-  backdrop-filter: blur(10px);
-  color: var(--color-primary);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-
-.dev-btn:disabled {
-  opacity: 0.4;
-  cursor: wait;
-}
-
-.dev-btn:hover:not(:disabled) {
-  opacity: 0.8;
 }
 </style>

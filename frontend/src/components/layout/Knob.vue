@@ -1,6 +1,7 @@
 <template>
   <div class="knob-panel">
     <!-- Hint columns (desktop) -->
+    <!--
     <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-left">
       <Transition name="cell">
         <span v-if="showClickHintLocal" class="knob-hint">{{ UI.knob.clickToHome }}</span>
@@ -9,8 +10,10 @@
         <span v-if="showHoldHintLocal" class="knob-hint">{{ UI.knob.holdToConfirm }}</span>
       </Transition>
     </div>
+    -->
 
     <!-- Compact hints (mobile, stacked above) -->
+    <!--
     <div v-if="isAuthenticated && isCompactLayout && (showClickHintLocal || showHoldHintLocal)" class="hint-compact hint-compact-top">
       <Transition name="cell">
         <span v-if="showClickHintLocal" class="knob-hint-compact">{{ UI.knob.clickToHome }}</span>
@@ -19,6 +22,7 @@
         <span v-if="showHoldHintLocal" class="knob-hint-compact">{{ UI.knob.holdToConfirm }}</span>
       </Transition>
     </div>
+    -->
 
     <div class="knob-stage">
       <div class="knob-well">
@@ -53,18 +57,10 @@
 
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, type Ref } from 'vue';
-import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
-import { useNodeStore } from '../../stores/nodeStore';
-import { useAuthStore } from '../../stores/authStore';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
-import { useKnobHints } from '../../composables/useKnobHints';
+// import { useKnobHints } from '../../composables/useKnobHints';
 import { KNOB_HOLD_MS, KNOB_DOUBLE_CLICK_MS } from '../../constants/app';
-import { UI } from '../../constants/uiStrings';
-
-const nodeStore = useNodeStore();
-const authStore = useAuthStore();
-const { isAuthenticated } = storeToRefs(authStore);
 
 // Inject content animation state from MainLayout
 const contentAnimating = inject<Ref<boolean>>('contentAnimating', ref(false));
@@ -79,7 +75,7 @@ const {
   isCompactLayout,
 } = useKnobDispatch();
 
-const { recordAction, showClickHint, showHoldHint } = useKnobHints();
+// const { recordAction, showClickHint, showHoldHint } = useKnobHints();
 
 // --- Animation state ---
 const isHolding = ref(false);
@@ -98,13 +94,13 @@ const isInteractable = computed(() =>
 );
 
 // --- Hint visibility ---
-const showClickHintLocal = computed(() =>
-  showClickHint.value && !nodeStore.isEditState,
-);
-
-const showHoldHintLocal = computed(() =>
-  showHoldHint.value && inConfirmMode.value,
-);
+// const showClickHintLocal = computed(() =>
+//   showClickHint.value && !nodeStore.isEditState,
+// );
+//
+// const showHoldHintLocal = computed(() =>
+//   showHoldHint.value && inConfirmMode.value,
+// );
 
 // --- Timers ---
 let holdTimer: number | null = null;
@@ -156,7 +152,7 @@ function onPressStart(): void {
       triggeredByHold = true;
       isHolding.value = false;
       clearHoldTimer();
-      recordAction('hold');
+      // recordAction('hold');
       playClickAnimation();
       await onHoldConfirm();
     }, KNOB_HOLD_MS);
@@ -178,7 +174,7 @@ async function onPressEnd(): Promise<void> {
     const now = Date.now();
     if (now - lastClickTime < KNOB_DOUBLE_CLICK_MS && lastClickTime > 0) {
       clearDblClickTimer();
-      recordAction('click');
+      // recordAction('click');
       playClickAnimation();
       await onDoubleClick();
       return;
@@ -189,14 +185,14 @@ async function onPressEnd(): Promise<void> {
     doubleClickTimer = window.setTimeout(async () => {
       doubleClickTimer = null;
       lastClickTime = 0;
-      recordAction('click');
+      // recordAction('click');
       playClickAnimation();
       await onClick();
     }, KNOB_DOUBLE_CLICK_MS);
     return;
   }
 
-  recordAction('click');
+  // recordAction('click');
   playClickAnimation();
   await onClick();
 }
@@ -227,6 +223,7 @@ onBeforeUnmount(() => {
   padding: 1px;
 }
 
+/*
 .knob-hint {
   font-size: 11px;
   color: var(--color-primary);
@@ -269,6 +266,7 @@ onBeforeUnmount(() => {
 .hint-compact-top {
   margin-bottom: 2px;
 }
+*/
 
 .knob-stage {
   width: 100%;

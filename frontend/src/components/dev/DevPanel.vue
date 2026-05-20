@@ -36,6 +36,14 @@
         >
           {{ treeFadeRunning ? '动画中...' : '测试树消失动画' }}
         </button>
+        <button
+          type="button"
+          class="dev-action-btn dev-logout-btn"
+          :disabled="logoutRunning"
+          @click="onLogout"
+        >
+          {{ logoutRunning ? '退出中...' : '退出登录' }}
+        </button>
       </div>
     </div>
     <!-- Floating Scene Ready button — always visible when waiting -->
@@ -59,11 +67,31 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, inject } from 'vue';
 import { useDevStore } from '../../stores/devStore';
+import { useAuthStore } from '../../stores/authStore';
+import { useNodeStore } from '../../stores/nodeStore';
+import { invalidateSkeleton } from '../../composables/useTreeSkeleton';
 
 const devStore = useDevStore();
+const authStore = useAuthStore();
+const nodeStore = useNodeStore();
 const isExpanded = ref(false);
 const waitingForScene = ref(false);
 const treeFadeRunning = ref(false);
+const logoutRunning = ref(false);
+
+async function onLogout() {
+  if (logoutRunning.value) return;
+  logoutRunning.value = true;
+  try {
+    const ok = await authStore.logout();
+    if (ok) {
+      nodeStore.resetAfterLogout();
+      invalidateSkeleton();
+    }
+  } finally {
+    logoutRunning.value = false;
+  }
+}
 
 const triggerTreeFadeTest = inject<() => Promise<void>>('triggerTreeFadeTest', () => Promise.resolve());
 
@@ -249,6 +277,15 @@ onBeforeUnmount(() => {
 
 .dev-action-btn:not(:disabled):hover {
   background: rgba(102, 255, 229, 0.25);
+}
+
+.dev-logout-btn {
+  border-color: rgba(255, 120, 120, 0.35);
+  background: rgba(255, 120, 120, 0.12);
+}
+
+.dev-logout-btn:not(:disabled):hover {
+  background: rgba(255, 120, 120, 0.22);
 }
 
 .scene-ready-btn {

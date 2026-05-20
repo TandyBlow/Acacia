@@ -121,6 +121,10 @@ def init_db():
                 uncertainty_count INTEGER NOT NULL DEFAULT 0,
                 pending_example TEXT,
                 example_history TEXT NOT NULL DEFAULT '[]',
+                opening_message TEXT NOT NULL DEFAULT '',
+                transition_context TEXT NOT NULL DEFAULT '',
+                previous_node_id TEXT,
+                transition_reason TEXT NOT NULL DEFAULT '',
                 created_at REAL NOT NULL DEFAULT 0,
                 last_activity_at REAL NOT NULL DEFAULT 0
             );
@@ -154,6 +158,23 @@ def init_db():
             conn.execute("ALTER TABLE nodes ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0")
         if "review_state" not in fsrs_cols:
             conn.execute("ALTER TABLE nodes ADD COLUMN review_state TEXT NOT NULL DEFAULT 'new'")
+
+        # Context chain columns for conversation_sessions
+        sess_cols = [row[1] for row in conn.execute("PRAGMA table_info(conversation_sessions)").fetchall()]
+        if "opening_message" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN opening_message TEXT NOT NULL DEFAULT ''")
+        if "transition_context" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN transition_context TEXT NOT NULL DEFAULT ''")
+        if "previous_node_id" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN previous_node_id TEXT")
+        if "transition_reason" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN transition_reason TEXT NOT NULL DEFAULT ''")
+        if "chat_mode" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN chat_mode TEXT NOT NULL DEFAULT 'single'")
+        if "doc_segments" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN doc_segments TEXT NOT NULL DEFAULT '[]'")
+        if "current_position" not in sess_cols:
+            conn.execute("ALTER TABLE conversation_sessions ADD COLUMN current_position INTEGER NOT NULL DEFAULT 0")
 
         # WAL mode for concurrent reads on low-memory VPS
         conn.execute("PRAGMA journal_mode=WAL")

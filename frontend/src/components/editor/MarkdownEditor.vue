@@ -241,6 +241,7 @@ const {
   hasResumableSession,
   sessionId,
   startTextChat: doStartTextChat,
+  startContextualChat: doStartContextualChat,
   startLineByLineChat: doStartLineByLine,
   sendMessage,
   skipTurn,
@@ -248,6 +249,7 @@ const {
   regenerateWithTreeContext,
   markConcept,
   clearChat,
+  recordNavigationTransition,
 } = useNodeChat();
 
 const hasUserEdited = ref(false);
@@ -256,6 +258,7 @@ const isFileSunk = ref(false);
 const isAnimating = ref(false);
 const userInput = ref('');
 const pendingFile = ref<UploadedFile | null>(null);
+const lastActiveNodeId = ref<string | null>(null);
 
 const CHAT_PROMPT_TEXT = '想聊点啥？主动换行可以给我发送消息。我会基于我们的聊天记录来填充这个知识点的内容，当然，之后你也可以把我填充的内容剪切到其他知识点中，随你喜欢。';
 
@@ -301,12 +304,51 @@ function parseMarkdownContent(instance: Editor, content: string): JSONContent | 
   const mgr = getMarkdownManager(instance);
   if (!mgr) return null;
   try {
-    const parsed = mgr.parse(content);
+    // Pre-process LaTeX: convert $...$ / $$...$$ to HTML that Mathematics extension parseHTML recognizes
+    const processed = preprocessMathForMarkdown(content);
+    const parsed = mgr.parse(processed);
     instance.schema.nodeFromJSON(parsed).check();
     return parsed;
   } catch {
     return null;
   }
+}
+
+/**
+ * Escape HTML special characters in LaTeX content so they survive the HTML→JSON parse.
+ */
+function escapeLatexForHtmlAttr(latex: string): string {
+  return latex
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Pre-process markdown text: convert $...$ (inline math) and $$...$$ (block math)
+ * into HTML tags that the Mathematics extension's parseHTML can recognize.
+ *
+ * The Mathematics extension registers:
+ *   parseHTML: [{ tag: 'span[data-type="inline-math"]' }]
+ *   parseHTML: [{ tag: 'div[data-type="block-math"]' }]
+ *
+ * The TipTap MarkdownManager parses these HTML tags via generateJSON(),
+ * which respects extension parseHTML rules and creates inlineMath/blockMath nodes.
+ */
+function preprocessMathForMarkdown(text: string): string {
+  // Block math first ($$...$$) — supports multiline with [\s\S]+?
+  // Use a non-greedy match so adjacent blocks stay separate
+  let result = text.replace(/\$\$([\s\S]+?)\$\$/g, (_full, latex: string) => {
+    return `<div data-type="block-math" data-latex="${escapeLatexForHtmlAttr(latex.trim())}"></div>`;
+  });
+
+  // Inline math ($...$) — single-line only, exclude $ in content
+  result = result.replace(/\$([^$\n]+?)\$/g, (_full, latex: string) => {
+    return `<span data-type="inline-math" data-latex="${escapeLatexForHtmlAttr(latex.trim())}"></span>`;
+  });
+
+  return result;
 }
 
 function startChatText() {
@@ -503,6 +545,17 @@ async function sendInlineMessage() {
       if (result?.knowledge_note) {
         await appendKnowledgeNote(result.knowledge_note);
       }
+      // Auto-end: replace incremental appends with LLM-consolidated content
+      if (result?.consolidated_content && activeNode.value) {
+        try {
+          await store.saveActiveNodeContent(activeNode.value.id, result.consolidated_content);
+          lastSavedContent.value = result.consolidated_content;
+          draft.value = result.consolidated_content;
+          if (activeNode.value) {
+            activeNode.value.content = result.consolidated_content;
+          }
+        } catch { /* save failed, keep incremental content */ }
+      }
     }
 
     // Revert mode from 'conversing' back to 'text_input'
@@ -564,6 +617,17 @@ async function onEndConversation() {
   const result = await endConversation();
   if (result) {
     rebuildTranscriptFromMessages();
+    // Replace incremental knowledge_note appends with LLM-consolidated version
+    if (result.consolidated_content && activeNode.value) {
+      try {
+        await store.saveActiveNodeContent(activeNode.value.id, result.consolidated_content);
+        lastSavedContent.value = result.consolidated_content;
+        draft.value = result.consolidated_content;
+        if (activeNode.value) {
+          activeNode.value.content = result.consolidated_content;
+        }
+      } catch { /* save failed, keep incremental content */ }
+    }
   }
 }
 
@@ -584,6 +648,12 @@ async function onMarkConcept() {
   if (result) {
     rebuildTranscriptFromMessages();
     await store.loadNode(activeNode.value?.id || '');
+    // Record transition for context chain
+    recordNavigationTransition(
+      activeNode.value?.id || null,
+      result.node_id,
+      `在学习「${activeNode.value?.name || '未知'}」时标记了概念「${name.trim()}」`
+    );
   }
 }
 
@@ -637,7 +707,28 @@ async function toggleChat() {
       await new Promise(r => setTimeout(r, SINK_DURATION_MS));
       const resumed = await resumeOrStartChat();
       if (!resumed) {
-        startChatText();
+        // New chat: use contextual start with adaptive opening
+        if (activeNode.value) {
+          const prevId = lastActiveNodeId.value;
+          const transType = prevId ? 'navigation' : 'initial';
+          try {
+            await doStartContextualChat(
+              activeNode.value.id,
+              activeNode.value.name,
+              '',
+              prevId,
+              transType,
+              ''
+            );
+            chatMode.value = 'text_input';
+            applyInlineChatDoc(buildInlineChatDoc());
+          } catch {
+            // Fallback to simple text mode on failure
+            startChatText();
+          }
+        } else {
+          startChatText();
+        }
       } else {
         chatMode.value = 'text_input';
         applyInlineChatDoc(buildInlineChatDoc());
@@ -651,6 +742,16 @@ async function toggleChat() {
 async function startChatFile() {
   if (isAnimating.value) return;
   isAnimating.value = true;
+
+  // Toggle: if already in file mode, restore to idle
+  if (chatMode.value === 'file_upload' || chatMode.value === 'file_uploaded') {
+    isFileSunk.value = false;
+    pendingFile.value = null;
+    chatMode.value = 'idle';
+    isAnimating.value = false;
+    return;
+  }
+
   isFileSunk.value = true;
   await new Promise(r => setTimeout(r, SINK_DURATION_MS));
   setFileMode();
@@ -712,13 +813,20 @@ async function fillContentFromFile() {
 async function startLineByLineChat() {
   if (!pendingFile.value || !activeNode.value) return;
   try {
+    const prevId = lastActiveNodeId.value;
+    const transType = prevId ? 'navigation' : 'initial';
     await doStartLineByLine(
       activeNode.value.id,
       activeNode.value.name,
       pendingFile.value.file_id,
-      pendingFile.value.filename
+      pendingFile.value.filename,
+      prevId,
+      transType,
+      ''
     );
     pendingFile.value = null;
+    isFileSunk.value = false;
+    isChatSunk.value = true;
     chatMode.value = 'text_input';
     applyInlineChatDoc(buildInlineChatDoc());
   } catch {
@@ -1145,6 +1253,9 @@ watch(
     const newId = val?.[1];
     const oldId = oldVal?.[1];
     if (newId !== oldId) {
+      if (oldId) {
+        lastActiveNodeId.value = oldId;
+      }
       if (chatMode.value !== 'idle') {
         exitChat();
       }

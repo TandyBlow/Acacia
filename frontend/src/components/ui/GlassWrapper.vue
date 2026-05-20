@@ -59,7 +59,8 @@ const isBusy = computed(() => injectedBusy?.value ?? false);
   transition:
     background 240ms ease,
     backdrop-filter 240ms ease,
-    -webkit-backdrop-filter 240ms ease;
+    -webkit-backdrop-filter 240ms ease,
+    opacity 240ms ease;
 }
 
 .glass-raised {

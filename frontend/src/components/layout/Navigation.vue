@@ -111,6 +111,7 @@ const {
   anchorDeltaY: otAnchorDeltaY,
   anchorPrep: otAnchorPrep,
   hideNonAnchorItems,
+  reset: resetOfficialTransition,
 } = useOfficialTransition();
 
 const startSmallLayoutOfficialTransition = inject<(item: NavItem, rowEl: HTMLElement) => void>(
@@ -341,6 +342,19 @@ watch(isCompactLayout, (compact) => {
   }
 });
 
+// Reset hideNodeList when leaving add state in small layout.
+// animateSmallLayoutAdd sets hideNodeList=true; cancelOperation (or any
+// other exit from add) must clear it so the node list reappears.
+// Also reset official transition state when leaving daily_quiz/welcome.
+watch(() => store.viewState, (newState, oldState) => {
+  if (oldState === 'add' && newState !== 'add') {
+    hideNodeList.value = false;
+  }
+  if ((oldState === 'daily_quiz' || oldState === 'welcome') && newState === 'display') {
+    resetOfficialTransition();
+  }
+});
+
 // Sync anchorOfficial from shared composable during official transition
 watch(otAnchorItemId, (id) => {
   if (id) {
@@ -373,6 +387,27 @@ function openNode(nodeId: string): void {
   if (pressedNodeId.value || navAnimating.value || otAnimating.value) return;
   actionNodeId.value = null;
   pressedNodeId.value = nodeId;
+
+  // Record navigation transition (fire-and-forget)
+  const fromId = store.activeNode?.id ?? null;
+  if (fromId && fromId !== nodeId) {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+    const token = localStorage.getItem('acacia_backend_token');
+    fetch(`${backendUrl}/context/record-transition`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        from_node_id: fromId,
+        to_node_id: nodeId,
+        transition_type: 'navigation',
+        reason: '',
+      }),
+    }).catch(() => {});
+  }
+
   setTimeout(() => {
     store.loadNode(nodeId).catch(() => {
       pressedNodeId.value = null;
@@ -400,6 +435,7 @@ function onAddClick(): void {
 
 function onOfficialClick(item: NavItem): void {
   if (pressedOfficialId.value === item.id) {
+    resetOfficialTransition();
     store.cancelOperation();
   } else if (isCompactLayout.value) {
     const rowEl = getRowElement(item.id);
@@ -420,6 +456,7 @@ function getRowElement(itemId: string): Element | null {
 }
 
 function onAnchorOfficialClick(): void {
+  resetOfficialTransition();
   store.cancelOperation();
 }
 
@@ -712,8 +749,9 @@ onUnmounted(() => ro?.disconnect());
 }
 
 .row-glass :deep(.glass-pressed) .row-name {
-  filter: brightness(0.82);
-  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.12);
+  filter: brightness(0.88);
+  transform: translateY(1px);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .row-glass :deep(.glass-pressed) .official-content {
@@ -752,7 +790,7 @@ onUnmounted(() => ro?.disconnect());
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  transition: opacity 160ms ease;
+  transition: opacity 160ms ease, filter 160ms ease, text-shadow 160ms ease;
 }
 
 .add-shell {
@@ -772,6 +810,7 @@ onUnmounted(() => ro?.disconnect());
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
+  transition: filter 160ms ease, text-shadow 160ms ease;
 }
 .empty {
   min-height: 54px;
@@ -797,6 +836,7 @@ onUnmounted(() => ro?.disconnect());
   font-size: 15px;
   font-weight: 700;
   color: var(--color-primary);
+  transition: filter 160ms ease, text-shadow 160ms ease;
 }
 
 /* TransitionGroup layout overrides: enter/move rows stay in flow and above leaving rows */
@@ -853,6 +893,7 @@ onUnmounted(() => ro?.disconnect());
   font-size: 14px;
   font-weight: 700;
   color: #FFBB33;
+  transition: filter 160ms ease, text-shadow 160ms ease;
 }
 
 /* ================================================================
@@ -884,6 +925,32 @@ onUnmounted(() => ro?.disconnect());
 .nav-slide-in-prep :deep(.official-content),
 .nav-slide-in :deep(.official-content) {
   background: transparent;
+}
+
+/* Text darkening + depth text-shadow during nav sink/slide phases */
+.nav-sinking :deep(.glass-content) .row-name,
+.nav-sinking :deep(.glass-content) .action-half,
+.nav-sinking :deep(.glass-content) .add-button,
+.nav-sinking :deep(.glass-content) .official-name,
+.nav-sinking :deep(.glass-content) .auth-tip,
+.nav-slide-out :deep(.glass-content) .row-name,
+.nav-slide-out :deep(.glass-content) .action-half,
+.nav-slide-out :deep(.glass-content) .add-button,
+.nav-slide-out :deep(.glass-content) .official-name,
+.nav-slide-out :deep(.glass-content) .auth-tip,
+.nav-slide-in-prep :deep(.glass-content) .row-name,
+.nav-slide-in-prep :deep(.glass-content) .action-half,
+.nav-slide-in-prep :deep(.glass-content) .add-button,
+.nav-slide-in-prep :deep(.glass-content) .official-name,
+.nav-slide-in-prep :deep(.glass-content) .auth-tip,
+.nav-slide-in :deep(.glass-content) .row-name,
+.nav-slide-in :deep(.glass-content) .action-half,
+.nav-slide-in :deep(.glass-content) .add-button,
+.nav-slide-in :deep(.glass-content) .official-name,
+.nav-slide-in :deep(.glass-content) .auth-tip {
+  filter: brightness(0.88);
+  transform: translateY(1px);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Phase 2: Slide out left — node list moves left, fades out; add button stays in place */
@@ -938,6 +1005,12 @@ onUnmounted(() => ro?.disconnect());
   -webkit-backdrop-filter: none;
 }
 
+.anchor-sinking :deep(.glass-content) .official-name {
+  filter: brightness(0.88);
+  transform: translateY(1px);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
 /* Triggered by removing anchor-prep class after prep — glass transitions in */
 .anchor-official-shell {
   transition: transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 280ms ease, box-shadow 240ms ease;
@@ -965,6 +1038,22 @@ onUnmounted(() => ro?.disconnect());
 .official-sunken :deep(.official-content),
 .official-sliding :deep(.official-content) {
   background: transparent;
+}
+
+/* Text darkening during official transition sink */
+.official-sunken :deep(.glass-content) .row-name,
+.official-sunken :deep(.glass-content) .action-half,
+.official-sunken :deep(.glass-content) .add-button,
+.official-sunken :deep(.glass-content) .official-name,
+.official-sunken :deep(.glass-content) .auth-tip,
+.official-sliding :deep(.glass-content) .row-name,
+.official-sliding :deep(.glass-content) .action-half,
+.official-sliding :deep(.glass-content) .add-button,
+.official-sliding :deep(.glass-content) .official-name,
+.official-sliding :deep(.glass-content) .auth-tip {
+  filter: brightness(0.88);
+  transform: translateY(1px);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Phase 2: non-clicked rows slide left, clicked row stays visible */

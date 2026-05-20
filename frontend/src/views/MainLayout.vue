@@ -1646,6 +1646,11 @@ watch(
   height: 100%;
   border-radius: 24px;
   overflow: hidden;
+  transition: transform 240ms ease;
+}
+
+.content-glass > .glass-content {
+  transition: opacity 240ms ease;
 }
 
 @media (max-width: 900px) {
@@ -1948,7 +1953,7 @@ watch(
    Sink → slide-out-right → slide-in-from-right → rise
    ================================================================ */
 
-/* Phase 1: Sinking — inner glass items lose shadow */
+/* Phase 1: Sinking — inner glass items lose shadow, content dims and shifts down */
 .content-sinking :deep(.glass-raised) {
   box-shadow: none;
   border-color: rgba(255, 255, 255, 0.12);
@@ -1958,6 +1963,22 @@ watch(
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.content-sinking {
+  transform: translateY(1px);
+}
+
+.content-sinking > .glass-content {
+  opacity: 0.4;
+}
+
+/* Sunken hold state: glass items flat, content stays shifted down */
+.content-tree-mask,
+.content-slide-out,
+.content-slide-in-prep,
+.content-slide-in {
+  transform: translateY(1px);
 }
 
 /* Sunken hold state: glass items flat — persists through mask/slide phases */
@@ -1976,6 +1997,11 @@ watch(
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+/* Tree-mask phase: content fades out behind mask */
+.content-tree-mask > .glass-content {
+  opacity: 0;
 }
 
 /* Phase 2: Slide out right — content slides right, fades out */
@@ -2001,6 +2027,12 @@ watch(
   transition:
     transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
     opacity 280ms ease;
+}
+
+/* Phase 4: Rising — glass items regain shadow, content fades back to full opacity */
+.content-rising > .glass-content {
+  opacity: 1;
+  transition: opacity 240ms ease;
 }
 
 /* ================================================================

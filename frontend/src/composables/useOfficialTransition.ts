@@ -12,6 +12,18 @@ const anchorPrep = ref(false);
 const hideNonAnchorItems = ref(false);
 const anchorItemAction = ref<(() => void) | null>(null);
 
+function reset() {
+  phase.value = 'idle';
+  animating.value = false;
+  animToken.value = 0;
+  anchorItemId.value = null;
+  clickedItemId.value = null;
+  anchorDeltaY.value = 0;
+  anchorPrep.value = false;
+  hideNonAnchorItems.value = false;
+  anchorItemAction.value = null;
+}
+
 export function useOfficialTransition() {
   return {
     phase,
@@ -23,5 +35,6 @@ export function useOfficialTransition() {
     anchorPrep,
     hideNonAnchorItems,
     anchorItemAction,
+    reset,
   };
 }
