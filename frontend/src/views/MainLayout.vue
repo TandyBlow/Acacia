@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick, provide } from 'vue';
+import { computed, ref, shallowRef, onMounted, onBeforeUnmount, watch, nextTick, provide } from 'vue';
 import { storeToRefs } from 'pinia';
 import LogoArea from '../components/layout/LogoArea.vue';
 import Breadcrumbs from '../components/layout/Breadcrumbs.vue';
@@ -104,6 +104,7 @@ import Navigation from '../components/layout/Navigation.vue';
 import Knob from '../components/layout/Knob.vue';
 import ConfirmPanel from '../components/ui/ConfirmPanel.vue';
 import GlobalTree from '../components/tree/GlobalTree.vue';
+import TreeOverview from '../components/tree/TreeOverview.vue';
 import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
@@ -290,7 +291,7 @@ let prevCompactViewState = nodeStore.viewState;
 const displayedKey = ref('');
 const displayedShowTree = ref(false);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const displayedNonTreeContent = ref<any>(MarkdownEditor);
+const displayedNonTreeContent = shallowRef<any>(MarkdownEditor);
 
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
   let timeoutId: number | null = null;
@@ -476,7 +477,7 @@ const showEmptyBackground = computed(() =>
 );
 
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isWelcomeState && !isEmpty.value;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isWelcomeState && !nodeStore.isTreeOverviewState && !isEmpty.value;
 });
 
 const nonTreeContent = computed(() => {
@@ -485,6 +486,9 @@ const nonTreeContent = computed(() => {
   }
   if (!isAuthenticated.value) {
     return AuthPanel;
+  }
+  if (nodeStore.isTreeOverviewState) {
+    return TreeOverview;
   }
   if (nodeStore.isTreeState) {
     return GlobalTree;
@@ -1002,7 +1006,7 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
     // Exit any special state (add/move/delete/daily_quiz/welcome) so the
     // user returns to display mode when switching back. Use setViewState
     // directly to avoid triggering a competing page transition.
-    const specialStates = ['add', 'move', 'delete', 'daily_quiz', 'welcome'];
+    const specialStates = ['add', 'move', 'delete', 'daily_quiz', 'welcome', 'tree_overview'];
     if (specialStates.includes(nodeStore.viewState)) {
       nodeStore.setViewState('display');
     }

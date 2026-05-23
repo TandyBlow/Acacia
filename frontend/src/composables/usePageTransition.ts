@@ -43,6 +43,7 @@ async function executeDataLoading(trigger: TransitionTrigger): Promise<void> {
       'tree': ViewStates.TREE,
       'daily_quiz': ViewStates.DAILY_QUIZ,
       'welcome': ViewStates.WELCOME,
+      'tree_overview': ViewStates.TREE_OVERVIEW,
       'display': ViewStates.DISPLAY,
     } as Record<string, string>;
     const vs = stateMap[trigger.newState] || ViewStates.DISPLAY;

@@ -1,6 +1,6 @@
 import type { SkeletonData } from './tree';
 
-export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'tree' | 'daily_quiz' | 'welcome';
+export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'tree' | 'daily_quiz' | 'welcome' | 'tree_overview';
 
 export const ViewStates = {
   DISPLAY: 'display',
@@ -10,6 +10,7 @@ export const ViewStates = {
   TREE: 'tree',
   DAILY_QUIZ: 'daily_quiz',
   WELCOME: 'welcome',
+  TREE_OVERVIEW: 'tree_overview',
 } as const;
 
 export interface NodeRecord {

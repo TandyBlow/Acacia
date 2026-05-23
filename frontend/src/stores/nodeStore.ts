@@ -76,6 +76,7 @@ export const useNodeStore = defineStore('node', () => {
   );
 
   const isTreeState = computed(() => viewState.value === ViewStates.TREE || viewState.value === ViewStates.MOVE);
+  const isTreeOverviewState = computed(() => viewState.value === ViewStates.TREE_OVERVIEW);
   const isDailyQuizState = computed(() => viewState.value === ViewStates.DAILY_QUIZ);
   const isWelcomeState = computed(() => viewState.value === ViewStates.WELCOME);
   const isConfirmState = computed(() => isEditState.value);
@@ -118,6 +119,12 @@ export const useNodeStore = defineStore('node', () => {
       name: dailyQuizLabel.value,
       visible: dailyQuizVisible.value,
       action: () => startDailyQuiz(),
+    },
+    {
+      id: 'tree_overview',
+      name: UI.official.treeOverview,
+      visible: true,
+      action: () => startTreeOverview(),
     },
     {
       id: 'welcome',
@@ -275,6 +282,19 @@ export const useNodeStore = defineStore('node', () => {
     startTransition({ type: 'viewState', newState: 'welcome' }, 'large');
   }
 
+  function startTreeOverview(): void {
+    errorMessage.value = null;
+
+    const { startTransition } = usePageTransition();
+    startTransition({
+      type: 'viewState',
+      newState: 'tree_overview',
+      setup: async () => {
+        await refreshTree();
+      },
+    }, 'large');
+  }
+
   async function checkDailyQuizStatus(): Promise<void> {
     try {
       const token = getToken();
@@ -392,6 +412,7 @@ export const useNodeStore = defineStore('node', () => {
     errorMessage,
     isEditState,
     isTreeState,
+    isTreeOverviewState,
     isDailyQuizState,
     isWelcomeState,
     isConfirmState,
@@ -411,6 +432,7 @@ export const useNodeStore = defineStore('node', () => {
     startMove,
     startDailyQuiz,
     startWelcome,
+    startTreeOverview,
     checkDailyQuizStatus,
     setMoveTargetParent,
     cancelOperation,

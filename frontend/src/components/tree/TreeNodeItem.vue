@@ -1,5 +1,5 @@
 <template>
-  <li class="tree-item">
+  <li class="tree-item" :data-node-id="node.id">
     <div class="row" :style="{ paddingLeft: `${depth * 16}px` }">
       <button
         v-if="node.children.length > 0"
@@ -23,7 +23,7 @@
       </button>
     </div>
 
-    <ul v-if="expanded && node.children.length > 0" class="children">
+    <ul v-if="expanded && node.children.length > 0" class="children" data-sortable :data-parent-id="node.id">
       <TreeNodeItem
         v-for="child in node.children"
         :key="child.id"

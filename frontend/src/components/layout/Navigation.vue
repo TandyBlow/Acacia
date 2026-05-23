@@ -61,11 +61,7 @@
 
     </template>
 
-    <div v-else class="auth-tip-shell">
-      <GlassWrapper class="auth-tip-card">
-        <div class="auth-tip">{{ UI.nav.authTip }}</div>
-      </GlassWrapper>
-    </div>
+    <div v-else class="auth-tip-shell" />
   </div>
 </template>
 
@@ -125,7 +121,7 @@ const visibleOfficialNodes = computed(() =>
 
 const pressedOfficialId = computed<string | null>(() => {
   const state = viewState.value;
-  return state === 'daily_quiz' || state === 'welcome' ? state : null;
+  return state === 'daily_quiz' || state === 'welcome' || state === 'tree_overview' ? state : null;
 });
 
 // Official section visibility, synchronized with page nav animation

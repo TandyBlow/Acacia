@@ -126,6 +126,28 @@
       </div>
     </div>
 
+    <!-- Concept chips: clickable knowledge points extracted from conversation -->
+    <div
+      v-if="chatMode === 'text_input' && mentionedConcepts.length > 0"
+      class="concept-chips-row"
+    >
+      <span
+        v-for="concept in mentionedConcepts"
+        :key="concept.name"
+        class="concept-chip"
+        :class="{
+          'concept-chip-marked': markedConceptNames.has(concept.name),
+          'concept-chip-verified': concept.verified,
+        }"
+        :title="concept.wiki_summary || concept.definition"
+        @click="onConceptClick(concept.name)"
+      >
+        <span v-if="concept.verified" class="concept-chip-w-badge">W</span>
+        {{ concept.name }}
+        <span v-if="markedConceptNames.has(concept.name)" class="concept-chip-check">&#10003;</span>
+      </span>
+    </div>
+
     <!-- Bottom action bar: context-sensitive -->
     <div v-if="showBottomBar" class="bottom-actions">
       <!-- idle / text_input / file_upload: chat action buttons -->
@@ -249,7 +271,10 @@ const {
   regenerateWithTreeContext,
   markConcept,
   clearChat,
+  compressAndClear,
   recordNavigationTransition,
+  mentionedConcepts,
+  markedConceptNames,
 } = useNodeChat();
 
 const hasUserEdited = ref(false);
@@ -518,7 +543,7 @@ async function sendInlineMessage() {
   if (!msg) return;
 
   if (msg === '/clear') {
-    clearChat();
+    await compressAndClear();
     // Reset editor to fresh chat prompt state, not exit to node content
     startChatText();
     return;
@@ -594,7 +619,7 @@ async function sendAnswer() {
   userInput.value = '';
 
   if (answer === '/clear') {
-    clearChat();
+    await compressAndClear();
     startChatText();
     return;
   }
@@ -653,6 +678,25 @@ async function onMarkConcept() {
       activeNode.value?.id || null,
       result.node_id,
       `在学习「${activeNode.value?.name || '未知'}」时标记了概念「${name.trim()}」`
+    );
+  }
+}
+
+async function onConceptClick(conceptName: string) {
+  if (isBusy.value || markedConceptNames.value.has(conceptName)) return;
+  // Check if concept already exists as a child node in the tree
+  const existingChildNames = new Set((childNodes.value || []).map(n => n.name));
+  if (existingChildNames.has(conceptName)) {
+    markedConceptNames.value = new Set([...markedConceptNames.value, conceptName]);
+    return;
+  }
+  const result = await markConcept(conceptName);
+  if (result) {
+    await store.loadNode(activeNode.value?.id || '');
+    recordNavigationTransition(
+      activeNode.value?.id || null,
+      result.node_id,
+      `在学习「${activeNode.value?.name || '未知'}」时标记了概念「${conceptName}」`
     );
   }
 }
@@ -1795,5 +1839,73 @@ onBeforeUnmount(() => {
   cursor: default;
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* ── Concept chips ───────────────────────────────────────────────── */
+
+.concept-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 16px 8px;
+  flex-shrink: 0;
+}
+
+.concept-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(102, 128, 255, 0.28);
+  background: rgba(102, 128, 255, 0.08);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+  user-select: none;
+}
+
+.concept-chip:hover {
+  background: rgba(102, 128, 255, 0.18);
+  border-color: var(--color-hint, rgba(102, 255, 229, 0.54));
+}
+
+.concept-chip-marked {
+  opacity: 0.45;
+  cursor: default;
+  text-decoration: line-through;
+}
+
+.concept-chip-check {
+  font-size: 11px;
+  color: var(--color-hint, rgba(102, 255, 229, 0.54));
+}
+
+.concept-chip-verified {
+  border-color: rgba(102, 200, 128, 0.45);
+  background: rgba(102, 200, 128, 0.07);
+}
+
+.concept-chip-verified:hover {
+  background: rgba(102, 200, 128, 0.16);
+  border-color: rgba(102, 200, 128, 0.7);
+}
+
+.concept-chip-w-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgba(102, 200, 128, 0.22);
+  color: #3a8;
+  font-size: 9px;
+  font-weight: 700;
+  margin-right: 1px;
+  flex-shrink: 0;
+  line-height: 1;
 }
 </style>

@@ -26,7 +26,8 @@ _END_PATTERNS = [
 _CONFIRMATION_PATTERNS = [
     # Short confirmations (only if input is mostly just this)
     (r'^[嗯嗯]+$', "confirmation"),
-    (r'^(好的?|继续|懂了|ok|行|可以|对|没错|是的|然后呢|了解|明白|知道了?|理解|懂了?|往下|讲吧|你说|来吧|嗯嗯?|哦哦?|哦|额|呃|哈|快讲|讲啊|讲呀|说吧|说呀)[\s!！。。]*$', "confirmation"),
+    # Note: "好的" intentionally excluded — can mean "yes please expand" not just "move on"
+    (r'^(继续|懂了|ok|行|可以|对|没错|是的|然后呢|了解|明白|知道了?|理解|懂了?|往下|讲吧|你说|来吧|嗯嗯?|哦哦?|哦|额|呃|哈|快讲|讲啊|讲呀|说吧|说呀)[\s!！。。]*$', "confirmation"),
 ]
 
 _META_PATTERNS = [
@@ -52,6 +53,11 @@ _CONTENT_QUESTION_PATTERNS = [
     # Contains question words
     (r'.*[？?]', "content_question"),
     (r'(什么|怎么|为什么|如何|哪个|哪一|意思|定义|是啥|是吗|对吗|对不对|可以吗|行吗|懂吗|知道吗|能.*吗|会.*吗|有.*吗|能不能|会不会|为啥|干嘛|咋|咋办|咋整|咋做|为何)', "content_question"),
+]
+
+_CONFUSION_PATTERNS = [
+    # User expresses not understanding — treat as content_question so AI pauses and explains
+    (r'(我不会|我不懂|不理解|没听懂|不明白|没明白|听不懂|好复杂|太难了?|完全不懂|没学过|没学过|不知道|没接触过|好难|复杂|不太懂|没看懂|没理解|不懂你|没听明白)', "content_question"),
 ]
 
 _CHITCHAT_PATTERNS = [
@@ -84,6 +90,7 @@ def classify_intent_rule(user_input: str) -> Tuple[str, float]:
         _CONFIRMATION_PATTERNS,
         _META_PATTERNS,
         _CORRECTION_PATTERNS,
+        _CONFUSION_PATTERNS,
         _KNOWLEDGE_PATTERNS,
         _CONTENT_QUESTION_PATTERNS,
         _CHITCHAT_PATTERNS,

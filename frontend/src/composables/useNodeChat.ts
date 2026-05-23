@@ -30,6 +30,17 @@ export interface ChatMessage {
   metadata?: Record<string, unknown>;
 }
 
+export interface MentionedConcept {
+  name: string;
+  category: string;
+  definition: string;
+  prerequisites: string[];
+  expansion_directions: string[];
+  verified: boolean;
+  wiki_summary: string;
+  wiki_description: string;
+}
+
 export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'file_uploaded' | 'conversing';
 
 interface ChatCheckpoint {
@@ -61,6 +72,8 @@ const isCompleted = ref(false);
 const openingMessage = ref('');
 const contextChain = ref<any[]>([]);
 const newLearnings = ref<any[]>([]);
+const mentionedConcepts = ref<MentionedConcept[]>([]);
+const markedConceptNames = ref<Set<string>>(new Set());
 
 const { setLoading: setGlobalLoading } = useGlobalLoading();
 
@@ -193,6 +206,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || null;
       mode.value = 'conversing';
       saveCheckpoint();
+      _updateConcepts(data);
       return { question: data.question, action: data.action, sub_topic: data.sub_topic, knowledge_note: data.knowledge_note || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '启动对话失败';
@@ -240,6 +254,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || null;
       mode.value = 'conversing';
       saveCheckpoint();
+      _updateConcepts(data);
       return { question: data.question, action: data.action, sub_topic: data.sub_topic, knowledge_note: data.knowledge_note || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '启动对话失败';
@@ -301,6 +316,7 @@ export function useNodeChat() {
       currentKpData.value = null;
       mode.value = 'conversing';
       saveCheckpoint();
+      _updateConcepts(data);
       return { question: openingMessage.value, action: data.action };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '启动逐句讲解失败';
@@ -364,6 +380,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || null;
       mode.value = 'conversing';
       saveCheckpoint();
+      _updateConcepts(data);
       return {
         question: openingMessage.value,
         action: data.action,
@@ -460,6 +477,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || currentKpData.value;
 
       saveCheckpoint();
+      _updateConcepts(data);
       return {
         ai_message: data.ai_message,
         generated_content: data.generated_content,
@@ -514,6 +532,7 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || currentKpData.value;
 
       saveCheckpoint();
+      _updateConcepts(data);
       return { ai_message: data.ai_message || '', generated_content: '', action: data.action || 'question', sub_topic: data.sub_topic || '' };
     } catch (e: unknown) {
       errorMessage.value = e instanceof Error ? e.message : '跳过失败';
@@ -553,6 +572,7 @@ export function useNodeChat() {
       }
 
       saveCheckpoint();
+      _updateConcepts(data);
       return {
         ai_message: data.ai_message || '',
         generated_content: '',
@@ -632,11 +652,23 @@ export function useNodeChat() {
 
       const data = await resp.json();
 
-      messages.value.push({
-        role: 'ai',
-        content: `已创建子节点「${conceptName}」。你可以随时离开去学习它。`,
-        metadata: { action: 'concept_marked', concept_name: conceptName },
-      });
+      if (data.already_exists) {
+        messages.value.push({
+          role: 'ai',
+          content: `知识点「${conceptName}」已存在于当前主题下，无需重复创建。`,
+          metadata: { action: 'concept_already_exists', concept_name: conceptName },
+        });
+      } else {
+        messages.value.push({
+          role: 'ai',
+          content: `已创建子节点「${conceptName}」。你可以随时离开去学习它。`,
+          metadata: { action: 'concept_marked', concept_name: conceptName },
+        });
+      }
+
+      const names = new Set(markedConceptNames.value);
+      names.add(conceptName);
+      markedConceptNames.value = names;
 
       return { node_id: data.node_id, name: data.name };
     } catch (e: unknown) {
@@ -740,6 +772,8 @@ export function useNodeChat() {
     currentKpIndex.value = 0;
     currentKpData.value = null;
     isCompleted.value = false;
+    mentionedConcepts.value = [];
+    markedConceptNames.value = new Set();
   }
 
   function clearChat() {
@@ -756,7 +790,45 @@ export function useNodeChat() {
     currentKpIndex.value = 0;
     currentKpData.value = null;
     isCompleted.value = false;
+    mentionedConcepts.value = [];
+    markedConceptNames.value = new Set();
     if (nodeId) clearCheckpointForNode(nodeId);
+  }
+
+  async function compressAndClear(): Promise<string> {
+    const sid = sessionId.value;
+    if (!sid) {
+      clearChat();
+      return '';
+    }
+
+    isBusy.value = true;
+    setGlobalLoading('nodeChat', true);
+
+    try {
+      const resp = await fetchWithTimeout(`${backendUrl}/chat/compress`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ session_id: sid }),
+      });
+
+      if (!resp.ok) {
+        // If compression fails (e.g. too few messages), just clear without compression
+        clearChat();
+        return '';
+      }
+
+      const data = await resp.json();
+      clearChat();
+      return data.summary || '';
+    } catch {
+      // On any error, fallback to plain clear
+      clearChat();
+      return '';
+    } finally {
+      isBusy.value = false;
+      setGlobalLoading('nodeChat', false);
+    }
   }
 
   function abandonChat() {
@@ -773,6 +845,8 @@ export function useNodeChat() {
     currentKpIndex.value = 0;
     currentKpData.value = null;
     isCompleted.value = false;
+    mentionedConcepts.value = [];
+    markedConceptNames.value = new Set();
     if (nodeId) clearCheckpointForNode(nodeId);
   }
 
@@ -796,6 +870,29 @@ export function useNodeChat() {
     return -1;
   }
 
+  function _updateConcepts(data: any) {
+    if (data.mentioned_concepts && Array.isArray(data.mentioned_concepts)) {
+      const existing = mentionedConcepts.value;
+      const existingNames = new Set(existing.map(c => c.name));
+      for (const c of data.mentioned_concepts) {
+        if (c.name && !existingNames.has(c.name)) {
+          existingNames.add(c.name);
+          existing.push({
+            name: c.name,
+            category: c.category || '',
+            definition: c.definition || '',
+            prerequisites: c.prerequisites || [],
+            expansion_directions: c.expansion_directions || [],
+            verified: c.verified || false,
+            wiki_summary: c.wiki_summary || '',
+            wiki_description: c.wiki_description || '',
+          });
+        }
+      }
+      mentionedConcepts.value = existing;
+    }
+  }
+
   return {
     // State
     mode,
@@ -815,6 +912,8 @@ export function useNodeChat() {
     openingMessage,
     contextChain,
     newLearnings,
+    mentionedConcepts,
+    markedConceptNames,
     // Computed
     hasActiveConversation,
     hasResumableSession,
@@ -835,6 +934,7 @@ export function useNodeChat() {
     resetForNewNode,
     abandonChat,
     clearChat,
+    compressAndClear,
     exitChat,
     setTextMode,
     setFileMode,

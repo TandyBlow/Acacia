@@ -21,11 +21,12 @@ from doc_position_tracker import (
     advance_position,
     get_progress_context,
     is_document_done,
+    get_context_window,
+    get_position_marker,
 )
 from chat_service import (
     call_deepseek,
     parse_json_response,
-    build_knowledge_profile,
     _get_node_content_tail,
 )
 
@@ -54,21 +55,42 @@ def handle_line_by_line_explain(session: dict, user_input: str, intent: str,
     if is_document_done(session):
         return _end_line_by_line_result(session, "文档已经讲解完毕。")
 
+    # Confirmation means "I understood the previous segment, move forward"
+    # Advance FIRST, then explain the new current segment
+    advance_position(session)
+    if is_document_done(session):
+        return _end_line_by_line_result(session, "文档已经讲解完毕。")
+
     current_segment = get_current_segment(session)
     progress = get_progress_context(session)
+    ctx_window = get_context_window(session)
+    pos_marker = get_position_marker(session)
 
     oid = session.get("owner_id", "")
     nid = session.get("node_id", "")
-    profile = build_knowledge_profile(oid, nid) if oid and nid else ""
+
+    # Read enriched context from pre-processing pipeline
+    # (concept extraction + knowledge retrieval by content — already filtered by relevance)
+    enriched = session.get("_enriched_context", {}) or {}
+    concept_ctx = enriched.get("concept_context", "")
+    personalized = enriched.get("personalized_context", "")
+    expansion = enriched.get("expansion_context", "")
+    import sys
+    print(f"[HANDLER explain] concept_ctx={len(concept_ctx)}chars, personalized={len(personalized)}chars, expansion={len(expansion)}chars", file=sys.stderr)
 
     recent = _recent_history(session, 6)
     messages = build_line_by_line_explain_prompt(
         current_segment=current_segment,
         progress=progress,
-        knowledge_profile=profile,
+        knowledge_profile="",  # enriched context replaces full profile
         gap_warning=gap_warning,
         tone_instruction=tone.get("instruction", ""),
         recent_history=recent,
+        context_window=ctx_window,
+        position_marker=pos_marker,
+        concept_context=concept_ctx,
+        personalized_context=personalized,
+        expansion_context=expansion,
     )
 
     raw = call_deepseek(messages)
@@ -77,7 +99,7 @@ def handle_line_by_line_explain(session: dict, user_input: str, intent: str,
     ai_message = result.get("message", "")
     action = result.get("action", "explain")
 
-    advance_position(session)
+    # Position already advanced at start — just check if done
     if is_document_done(session):
         action = "end_explanation"
 
@@ -95,6 +117,7 @@ def handle_line_by_line_explain(session: dict, user_input: str, intent: str,
         "generated_content": "",
         "knowledge_note": "",
         "completed": action == "end_explanation",
+        "mentioned_concepts": _extract_mentioned_concepts(session),
     }
 
 
@@ -108,20 +131,34 @@ def handle_line_by_line_answer(session: dict, user_input: str, intent: str,
 
     current_segment = get_current_segment(session)
     progress = get_progress_context(session)
+    ctx_window = get_context_window(session)
+    pos_marker = get_position_marker(session)
 
     oid = session.get("owner_id", "")
     nid = session.get("node_id", "")
-    profile = build_knowledge_profile(oid, nid) if oid and nid else ""
+
+    # Read enriched context from pre-processing pipeline
+    enriched = session.get("_enriched_context", {}) or {}
+    concept_ctx = enriched.get("concept_context", "")
+    personalized = enriched.get("personalized_context", "")
+    expansion = enriched.get("expansion_context", "")
+    def_chain = enriched.get("definition_chain", "")
 
     recent = _recent_history(session, 6)
     messages = build_line_by_line_answer_prompt(
         current_segment=current_segment,
         progress=progress,
         user_question=user_input,
-        knowledge_profile=profile,
+        knowledge_profile="",  # enriched context replaces full profile
         gap_warning=gap_warning,
         tone_instruction=tone.get("instruction", ""),
         recent_history=recent,
+        context_window=ctx_window,
+        position_marker=pos_marker,
+        concept_context=concept_ctx,
+        personalized_context=personalized,
+        expansion_context=expansion,
+        definition_chain=def_chain,
     )
 
     raw = call_deepseek(messages)
@@ -130,7 +167,7 @@ def handle_line_by_line_answer(session: dict, user_input: str, intent: str,
     ai_message = result.get("message", "")
     action = result.get("action", "explain")
 
-    advance_position(session)
+    # Do NOT advance — user asked a question, stay on current segment
     if is_document_done(session):
         action = "end_explanation"
 
@@ -148,6 +185,7 @@ def handle_line_by_line_answer(session: dict, user_input: str, intent: str,
         "generated_content": "",
         "knowledge_note": "",
         "completed": action == "end_explanation",
+        "mentioned_concepts": _extract_mentioned_concepts(session),
     }
 
 
@@ -163,31 +201,45 @@ def handle_line_by_line_brief_reply(session: dict, user_input: str, intent: str,
 
     current_segment = get_current_segment(session)
     progress = get_progress_context(session)
+    ctx_window = get_context_window(session)
+    pos_marker = get_position_marker(session)
 
     hint = ""
     if intent == "meta_question":
-        hint = "\n用户问了一个关于你自身的问题。用1句话简要回答，然后立即引用并解释当前句子。"
+        hint = "\n用户问了一个关于你自身的问题。简要回答后，继续讲解当前段落。"
     elif intent == "correction":
-        hint = "\n用户纠正了你。用1句话承认，然后立即引用并解释当前句子。"
+        hint = "\n用户纠正了你。承认错误，然后继续讲解当前段落。"
     else:
-        hint = "\n用1句话简短回应，然后立即引用并解释当前句子。"
+        hint = "\n简短回应后，继续讲解当前段落。"
 
-    user_lines = [
-        f"【{progress}】当前句子：\n\n{current_segment}",
-        f"\n用户说：{user_input}",
-        hint,
-    ]
+    user_lines = []
+    if ctx_window:
+        user_lines.append(f"【文档上下文】（当前位置附近的段落）\n{ctx_window}")
+    if pos_marker:
+        user_lines.append(f"【{pos_marker}】")
+    if gap_warning:
+        user_lines.append(gap_warning)
+    if tone.get("instruction"):
+        user_lines.append(tone["instruction"])
+    user_lines.append(f"【{progress}】当前句子：\n\n{current_segment}")
+    user_lines.append(f"\n用户说：{user_input}")
+    user_lines.append(hint)
 
     oid = session.get("owner_id", "")
     nid = session.get("node_id", "")
-    if oid and nid:
-        profile = build_knowledge_profile(oid, nid)
-        if profile:
-            user_lines.insert(0, profile)
-    if gap_warning:
-        user_lines.insert(0, gap_warning)
-    if tone.get("instruction"):
-        user_lines.insert(0, tone["instruction"])
+
+    # Read enriched context from pre-processing pipeline
+    # (concept extraction + knowledge retrieval by content — already filtered by relevance)
+    enriched = session.get("_enriched_context", {}) or {}
+    concept_ctx = enriched.get("concept_context", "")
+    personalized = enriched.get("personalized_context", "")
+    expansion = enriched.get("expansion_context", "")
+    if concept_ctx:
+        user_lines.append(concept_ctx)
+    if personalized:
+        user_lines.append(personalized)
+    if expansion:
+        user_lines.append(expansion)
 
     recent = _recent_history(session, 6)
     if recent:
@@ -204,7 +256,7 @@ def handle_line_by_line_brief_reply(session: dict, user_input: str, intent: str,
     ai_message = result.get("message", "")
     action = result.get("action", "explain")
 
-    advance_position(session)
+    # Brief replies should not advance position — user didn't confirm
     if is_document_done(session):
         action = "end_explanation"
 
@@ -222,6 +274,7 @@ def handle_line_by_line_brief_reply(session: dict, user_input: str, intent: str,
         "generated_content": "",
         "knowledge_note": "",
         "completed": action == "end_explanation",
+        "mentioned_concepts": _extract_mentioned_concepts(session),
     }
 
 
@@ -297,4 +350,62 @@ def _end_line_by_line_result(session: dict, message: str) -> dict:
         "generated_content": "",
         "knowledge_note": "",
         "completed": True,
+        "mentioned_concepts": _extract_mentioned_concepts(session),
     }
+
+
+def _extract_mentioned_concepts(session: dict) -> list:
+    """Extract mentioned concepts from the session's enriched context, excluding
+    concepts that already exist as children of the current node.
+
+    Lazily triggers post-response concept extraction from the AI's latest reply,
+    so the chips reflect what was actually taught rather than broad conversation topics.
+    """
+    # Trigger post-response extraction if not yet done this turn
+    if not session.get("_response_concepts") and not session.get("_response_extraction_attempted"):
+        session["_response_extraction_attempted"] = True
+        try:
+            from chat_service import _refresh_response_concepts
+            _refresh_response_concepts(session)
+        except Exception:
+            pass
+
+    enriched = session.get("_enriched_context", {}) or {}
+    # Prefer post-response concepts (extracted from AI's actual reply) over
+    # pre-processing concepts (extracted from conversation history before AI responded)
+    raw_concepts = session.get("_response_concepts") or enriched.get("concepts", [])
+    if not raw_concepts:
+        return []
+
+    # Fetch existing child names so we can skip concepts the user already has
+    existing_names: set = set()
+    oid = session.get("owner_id", "")
+    nid = session.get("node_id", "")
+    if oid and nid:
+        try:
+            from tree_repository_sqlite import get_db_ctx as _get_db_ctx
+            with _get_db_ctx() as _conn:
+                rows = _conn.execute(
+                    "SELECT name FROM nodes WHERE owner_id = ? AND parent_id = ? AND is_deleted = 0",
+                    (oid, nid)
+                ).fetchall()
+                existing_names = {r["name"] for r in rows}
+        except Exception:
+            pass
+
+    result = []
+    for c in raw_concepts:
+        name = c.get("name", "")
+        if name in existing_names:
+            continue
+        result.append({
+            "name": name,
+            "category": c.get("category", ""),
+            "definition": c.get("definition", ""),
+            "prerequisites": c.get("prerequisites", []),
+            "expansion_directions": c.get("expansion_directions", []),
+            "verified": c.get("verified", False),
+            "wiki_summary": c.get("wiki_summary", ""),
+            "wiki_description": c.get("wiki_description", ""),
+        })
+    return result

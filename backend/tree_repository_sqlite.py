@@ -63,6 +63,7 @@ def fetch_user_nodes_with_knowledge(owner_id: str) -> list[dict]:
         {
             "id": r["id"],
             "name": r["name"],
+            "content": r["content"] or "",
             "parent_id": r["parent_id"],
             "depth": r["depth"] or 0,
             "domain_tag": r["domain_tag"] or "",

@@ -61,16 +61,28 @@ def detect_tone(session: dict) -> dict:
     if turn_count > 10 and result["passive_streak"] >= 3:
         result["fatigue_likely"] = True
 
-    # Build instruction
+    # Build instruction — must be compatible with line-by-line mode
+    # (AI cannot ask questions or change modes, only adjust explanation style)
     instructions = []
     if result["fatigue_likely"]:
-        instructions.append("用户表现出疲劳或想结束。在回复中表达理解，建议休息或快速收尾。")
+        instructions.append(
+            "用户表现出疲劳。你的回复仍然以 > 引用开头继续讲解，"
+            "但解释可以更简短（1句话即可）。"
+            "在解释后加一句'今天先到这里也可以，随时回来继续'。"
+        )
     elif result["passive_streak"] >= 4:
-        instructions.append("用户连续多轮只是被动确认，可能没有真正在思考。在回复中真诚地问他是否消化了，不要假装他学会了。")
+        instructions.append(
+            f"用户已连续{result['passive_streak']}轮被动确认。"
+            "你仍然逐句讲解，但可以跳过显而易见的句子，加快节奏。不要提问。"
+        )
     elif result["passive_streak"] >= 2:
-        instructions.append("用户最近几轮比较被动。对话可以更简洁，适当关心他的状态。")
+        instructions.append(
+            "用户比较被动。保持逐句讲解，但解释更简洁（控制在1-2句话）。"
+        )
     elif result["response_shrinking"]:
-        instructions.append("用户回答越来越短，可能累了或失去兴趣。注意观察，适时收尾。")
+        instructions.append(
+            "用户回复越来越短。保持讲解节奏，但每句解释控制在1-2句话。"
+        )
 
     result["instruction"] = " ".join(instructions)
     return result

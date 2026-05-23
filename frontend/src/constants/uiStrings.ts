@@ -52,12 +52,17 @@ export const UI = {
     devTestSakura: '测试樱花',
     sakuraDomainTag: '日本文化',
     noBackend: '树可视化需要后端连接',
+    treeOverview: '知识树概览',
+    selectSource: '点击知识点，选择要移动的对象',
+    selectTarget: '点击目标位置，移动至此',
+    sameParent: '目标位置与当前位置相同',
   },
 
   // Official nodes
   official: {
     dailyQuiz: '今日成长',
     welcome: '欢迎',
+    treeOverview: '知识树概览',
     quizCompleted: '今日成长已完成，明天再来吧！',
     startQuiz: '开始答题',
     correct: '回答正确！',

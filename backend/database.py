@@ -131,6 +131,18 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_conversation_sessions_owner ON conversation_sessions(owner_id, last_activity_at DESC);
             CREATE INDEX IF NOT EXISTS idx_conversation_sessions_node ON conversation_sessions(node_id, owner_id, status);
+
+            CREATE TABLE IF NOT EXISTS node_chat_memories (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                compressed_summary TEXT NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                compressed_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_node_chat_memories ON node_chat_memories(owner_id, node_id, compressed_at DESC);
         """)
 
         # Migration: add missing columns

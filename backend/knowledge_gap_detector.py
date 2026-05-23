@@ -80,19 +80,27 @@ def detect_gaps(owner_id: str, current_node_id: str) -> dict:
 
 
 def format_gap_warning(gap_result: dict) -> str:
-    """Convert a gap detection result into a single-line instruction for handler prompts."""
+    """Convert a gap detection result into a line-by-line-compatible instruction.
+
+    Instructions must NOT tell the AI to ask questions, suggest creating KPs,
+    or change modes. They only adjust explanation style (depth, detail, pace).
+    """
     severity = gap_result.get("severity", "none")
     if severity == "critical":
         domain = gap_result.get("domain_tag", "此领域")
         total = gap_result.get("total_nodes", 0)
         if total <= 2:
-            return (f"⚠️ 知识缺口严重：用户知识树几乎为空（共{total}个节点）。"
-                    f"如果用户在当前主题上卡住，主动建议他先去创建前置知识点（给1-2个具体建议）。"
-                    f"这不是拒绝用户，而是帮他建立正确的学习路径。")
-        return (f"⚠️ 知识缺口严重：用户在「{domain}」领域几乎没有相关知识积累。"
-                f"如果用户卡住，主动建议他先去创建此领域的基础知识点。")
+            return (f"用户知识树几乎为空（共{total}个节点）。"
+                    f"遇到复杂概念时给出更详细的定义（2-3句话而非1句），"
+                    f"因为用户没有前置知识可以依靠。不要提问，不要建议创建知识点。")
+        return (f"用户在「{domain}」领域基础薄弱。"
+                f"当前句中的专业术语需要附带简短定义，帮用户建立概念基础。")
     elif severity == "moderate":
-        return "📖 用户在此领域有一些基础，可以用他已掌握的概念做类比。"
+        return ("用户在此领域有一些基础。"
+                "查看【个性化知识关联】中列出的用户已有知识，"
+                "若当前内容确实与用户的某个已有知识点有具体关联，"
+                "可以指出具体在哪个概念上有怎样的联系——不要用泛泛的类比，要具体。"
+                "若没有真实关联则不要强行联系。")
     return ""
 
 

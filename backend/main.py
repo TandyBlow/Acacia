@@ -949,6 +949,26 @@ def chat_end_endpoint(
         )
 
 
+class ChatCompressRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/chat/compress")
+def chat_compress_endpoint(
+    request: ChatCompressRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Compress a chat session into a summary and store as node memory, then clear."""
+    from chat_service import compress_chat_session
+    try:
+        return compress_chat_session(request.session_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 @app.get("/chat/sessions/{session_id}")
 def get_chat_session_endpoint(
     session_id: str,
