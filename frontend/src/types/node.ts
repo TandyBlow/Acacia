@@ -37,6 +37,9 @@ export interface TreeNode {
 export interface StyleResult {
   style: string;
   distribution: Record<string, number>;
+  params?: Record<string, unknown>;
+  backgroundPrompt?: string;
+  styleDescription?: string;
 }
 
 export interface CoreDataAdapter {

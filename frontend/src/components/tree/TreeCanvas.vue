@@ -1,6 +1,9 @@
 <template>
   <div ref="containerRef" class="tree-canvas">
     <div v-if="noTreeData" class="no-tree-msg">{{ UI.tree.noBackend }}</div>
+    <div v-if="!sceneReady && !noTreeData" class="tree-loading-mask">
+      <div class="tree-loading-spinner"></div>
+    </div>
   </div>
 </template>
 
@@ -83,13 +86,14 @@ async function loadTree() {
     }
     lastSkeleton = skeleton;
 
+    const customParams = styleStore.styleParams as unknown as import('../../constants/theme').TreeStyleParams | null;
     manager = new SceneManager(containerRef.value, styleStore.style, {
       onResizeStart: () => { isResizing.value = true; },
       onResizeEnd: () => { isResizing.value = false; },
       onBranchClick: (nodeId: string) => {
         console.log('Clicked branch, node_id:', nodeId);
       },
-    });
+    }, customParams);
 
     // Always preload user overrides when userId is available, even if stats
     // are empty. Using nodeCount=0 maps to tier-0 (seedling) params, which
@@ -184,7 +188,17 @@ onMounted(() => {
 
 watch(() => styleStore.style, (newStyle) => {
   if (manager) {
-    manager.switchTheme(newStyle);
+    const knownStyles = ['default', 'sakura', 'cyberpunk', 'ink'];
+    if (knownStyles.includes(newStyle)) {
+      manager.switchTheme(newStyle);
+    }
+  }
+});
+
+// Apply AI-generated custom params to the 3D tree without touching background
+watch(() => styleStore.styleParams, (newParams) => {
+  if (manager && newParams && newParams.leafMidColor) {
+    manager.applyStyleParamsPublic(newParams as unknown as import('../../constants/theme').TreeStyleParams);
   }
 });
 
@@ -249,5 +263,28 @@ defineExpose({ sceneReady });
   opacity: 0.6;
   font-size: 16px;
   font-weight: 600;
+}
+
+.tree-loading-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: var(--bg-gradient, linear-gradient(180deg, #fff, #eefaff));
+  backdrop-filter: blur(8px);
+}
+
+.tree-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(128, 128, 128, 0.2);
+  border-top-color: var(--color-primary, #6680ff);
+  border-radius: 50%;
+  animation: tree-spin 0.8s linear infinite;
+}
+
+@keyframes tree-spin {
+  to { transform: rotate(360deg); }
 }
 </style>

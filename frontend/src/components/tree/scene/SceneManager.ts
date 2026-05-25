@@ -100,10 +100,12 @@ export class SceneManager {
   // private particleMesh: THREE.Mesh | null = null;
   // private particleMaterial: THREE.ShaderMaterial | null = null;
 
-  constructor(container: HTMLElement, initialStyle: ThemeStyle, callbacks: SceneManagerCallbacks) {
+  constructor(container: HTMLElement, initialStyle: ThemeStyle, callbacks: SceneManagerCallbacks, customParams?: TreeStyleParams | null) {
     this.container = container;
     this.currentStyle = initialStyle;
-    this.currentParams = { ...THEME_PRESETS[initialStyle] };
+    const preset = THEME_PRESETS[initialStyle];
+    const base: TreeStyleParams = (preset ? { ...preset } : { ...THEME_PRESETS['default'] }) as TreeStyleParams;
+    this.currentParams = customParams ? ({ ...base, ...customParams } as TreeStyleParams) : base;
     this.themeTransition = new ThemeTransition(initialStyle);
     this.callbacks = callbacks;
     this.loadLeafTextures();

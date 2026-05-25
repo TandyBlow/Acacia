@@ -1,35 +1,30 @@
 """
-Style service using SQLite.
+Style service using SQLite + AI generation.
 """
 from database import get_db_ctx
-
-STYLE_RULES = [
-    ('日本文化', 0.30, 'sakura'),
-    ('编程技术', 0.40, 'cyberpunk'),
-    ('文学艺术', 0.30, 'ink'),
-]
+from style_generator import generate_style, DEFAULT_PARAMS
 
 
-def compute_style_sqlite(owner_id: str) -> dict:
+def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
+    """Compute a unique visual style for a user's knowledge tree.
+
+    Uses AI (DeepSeek) to analyze knowledge content and generate
+    personalized TreeStyleParams. Falls back to default params on failure.
+    """
     with get_db_ctx() as conn:
         nodes = conn.execute(
-            "SELECT domain_tag FROM nodes WHERE owner_id = ? AND is_deleted = 0",
+            "SELECT id, name, content, domain_tag FROM nodes "
+            "WHERE owner_id = ? AND is_deleted = 0",
             (owner_id,),
         ).fetchall()
 
     if not nodes:
-        return {"style": "default", "distribution": {}}
+        return {
+            "style": "default",
+            "params": DEFAULT_PARAMS,
+            "backgroundPrompt": "",
+            "distribution": {},
+        }
 
-    total = len(nodes)
-    counts: dict[str, int] = {}
-    for node in nodes:
-        tag = node["domain_tag"] or "其他"
-        counts[tag] = counts.get(tag, 0) + 1
-
-    distribution = {tag: round(cnt / total, 4) for tag, cnt in counts.items()}
-
-    for domain, threshold, style in STYLE_RULES:
-        if distribution.get(domain, 0) > threshold:
-            return {"style": style, "distribution": distribution}
-
-    return {"style": "default", "distribution": distribution}
+    node_dicts = [{"name": n["name"], "content": n["content"], "domain_tag": n["domain_tag"]} for n in nodes]
+    return generate_style(owner_id, node_dicts, force=force)
