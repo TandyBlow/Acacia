@@ -42,6 +42,12 @@ function _preloadImage(url: string): Promise<boolean> {
   });
 }
 
+async function _tryRecoverBgUrl(userId: string): Promise<string | null> {
+  const fallbackUrl = `/backgrounds/ai/${userId}.png`;
+  const ok = await _preloadImage(fallbackUrl);
+  return ok ? fallbackUrl : null;
+}
+
 export const useStyleStore = defineStore('style', () => {
   const style = ref<ThemeStyle>('default');
   const styleParams = ref<Record<string, unknown> | null>(null);
@@ -116,16 +122,17 @@ export const useStyleStore = defineStore('style', () => {
         const bgUrl = data.backgroundUrl ?? null;
         const newStyle = data.style ?? 'default';
 
-        // Non-default styles require a background image; skip if missing or preload fails
+        // Non-default styles require a background image; try disk fallback if missing
         if (newStyle !== 'default') {
-          if (!bgUrl) {
+          const resolvedBgUrl = bgUrl ?? await _tryRecoverBgUrl(userId);
+          if (!resolvedBgUrl) {
             console.warn('[styleStore] AI style has no background URL, keeping default');
           } else {
-            const ok = await _preloadImage(bgUrl);
+            const ok = await _preloadImage(resolvedBgUrl);
             if (!ok) {
               console.warn('[styleStore] Background image preload failed, keeping default');
             } else {
-              backgroundUrl.value = bgUrl;
+              backgroundUrl.value = resolvedBgUrl;
               styleParams.value = (data.params as Record<string, unknown>) ?? null;
               distribution.value = data.distribution ?? {};
               style.value = newStyle;
@@ -188,14 +195,16 @@ export const useStyleStore = defineStore('style', () => {
 
       const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
+      let resolvedBgUrl = bgUrl;
 
-      // Non-default styles require a background image; skip if missing or preload fails
+      // Non-default styles require a background image; try disk fallback if missing
       if (newStyle !== 'default') {
-        if (!bgUrl) {
+        resolvedBgUrl = bgUrl ?? await _tryRecoverBgUrl(userId);
+        if (!resolvedBgUrl) {
           console.warn('[styleStore] AI style has no background URL, skipping update');
           return;
         }
-        const loaded = await _preloadImage(bgUrl);
+        const loaded = await _preloadImage(resolvedBgUrl);
         if (!loaded) {
           console.warn('[styleStore] Background image preload failed, skipping update');
           return;
@@ -204,7 +213,7 @@ export const useStyleStore = defineStore('style', () => {
 
       pendingParams.value = (data.params as Record<string, unknown>) ?? null;
       pendingStyle.value = newStyle;
-      pendingBackgroundUrl.value = bgUrl;
+      pendingBackgroundUrl.value = resolvedBgUrl;
       isPendingReady.value = true;
     } catch {
       // silent fallback
@@ -235,14 +244,16 @@ export const useStyleStore = defineStore('style', () => {
 
       const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
+      let resolvedBgUrl = bgUrl;
 
-      // Non-default styles require a background image; skip if missing or preload fails
+      // Non-default styles require a background image; try disk fallback if missing
       if (newStyle !== 'default') {
-        if (!bgUrl) {
+        resolvedBgUrl = bgUrl ?? await _tryRecoverBgUrl(userId);
+        if (!resolvedBgUrl) {
           console.warn('[styleStore] AI style has no background URL, skipping update');
           return;
         }
-        const loaded = await _preloadImage(bgUrl);
+        const loaded = await _preloadImage(resolvedBgUrl);
         if (!loaded) {
           console.warn('[styleStore] Background image preload failed, skipping update');
           return;
@@ -251,7 +262,7 @@ export const useStyleStore = defineStore('style', () => {
 
       pendingParams.value = (data.params as Record<string, unknown>) ?? null;
       pendingStyle.value = newStyle;
-      pendingBackgroundUrl.value = bgUrl;
+      pendingBackgroundUrl.value = resolvedBgUrl;
       isPendingReady.value = true;
     } catch {
       // silent fallback

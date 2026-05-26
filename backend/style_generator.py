@@ -464,6 +464,11 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
             # Ensure backgroundUrl is populated (may be None if bg gen failed previously)
             if cached.get("backgroundUrl") is None:
                 cached["backgroundUrl"] = _bg_image_cache.get(cache_key)
+                # Last resort: check disk in case server restarted and cache lost
+                if cached["backgroundUrl"] is None:
+                    image_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
+                    if image_path.exists():
+                        cached["backgroundUrl"] = f"/backgrounds/ai/{owner_id}.png"
             return cached
 
     # Check if regeneration is warranted (cooldown + change detection)
@@ -474,6 +479,21 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
             if cached.get("backgroundUrl") is None:
                 cached["backgroundUrl"] = _bg_image_cache.get(cache_key)
             return cached
+        # Cache miss: image may exist on disk from an interrupted previous request.
+        # Recover it so the user doesn't lose a successfully generated background.
+        image_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
+        if image_path.exists():
+            print(f"[style] Recovering background image from disk for {owner_id}")
+            recovered = {
+                "style": "default",
+                "params": DEFAULT_PARAMS,
+                "backgroundPrompt": "",
+                "backgroundUrl": f"/backgrounds/ai/{owner_id}.png",
+                "distribution": {},
+                "_cached_at": time.time(),
+            }
+            _style_cache[cache_key] = recovered
+            return recovered
         return {
             "style": "default",
             "params": DEFAULT_PARAMS,
