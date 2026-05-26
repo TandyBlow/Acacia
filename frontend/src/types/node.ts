@@ -1,6 +1,6 @@
 import type { SkeletonData } from './tree';
 
-export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'tree' | 'daily_quiz' | 'welcome' | 'tree_overview';
+export type ViewState = 'display' | 'add' | 'move' | 'delete' | 'tree' | 'daily_quiz' | 'tree_overview' | 'official_content';
 
 export const ViewStates = {
   DISPLAY: 'display',
@@ -9,9 +9,15 @@ export const ViewStates = {
   DELETE: 'delete',
   TREE: 'tree',
   DAILY_QUIZ: 'daily_quiz',
-  WELCOME: 'welcome',
   TREE_OVERVIEW: 'tree_overview',
+  OFFICIAL_CONTENT: 'official_content',
 } as const;
+
+export interface OfficialNodeSummary {
+  id: string;
+  title: string;
+  sort_order: number;
+}
 
 export interface NodeRecord {
   id: string;

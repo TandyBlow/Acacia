@@ -20,7 +20,12 @@ export function useAppInit() {
       preloadSkeleton();
       if (authStore.user?.id) {
         styleStore.fetchStyle(authStore.user.id);
+      } else {
+        styleStore.applyTheme();
+        styleStore.loaded = true;
       }
+    } else {
+      styleStore.applyTheme();
     }
   });
 
@@ -35,6 +40,9 @@ export function useAppInit() {
         preloadSkeleton();
         if (authStore.user?.id) {
           styleStore.fetchStyle(authStore.user.id);
+        } else {
+          styleStore.applyTheme();
+          styleStore.loaded = true;
         }
       }
       if (!authenticated && prevAuthenticated) {

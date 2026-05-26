@@ -28,6 +28,13 @@ _bg_image_cache: dict[str, str] = {}
 _user_state: dict[str, dict] = {}
 _MIN_REGENERATE_INTERVAL: float = 300.0  # 5 min cooldown between AI generations
 
+# Jaccard similarity threshold for triggering regeneration.
+# When the profile text changes, we compute Jaccard similarity on character
+# bigrams between old and new text. Only trigger regeneration if similarity
+# drops below this threshold — meaning the knowledge structure has changed
+# substantially, not just a typo fix or single-node addition.
+_JACCARD_THRESHOLD: float = 0.80
+
 # Project root and output paths
 _PROJECT_ROOT = Path(__file__).parent.parent
 _REFERENCE_IMAGE = _PROJECT_ROOT / "background.png"
@@ -81,32 +88,59 @@ def _cache_key(nodes_json: str) -> str:
     return hashlib.sha256(nodes_json.encode("utf-8")).hexdigest()
 
 
-def _should_regenerate(owner_id: str, nodes: list[dict]) -> bool:
+def _bigrams(text: str) -> set[str]:
+    """Extract character bigrams from text for Jaccard similarity."""
+    return {text[i:i+2] for i in range(len(text) - 1)} if len(text) >= 2 else set()
+
+
+def _jaccard_similarity(text_a: str, text_b: str) -> float:
+    """Compute Jaccard similarity on character bigrams between two texts."""
+    bg_a = _bigrams(text_a)
+    bg_b = _bigrams(text_b)
+    if not bg_a and not bg_b:
+        return 1.0
+    if not bg_a or not bg_b:
+        return 0.0
+    intersection = bg_a & bg_b
+    union = bg_a | bg_b
+    return len(intersection) / len(union)
+
+
+def _should_regenerate(owner_id: str, profile_text: str) -> bool:
     """Check whether style should be regenerated for this user.
 
-    Returns False if: node count < 10, content unchanged (same hash),
-    or within cooldown period. Returns True otherwise and updates state.
+    Uses Jaccard similarity on character bigrams to detect *substantial*
+    changes in the knowledge profile, rather than triggering on every
+    single-character edit.
+
+    Returns False if: node count < 10, Jaccard similarity >= threshold
+    (content hasn't changed substantially), or within cooldown period.
+    Returns True otherwise and updates state.
     """
-    if len(nodes) < 10:
-        return False
-
-    profile_parts = []
-    for n in nodes:
-        name = n.get("name", "")
-        content = (n.get("content") or "")[:200]
-        profile_parts.append(f"{name}:{content}")
-    profile_text = "|".join(sorted(profile_parts))
-    current_hash = _cache_key(profile_text)
-
     state = _user_state.get(owner_id)
-    if state and state["hash"] == current_hash:
-        return False  # Content unchanged
+
+    # First time — only trigger AI generation, don't require similarity check
+    if not state:
+        now = time.time()
+        _user_state[owner_id] = {"profile_text": profile_text, "generated_at": now}
+        return True
 
     now = time.time()
-    if state and (now - state["generated_at"]) < _MIN_REGENERATE_INTERVAL:
+    if (now - state["generated_at"]) < _MIN_REGENERATE_INTERVAL:
         return False  # Within cooldown
 
-    _user_state[owner_id] = {"hash": current_hash, "generated_at": now}
+    prev_text = state.get("profile_text", "")
+    if not prev_text:
+        _user_state[owner_id] = {"profile_text": profile_text, "generated_at": now}
+        return True
+
+    similarity = _jaccard_similarity(prev_text, profile_text)
+    print(f"[style] Jaccard similarity: {similarity:.4f} (threshold={_JACCARD_THRESHOLD})")
+
+    if similarity >= _JACCARD_THRESHOLD:
+        return False  # Change too small
+
+    _user_state[owner_id] = {"profile_text": profile_text, "generated_at": now}
     return True
 
 
@@ -537,7 +571,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
             return cached
 
     # Check if regeneration is warranted (cooldown + change detection)
-    if not force and not _should_regenerate(owner_id, nodes):
+    if not force and not _should_regenerate(owner_id, profile_text):
         # Return cached result even if TTL expired, or fall back to default
         cached = _style_cache.get(cache_key)
         if cached:

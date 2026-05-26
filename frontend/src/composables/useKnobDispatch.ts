@@ -2,10 +2,12 @@ import { ref, computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
+import type { LayoutType } from '../types/transition';
 
 export type CompactMode = 'content' | 'nav';
 const compactMode = ref<CompactMode>('content');
-const isCompactLayout = ref(false);
+const layoutType = ref<LayoutType>('large');
+const isCompactLayout = computed(() => layoutType.value === 'small');
 
 export function useKnobDispatch() {
   const nodeStore = useNodeStore();
@@ -56,6 +58,6 @@ export function useKnobDispatch() {
   return {
     isBusy, inAuthMode, inConfirmMode, canConfirm,
     onHoldConfirm, onClick, onDoubleClick,
-    compactMode, isCompactLayout,
+    compactMode, isCompactLayout, layoutType,
   };
 }

@@ -2,7 +2,7 @@
   <div class="knob-panel">
     <!-- Hint columns (desktop) -->
     <!--
-    <div v-if="isAuthenticated && !isCompactLayout" class="hint-column hint-left">
+    <div v-if="isAuthenticated && layoutType !== 'small'" class="hint-column hint-left">
       <Transition name="cell">
         <span v-if="showClickHintLocal" class="knob-hint">{{ UI.knob.clickToHome }}</span>
       </Transition>
@@ -72,7 +72,7 @@ const {
   onHoldConfirm,
   onClick,
   onDoubleClick,
-  isCompactLayout,
+  layoutType,
 } = useKnobDispatch();
 
 // const { recordAction, showClickHint, showHoldHint } = useKnobHints();
@@ -147,16 +147,15 @@ function onPressStart(): void {
   triggeredByHold = false;
   clearHoldTimer();
 
-  if (canConfirm.value) {
-    holdTimer = window.setTimeout(async () => {
-      triggeredByHold = true;
-      isHolding.value = false;
-      clearHoldTimer();
-      // recordAction('hold');
+  holdTimer = window.setTimeout(async () => {
+    triggeredByHold = true;
+    isHolding.value = false;
+    clearHoldTimer();
+    if (canConfirm.value) {
       playClickAnimation();
       await onHoldConfirm();
-    }, KNOB_HOLD_MS);
-  }
+    }
+  }, KNOB_HOLD_MS);
 }
 
 async function onPressEnd(): Promise<void> {
@@ -170,7 +169,7 @@ async function onPressEnd(): Promise<void> {
   clearHoldTimer();
   isHolding.value = false;
 
-  if (isCompactLayout.value) {
+  if (layoutType.value === 'small') {
     const now = Date.now();
     if (now - lastClickTime < KNOB_DOUBLE_CLICK_MS && lastClickTime > 0) {
       clearDblClickTimer();

@@ -471,7 +471,7 @@ function onTouchEnd(e: TouchEvent): void {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  color: var(--color-primary);
+  color: var(--color-primary-on-light, var(--color-primary));
   font-size: 14px;
   transition: filter 160ms ease, text-shadow 160ms ease;
 }

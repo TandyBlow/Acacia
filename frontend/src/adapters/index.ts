@@ -26,3 +26,17 @@ export async function loadAdapters(): Promise<AdapterPair> {
     }
   }
 }
+
+export async function loadAuthAdapter(): Promise<AuthAdapter> {
+  switch (config.dataMode) {
+    case 'backend': {
+      const { backendAuth } = await import('./backendAuth');
+      return backendAuth;
+    }
+    case 'local':
+    default: {
+      const { localAuth } = await import('./localAuth');
+      return localAuth;
+    }
+  }
+}

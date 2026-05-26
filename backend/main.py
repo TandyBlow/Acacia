@@ -17,6 +17,7 @@ from lsystem import generate_lsystem_skeleton
 from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
+from style_generator import _cache_key
 from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
 from file_parser import parse_file, get_file_info
 # Lazy import for file_knowledge_service to avoid startup failures
@@ -75,9 +76,74 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return payload
 
 
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """Raise 403 unless the current user is the admin.
+
+    Admin is determined by ADMIN_USER_ID env var, or the first registered user.
+    """
+    admin_env = os.getenv("ADMIN_USER_ID")
+    if admin_env and user["sub"] == admin_env:
+        return user
+    with get_db_ctx() as conn:
+        first = conn.execute(
+            "SELECT id FROM users ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        if first and first["id"] == user["sub"]:
+            return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+
+DEFAULT_WELCOME_CONTENT = """# 欢迎来到 Acacia
+
+## 这是什么？
+
+Acacia 是一个知识管理工具，帮助你记录、组织和巩固学到的知识。你的知识会组织成一棵树，每个知识点都是树上的一个节点。
+
+## 基本操作
+
+- **浏览节点**：点击导航栏中的节点名称即可查看其内容
+- **添加知识点**：点击导航栏底部的"+ 新的知识点"按钮
+- **编辑内容**：在内容区直接编辑 Markdown 文本
+- **移动/删除**：右键点击导航栏中的节点，选择移动或删除
+
+## 旋钮操作
+
+- **单击旋钮**：返回主页
+- **长按旋钮**：确认当前操作（添加/删除/移动节点时）
+
+## 官方知识点
+
+导航栏顶部金色的条目是官方知识点，它们由系统提供，内容不可编辑：
+
+- **今日成长**：每天一道基于你的知识点生成的练习题，完成后当日隐藏，次日刷新
+
+## 核心理念
+
+每个人心里都有一棵树。它可能枯萎，也可能繁茂参天。
+
+记录知识这件事本身不应该有学习成本。Acacia 只做两件事：
+
+1. **输入**：从一个想法、一段文本中提取出属于自己的知识点
+2. **输出**：通过答题巩固已有知识点，发现新的疑问
+"""
+
+
+def _seed_default_official_nodes():
+    """Insert the default welcome node if the official_nodes table is empty."""
+    with get_db_ctx() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM official_nodes").fetchone()[0]
+        if count == 0:
+            conn.execute(
+                "INSERT INTO official_nodes (id, title, content, sort_order, is_published) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (str(uuid4()), "欢迎", DEFAULT_WELCOME_CONTENT, 1, 1),
+            )
+
+
 @app.on_event("startup")
 def startup():
     init_db()
+    _seed_default_official_nodes()
 
 
 @app.get("/")
@@ -481,6 +547,43 @@ def get_style_endpoint(force: int = 0, user: dict = Depends(get_current_user)):
         return compute_style_sqlite(owner_id, force=bool(force))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/debug/profile-text")
+def debug_profile_text(user: dict = Depends(get_current_user)):
+    """Return the knowledge profile text used for style change detection."""
+    owner_id = user["sub"]
+    with get_db_ctx() as conn:
+        nodes = conn.execute(
+            "SELECT id, name, content, domain_tag FROM nodes "
+            "WHERE owner_id = ? AND is_deleted = 0",
+            (owner_id,),
+        ).fetchall()
+
+    profile_parts = []
+    node_breakdown = []
+    for n in nodes:
+        name = n["name"] or ""
+        content = (n["content"] or "")[:200]
+        profile_parts.append(f"{name}:{content}")
+        node_breakdown.append({
+            "name": name,
+            "contentPreview": content,
+            "domainTag": n["domain_tag"] or "",
+            "hasContent": bool((n["content"] or "").strip()),
+        })
+
+    profile_text = "|".join(sorted(profile_parts))
+    profile_hash = _cache_key(profile_text)
+
+    return {
+        "nodeCount": len(nodes),
+        "profileTextLength": len(profile_text),
+        "hash": profile_hash,
+        "hashShort": profile_hash[:16] + "...",
+        "profileText": profile_text,
+        "nodes": sorted(node_breakdown, key=lambda x: x["name"]),
+    }
 
 
 # --- AI node generation ---
@@ -1338,6 +1441,34 @@ def daily_quiz_complete(user: dict = Depends(get_current_user)):
         return {"completed": True, "date": today}
 
 
+@app.post("/daily-quiz/reset")
+def daily_quiz_reset(user: dict = Depends(get_current_user)):
+    owner_id = user["sub"]
+    from review_service_sqlite import datetime_now
+    now = datetime_now()
+    utc_prefix = now[:10]
+    local_date = _get_today_date()
+    with get_db_ctx() as conn:
+        # Clear today's completion marker
+        conn.execute(
+            "DELETE FROM daily_quiz_completion WHERE user_id = ? AND date = ?",
+            (owner_id, local_date),
+        )
+        # Clear all quiz records for this user
+        conn.execute(
+            "DELETE FROM quiz_records WHERE owner_id = ?",
+            (owner_id,),
+        )
+        # Reset all non-deleted nodes for this user back to new
+        conn.execute(
+            """UPDATE nodes SET last_review_at = NULL, next_review_at = NULL,
+               review_state = 'new', stability = 0, difficulty = 0.3, review_count = 0
+               WHERE owner_id = ? AND is_deleted = 0""",
+            (owner_id,),
+        )
+        return {"reset": True, "utc_date": utc_prefix, "local_date": local_date}
+
+
 @app.get("/due-reviews")
 def due_reviews_endpoint(limit: int = 20, user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
@@ -1366,3 +1497,125 @@ def review_stats_endpoint(user: dict = Depends(get_current_user)):
             return get_review_stats_sqlite(owner_id, conn)
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# --- Official Nodes (admin management) ---
+
+class OfficialNodeCreate(BaseModel):
+    title: str
+    content: str = ""
+    sort_order: float = 0
+    is_published: bool = False
+
+
+class OfficialNodeUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    sort_order: float | None = None
+    is_published: bool | None = None
+
+
+@app.get("/admin/check")
+def admin_check(user: dict = Depends(get_current_user)):
+    try:
+        require_admin(user)
+        return {"is_admin": True}
+    except HTTPException:
+        return {"is_admin": False}
+
+
+@app.get("/admin/official-nodes")
+def admin_list_official_nodes(user: dict = Depends(require_admin)):
+    with get_db_ctx() as conn:
+        rows = conn.execute(
+            "SELECT id, title, content, sort_order, is_published, created_at, updated_at "
+            "FROM official_nodes ORDER BY sort_order ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.post("/admin/official-nodes")
+def admin_create_official_node(payload: OfficialNodeCreate, user: dict = Depends(require_admin)):
+    node_id = str(uuid4())
+    with get_db_ctx() as conn:
+        conn.execute(
+            "INSERT INTO official_nodes (id, title, content, sort_order, is_published) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (node_id, payload.title.strip(), payload.content, payload.sort_order, int(payload.is_published)),
+        )
+        row = conn.execute(
+            "SELECT id, title, content, sort_order, is_published, created_at, updated_at "
+            "FROM official_nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+    return dict(row)
+
+
+@app.patch("/admin/official-nodes/{node_id}")
+def admin_update_official_node(node_id: str, payload: OfficialNodeUpdate, user: dict = Depends(require_admin)):
+    with get_db_ctx() as conn:
+        existing = conn.execute(
+            "SELECT id FROM official_nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official node not found")
+
+        updates = []
+        values = []
+        for field in ("title", "content", "sort_order", "is_published"):
+            val = getattr(payload, field)
+            if val is not None:
+                if field == "is_published":
+                    val = int(val)
+                elif field == "title":
+                    val = val.strip()
+                updates.append(f"{field} = ?")
+                values.append(val)
+        if updates:
+            values.append(node_id)
+            conn.execute(
+                f"UPDATE official_nodes SET {', '.join(updates)}, updated_at = datetime('now') WHERE id = ?",
+                values,
+            )
+    return {"ok": True}
+
+
+@app.delete("/admin/official-nodes/{node_id}")
+def admin_delete_official_node(node_id: str, user: dict = Depends(require_admin)):
+    with get_db_ctx() as conn:
+        existing = conn.execute(
+            "SELECT id FROM official_nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official node not found")
+        conn.execute("DELETE FROM official_nodes WHERE id = ?", (node_id,))
+    return {"ok": True}
+
+
+# --- Official Nodes (public) ---
+
+@app.get("/official-nodes")
+def list_official_nodes():
+    with get_db_ctx() as conn:
+        rows = conn.execute(
+            "SELECT id, title, sort_order FROM official_nodes "
+            "WHERE is_published = 1 ORDER BY sort_order ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.get("/official-nodes/{node_id}")
+def get_official_node(node_id: str, user: dict = Depends(get_current_user)):
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            "SELECT id, title, content, sort_order, is_published, created_at, updated_at "
+            "FROM official_nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official node not found")
+        record = dict(row)
+        if not record["is_published"]:
+            try:
+                require_admin(user)
+            except HTTPException:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official node not found")
+        return record

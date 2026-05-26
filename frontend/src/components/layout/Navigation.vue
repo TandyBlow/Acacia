@@ -98,7 +98,7 @@ const store = useNodeStore();
 const authStore = useAuthStore();
 const { childNodes, officialNodes, activeNode, viewState } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
-const { isCompactLayout } = useKnobDispatch();
+const { layoutType } = useKnobDispatch();
 const {
   phase: otPhase,
   animating: otAnimating,
@@ -121,7 +121,7 @@ const visibleOfficialNodes = computed(() =>
 
 const pressedOfficialId = computed<string | null>(() => {
   const state = viewState.value;
-  return state === 'daily_quiz' || state === 'welcome' || state === 'tree_overview' ? state : null;
+  return state === 'daily_quiz' || state === 'official_content' || state === 'tree_overview' ? state : null;
 });
 
 // Official section visibility, synchronized with page nav animation
@@ -323,10 +323,10 @@ watch(childNodes, () => {
   }
 }, { immediate: true });
 
-// Without this reset, resizing to large layout while in add/daily_quiz/welcome
+// Without this reset, resizing to large layout while in add/daily_quiz/official_content
 // leaves the node list permanently hidden.
-watch(isCompactLayout, (compact) => {
-  if (!compact) {
+watch(layoutType, (lt) => {
+  if (lt !== 'small') {
     hideNodeList.value = false;
     hideNonAnchorItems.value = false;
     otAnchorItemId.value = null;
@@ -341,12 +341,12 @@ watch(isCompactLayout, (compact) => {
 // Reset hideNodeList when leaving add state in small layout.
 // animateSmallLayoutAdd sets hideNodeList=true; cancelOperation (or any
 // other exit from add) must clear it so the node list reappears.
-// Also reset official transition state when leaving daily_quiz/welcome.
+// Also reset official transition state when leaving daily_quiz/official_content.
 watch(() => store.viewState, (newState, oldState) => {
   if (oldState === 'add' && newState !== 'add') {
     hideNodeList.value = false;
   }
-  if ((oldState === 'daily_quiz' || oldState === 'welcome') && newState === 'display') {
+  if ((oldState === 'daily_quiz' || oldState === 'official_content') && newState === 'display') {
     resetOfficialTransition();
   }
 });
@@ -422,7 +422,7 @@ function onAddClick(): void {
     store.cancelOperation();
     return;
   }
-  if (isCompactLayout.value) {
+  if (layoutType.value === 'small') {
     animateSmallLayoutAdd();
   } else {
     store.startAdd();
@@ -433,7 +433,7 @@ function onOfficialClick(item: NavItem): void {
   if (pressedOfficialId.value === item.id) {
     resetOfficialTransition();
     store.cancelOperation();
-  } else if (isCompactLayout.value) {
+  } else if (layoutType.value === 'small') {
     const rowEl = getRowElement(item.id);
     if (rowEl) {
       startSmallLayoutOfficialTransition(item, rowEl as HTMLElement);
@@ -542,7 +542,7 @@ function onWheel(e: WheelEvent): void {
   const direction: 'up' | 'down' = e.deltaY > 0 ? 'down' : 'up';
   lastScrollDirection.value = direction;
 
-  if (scrollQueue.value.length < 20) {
+  if (scrollQueue.value.length < 6) {
     scrollQueue.value.push({ direction });
   }
 
@@ -552,8 +552,12 @@ function onWheel(e: WheelEvent): void {
 }
 
 let touchY = 0;
+let touchStartTime = 0;
 function onTouchStart(e: TouchEvent): void {
-  if (e.touches[0]) touchY = e.touches[0].clientY;
+  if (e.touches[0]) {
+    touchY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+  }
 }
 function onTouchEnd(e: TouchEvent): void {
   if (!e.changedTouches[0]) return;
@@ -561,7 +565,17 @@ function onTouchEnd(e: TouchEvent): void {
   if (Math.abs(dy) < 30) return;
 
   const direction: 'up' | 'down' = dy > 0 ? 'down' : 'up';
-  scrollQueue.value.push({ direction });
+  const rows = Math.max(1, Math.round(Math.abs(dy) / ROW_STEP));
+
+  // Track speed for momentum (rows per second)
+  const dt = Date.now() - touchStartTime;
+  if (dt > 0) {
+    currentSpeed.value = rows / (dt / 1000);
+  }
+
+  for (let i = 0; i < rows && scrollQueue.value.length < 20; i++) {
+    scrollQueue.value.push({ direction });
+  }
   lastScrollDirection.value = direction;
 
   if (!isAnimating.value) {
@@ -882,13 +896,13 @@ onUnmounted(() => ro?.disconnect());
   display: flex;
   align-items: center;
   padding: 0 14px;
-  background: rgba(255, 187, 51, 0.12);
+  background: color-mix(in srgb, var(--color-hint) 12%, transparent);
 }
 
 .official-name {
   font-size: 14px;
   font-weight: 700;
-  color: #FFBB33;
+  color: var(--color-hint);
   transition: filter 160ms ease, text-shadow 160ms ease;
 }
 

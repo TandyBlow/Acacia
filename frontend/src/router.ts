@@ -11,6 +11,10 @@ const router = createRouter({
       name: 'home',
       component: Empty,
     },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
+    },
   ],
 });
 

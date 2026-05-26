@@ -2,12 +2,12 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { findTreeNode, collectTreeDescendantIds } from '../utils/treeUtils';
 import * as nodeCache from '../services/nodeCache';
-import type { DataAdapter, NodeRecord, TreeNode, ViewState } from '../types/node';
+import type { DataAdapter, NodeRecord, TreeNode, ViewState, OfficialNodeSummary } from '../types/node';
 import { ViewStates } from '../types/node';
 import { UI } from '../constants/uiStrings';
 
 import { usePageTransition } from '../composables/usePageTransition';
-import { getToken } from '../utils/api';
+import { apiFetch, getToken } from '../utils/api';
 import { useStyleStore } from './styleStore';
 import { useAuthStore } from './authStore';
 
@@ -77,6 +77,9 @@ export const useNodeStore = defineStore('node', () => {
   const dailyQuizVisible = ref(true);
   const dailyQuizDueCount = ref(0);
 
+  // 内容型官方知识点（从后端获取）
+  const officialNodeSummaries = ref<OfficialNodeSummary[]>([]);
+
   const isEditState = computed(
     () =>
       viewState.value === ViewStates.ADD ||
@@ -87,7 +90,7 @@ export const useNodeStore = defineStore('node', () => {
   const isTreeState = computed(() => viewState.value === ViewStates.TREE || viewState.value === ViewStates.MOVE);
   const isTreeOverviewState = computed(() => viewState.value === ViewStates.TREE_OVERVIEW);
   const isDailyQuizState = computed(() => viewState.value === ViewStates.DAILY_QUIZ);
-  const isWelcomeState = computed(() => viewState.value === ViewStates.WELCOME);
+  const isOfficialContentState = computed(() => viewState.value === ViewStates.OFFICIAL_CONTENT);
   const isConfirmState = computed(() => isEditState.value);
 
   const canConfirm = computed(() => {
@@ -122,26 +125,32 @@ export const useNodeStore = defineStore('node', () => {
     return UI.official.dailyQuiz;
   });
 
-  const officialNodes = computed<OfficialNode[]>(() => [
-    {
-      id: 'daily_quiz',
-      name: dailyQuizLabel.value,
-      visible: dailyQuizVisible.value,
-      action: () => startDailyQuiz(),
-    },
-    {
-      id: 'tree_overview',
-      name: UI.official.treeOverview,
-      visible: true,
-      action: () => startTreeOverview(),
-    },
-    {
-      id: 'welcome',
-      name: UI.official.welcome,
-      visible: true,
-      action: () => startWelcome(),
-    },
-  ]);
+  const officialNodes = computed<OfficialNode[]>(() => {
+    const items: OfficialNode[] = [
+      {
+        id: 'daily_quiz',
+        name: dailyQuizLabel.value,
+        visible: dailyQuizVisible.value,
+        action: () => startDailyQuiz(),
+      },
+      {
+        id: 'tree_overview',
+        name: UI.official.treeOverview,
+        visible: true,
+        action: () => startTreeOverview(),
+      },
+    ];
+    // Append content-type official nodes from backend
+    for (const n of officialNodeSummaries.value) {
+      items.push({
+        id: n.id,
+        name: n.title,
+        visible: true,
+        action: () => startOfficialContent(n.id),
+      });
+    }
+    return items;
+  });
 
   function clearTransientState(): void {
     operationNode.value = null;
@@ -182,7 +191,7 @@ export const useNodeStore = defineStore('node', () => {
       pendingNodeContext.value = cached;
     }
 
-    startTransition({ type: 'navigate', nodeId }, 'large');
+    startTransition({ type: 'navigate', nodeId });
   }
 
   function applyPendingSharedData(): void {
@@ -209,6 +218,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function initialize(): Promise<void> {
+    fetchOfficialNodes();
     await loadNode(null);
   }
 
@@ -226,7 +236,7 @@ export const useNodeStore = defineStore('node', () => {
     blockedParentIds.value = [];
 
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'add' }, 'large');
+    startTransition({ type: 'viewState', newState: 'add' });
   }
 
   async function startDelete(node: NodeRecord): Promise<void> {
@@ -243,7 +253,7 @@ export const useNodeStore = defineStore('node', () => {
         const hit = findTreeNode(treeNodes.value, node.id);
         operationHasChildren.value = Boolean(hit && hit.children.length > 0);
       },
-    }, 'large');
+    });
   }
 
   async function startMove(node: NodeRecord): Promise<void> {
@@ -263,7 +273,7 @@ export const useNodeStore = defineStore('node', () => {
         collectTreeDescendantIds(hit, blocked);
         blockedParentIds.value = Array.from(blocked);
       },
-    }, 'large');
+    });
   }
 
   function setMoveTargetParent(id: string | null): void {
@@ -274,21 +284,14 @@ export const useNodeStore = defineStore('node', () => {
     clearTransientState();
 
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'display' }, 'large');
+    startTransition({ type: 'viewState', newState: 'display' });
   }
 
   function startDailyQuiz(): void {
     errorMessage.value = null;
 
     const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'daily_quiz' }, 'large');
-  }
-
-  function startWelcome(): void {
-    errorMessage.value = null;
-
-    const { startTransition } = usePageTransition();
-    startTransition({ type: 'viewState', newState: 'welcome' }, 'large');
+    startTransition({ type: 'viewState', newState: 'daily_quiz' });
   }
 
   function startTreeOverview(): void {
@@ -301,7 +304,42 @@ export const useNodeStore = defineStore('node', () => {
       setup: async () => {
         await refreshTree();
       },
-    }, 'large');
+    });
+  }
+
+  async function fetchOfficialNodes(): Promise<void> {
+    try {
+      officialNodeSummaries.value = await apiFetch<OfficialNodeSummary[]>('/official-nodes');
+    } catch {
+      officialNodeSummaries.value = [];
+    }
+  }
+
+  function startOfficialContent(nodeId: string): void {
+    errorMessage.value = null;
+
+    const { startTransition } = usePageTransition();
+    startTransition({
+      type: 'viewState',
+      newState: 'official_content',
+      setup: async () => {
+        await loadOfficialNodeContent(nodeId);
+      },
+    });
+  }
+
+  const officialNodeContent = ref<{ id: string; title: string; content: string } | null>(null);
+
+  async function loadOfficialNodeContent(nodeId: string): Promise<void> {
+    try {
+      officialNodeContent.value = await apiFetch<{ id: string; title: string; content: string }>(`/official-nodes/${nodeId}`);
+    } catch {
+      officialNodeContent.value = null;
+    }
+  }
+
+  function clearOfficialContent(): void {
+    officialNodeContent.value = null;
   }
 
   async function checkDailyQuizStatus(): Promise<void> {
@@ -352,7 +390,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function onKnobClick(): Promise<void> {
-    if (viewState.value === ViewStates.DAILY_QUIZ || viewState.value === ViewStates.WELCOME || viewState.value === ViewStates.TREE_OVERVIEW) {
+    if (viewState.value === ViewStates.DAILY_QUIZ || viewState.value === ViewStates.TREE_OVERVIEW || viewState.value === ViewStates.OFFICIAL_CONTENT) {
       cancelOperation();
       return;
     }
@@ -426,7 +464,7 @@ export const useNodeStore = defineStore('node', () => {
     isTreeState,
     isTreeOverviewState,
     isDailyQuizState,
-    isWelcomeState,
+    isOfficialContentState,
     isConfirmState,
     isEmpty,
     canConfirm,
@@ -434,6 +472,10 @@ export const useNodeStore = defineStore('node', () => {
     dailyQuizVisible,
     dailyQuizDueCount,
     officialNodes,
+    officialNodeContent,
+    fetchOfficialNodes,
+    startOfficialContent,
+    clearOfficialContent,
     initialize,
     loadNode,
     applyPendingData,
@@ -443,7 +485,6 @@ export const useNodeStore = defineStore('node', () => {
     startDelete,
     startMove,
     startDailyQuiz,
-    startWelcome,
     startTreeOverview,
     checkDailyQuizStatus,
     setMoveTargetParent,

@@ -3,7 +3,6 @@ import type {
   RegionRegistration,
   TransitionTrigger,
   PageState,
-  LayoutType,
 } from '../types/transition';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
@@ -13,18 +12,16 @@ import { ViewStates } from '../types/node';
 const regions = new Map<string, RegionRegistration>();
 const isTransitioning = ref(false);
 
-function getCurrentPageState(layout: LayoutType): PageState {
+function getCurrentPageState(): PageState {
   const nodeStore = useNodeStore();
   const authStore = useAuthStore();
-  const { compactMode, isCompactLayout } = useKnobDispatch();
-
-  const actualLayout: LayoutType = isCompactLayout.value ? 'small' : layout;
+  const { compactMode, layoutType } = useKnobDispatch();
 
   return {
     viewState: nodeStore.viewState,
     activeNode: nodeStore.activeNode ? { id: nodeStore.activeNode.id } : null,
-    isOfficialNode: nodeStore.isDailyQuizState || nodeStore.isWelcomeState,
-    layout: actualLayout,
+    isOfficialNode: nodeStore.isDailyQuizState || nodeStore.isOfficialContentState,
+    layout: layoutType.value,
     compactMode: compactMode.value,
     isAuthenticated: authStore.isAuthenticated,
   };
@@ -42,8 +39,8 @@ async function executeDataLoading(trigger: TransitionTrigger): Promise<void> {
       'add': ViewStates.ADD,
       'tree': ViewStates.TREE,
       'daily_quiz': ViewStates.DAILY_QUIZ,
-      'welcome': ViewStates.WELCOME,
       'tree_overview': ViewStates.TREE_OVERVIEW,
+      'official_content': ViewStates.OFFICIAL_CONTENT,
       'display': ViewStates.DISPLAY,
     } as Record<string, string>;
     const vs = stateMap[trigger.newState] || ViewStates.DISPLAY;
@@ -83,7 +80,6 @@ export function usePageTransition() {
 
   async function startTransition(
     trigger: TransitionTrigger,
-    layout: LayoutType
   ): Promise<void> {
     if (isTransitioning.value) {
       return;
@@ -94,7 +90,7 @@ export function usePageTransition() {
     // sees the correct viewState and routes to the proper animation path.
     if (trigger.type === 'navigate') {
       const nodeStore = useNodeStore();
-      if (nodeStore.isEditState || nodeStore.isDailyQuizState || nodeStore.isWelcomeState) {
+      if (nodeStore.isEditState || nodeStore.isDailyQuizState || nodeStore.isOfficialContentState) {
         nodeStore.setViewState('display');
       }
     }
@@ -117,13 +113,13 @@ export function usePageTransition() {
       // Defer compact mode auto-switch to after the transition completes
       // so animateCompactToggle can run properly (not blocked by isTransitioning)
       if (trigger.type === 'navigate') {
-        const { compactMode, isCompactLayout } = useKnobDispatch();
-        if (isCompactLayout.value && compactMode.value === 'nav') {
+        const { compactMode, layoutType } = useKnobDispatch();
+        if (layoutType.value === 'small' && compactMode.value === 'nav') {
           deferredCompactSwitch = true;
         }
       }
 
-      const newState = getCurrentPageState(layout);
+      const newState = getCurrentPageState();
 
       const skipIds = deferredCompactSwitch ? new Set(['navigation', 'content']) : undefined;
       applyRegionVisibility(newState, skipIds);
@@ -141,8 +137,8 @@ export function usePageTransition() {
     }
   }
 
-  function syncRegionVisibility(layout: LayoutType): void {
-    applyRegionVisibility(getCurrentPageState(layout));
+  function syncRegionVisibility(): void {
+    applyRegionVisibility(getCurrentPageState());
   }
 
   return {

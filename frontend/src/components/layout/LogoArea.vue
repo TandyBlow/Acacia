@@ -18,6 +18,6 @@
   font-size: 28px;
   font-weight: 800;
   letter-spacing: 0.8px;
-  color: var(--color-primary);
+  color: var(--color-primary-on-light, var(--color-primary));
 }
 </style>

@@ -109,16 +109,18 @@ import TreeCanvas from '../components/tree/TreeCanvas.vue';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import AuthPanel from '../components/auth/AuthPanel.vue';
 import DailyQuizPanel from '../components/official/DailyQuizPanel.vue';
-import WelcomePanel from '../components/official/WelcomePanel.vue';
+import OfficialContentPanel from '../components/official/OfficialContentPanel.vue';
 import DevPanel from '../components/dev/DevPanel.vue';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDevStore } from '../stores/devStore';
+import { useStyleStore } from '../stores/styleStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch, type CompactMode } from '../composables/useKnobDispatch';
 import { usePageTransition } from '../composables/usePageTransition';
+import type { LayoutType } from '../types/transition';
 import { useOfficialTransition } from '../composables/useOfficialTransition';
-import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
+import { COMPACT_BREAKPOINT, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
 
 /**
@@ -126,13 +128,14 @@ import { UI } from '../constants/uiStrings';
  * Each panel component supplies its own GlassWrapper to avoid nested active areas.
  * When adding a new official knowledge point, add its viewState here.
  */
-const CONTENT_DIRECT_STATES = ['add', 'daily_quiz', 'welcome', 'tree_overview'];
+const CONTENT_DIRECT_STATES = ['add', 'daily_quiz', 'tree_overview', 'official_content'];
 
 const isDev = import.meta.env.DEV;
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
 const devStore = useDevStore();
+const styleStore = useStyleStore();
 const { activeNode, isEmpty } = storeToRefs(nodeStore);
 const {
   mode: authMode,
@@ -141,7 +144,7 @@ const {
 } = storeToRefs(authStore);
 
 useAppInit();
-const { compactMode, isCompactLayout } = useKnobDispatch();
+const { compactMode, layoutType } = useKnobDispatch();
 
 const { registerRegion, unregisterRegion, startTransition, syncRegionVisibility, isTransitioning } = usePageTransition();
 
@@ -175,7 +178,6 @@ const treeOverlayActive = ref(false);
 const treeMaskRef = ref<HTMLElement | null>(null);
 
 // Compact layout tracking
-const isCompact = ref(false);
 const isTooSmall = ref(false);
 
 // Initial page load: content starts sunken (only bottom areas visible),
@@ -313,35 +315,58 @@ function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
   }) as T;
 }
 
-function updateCompactState(): void {
+function updateLayoutState(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
 
-  isTooSmall.value = w <= MIN_SPACE_WIDTH && h <= MIN_SPACE_HEIGHT;
-  const wasCompact = isCompact.value;
-  isCompact.value = w <= COMPACT_BREAKPOINT || h <= COMPACT_HEIGHT_BREAKPOINT;
-  isCompactLayout.value = isCompact.value;
+  isTooSmall.value = h < MIN_SPACE_HEIGHT;
 
-  if (wasCompact !== isCompact.value) {
-    const layout = isCompact.value ? 'small' : 'large';
-    startTransition({ type: 'layout', newLayout: layout }, layout);
+  let newLayout: LayoutType;
+  if (h < MIN_SPACE_HEIGHT) {
+    newLayout = 'small'; // doesn't matter, won't be shown
+  } else if (w < COMPACT_BREAKPOINT) {
+    newLayout = 'small';
+  } else if (w > h) {
+    newLayout = 'large';
+  } else {
+    newLayout = 'medium';
   }
 
-  if (!isCompact.value) {
+  const wasLayout = layoutType.value;
+  layoutType.value = newLayout;
+
+  if (wasLayout !== newLayout) {
+    startTransition({ type: 'layout', newLayout });
+  }
+
+  if (newLayout !== 'small') {
     compactMode.value = 'content';
   }
 }
 
-const handleResize = debounce(updateCompactState, 150);
+const handleResize = debounce(updateLayoutState, 150);
 
 // Non-debounced: immediately fix region visibility when crossing the compact
 // threshold to prevent nav/content overlap during the 150ms debounce window.
 // CSS @media applies instantly on resize; this keeps JS display state in sync.
 function handleResizeImmediate(): void {
-  const newCompact = window.innerWidth <= COMPACT_BREAKPOINT || window.innerHeight <= COMPACT_HEIGHT_BREAKPOINT;
-  if (newCompact !== isCompactLayout.value) {
-    isCompactLayout.value = newCompact;
-    syncRegionVisibility(newCompact ? 'small' : 'large');
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  let newLayout: LayoutType;
+  if (h < MIN_SPACE_HEIGHT) {
+    newLayout = 'small';
+  } else if (w < COMPACT_BREAKPOINT) {
+    newLayout = 'small';
+  } else if (w > h) {
+    newLayout = 'large';
+  } else {
+    newLayout = 'medium';
+  }
+
+  if (newLayout !== layoutType.value) {
+    layoutType.value = newLayout;
+    syncRegionVisibility();
   }
 }
 
@@ -411,7 +436,7 @@ onMounted(() => {
   }
 
   // Initial visibility sync — must run after regions are registered
-  updateCompactState();
+  updateLayoutState();
 });
 
 onBeforeUnmount(() => {
@@ -443,14 +468,14 @@ watch(
 );
 
 watch(compactMode, (newMode, oldMode) => {
-  if (newMode === oldMode || !isCompact.value) return;
+  if (newMode === oldMode || layoutType.value !== 'small') return;
   if (isTransitioning.value) return;
   if (contentAnimating.value) return;
   animateCompactToggle(oldMode as CompactMode, newMode as CompactMode);
 });
 
 const isSmallLayoutMixed = computed(() => {
-  if (!isCompact.value || compactMode.value !== 'nav') return false;
+  if (layoutType.value !== 'small' || compactMode.value !== 'nav') return false;
   const specialStates = CONTENT_DIRECT_STATES;
   return specialStates.includes(nodeStore.viewState);
 });
@@ -470,9 +495,11 @@ const skipContentGlass = computed(() => {
 const displayedSkipContentGlass = ref(skipContentGlass.value);
 
 const layoutClasses = computed(() => ({
-  'compact': isCompact.value,
-  'compact-content': isCompact.value && compactMode.value === 'content',
-  'compact-nav': isCompact.value && compactMode.value === 'nav',
+  'large': layoutType.value === 'large',
+  'medium': layoutType.value === 'medium',
+  'compact': layoutType.value === 'small',
+  'compact-content': layoutType.value === 'small' && compactMode.value === 'content',
+  'compact-nav': layoutType.value === 'small' && compactMode.value === 'nav',
   'compact-mixed': isSmallLayoutMixed.value,
   'is-too-small': isTooSmall.value,
   'page-animating': isPageAnimating.value,
@@ -484,7 +511,7 @@ const showEmptyBackground = computed(() =>
 );
 
 const showTree = computed(() => {
-  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isWelcomeState && !nodeStore.isTreeOverviewState && !isEmpty.value;
+  return isAuthenticated.value && !activeNode.value && !nodeStore.isConfirmState && !nodeStore.isDailyQuizState && !nodeStore.isOfficialContentState && !nodeStore.isTreeOverviewState && !isEmpty.value;
 });
 
 const nonTreeContent = computed(() => {
@@ -506,8 +533,8 @@ const nonTreeContent = computed(() => {
   if (nodeStore.isDailyQuizState) {
     return DailyQuizPanel;
   }
-  if (nodeStore.isWelcomeState) {
-    return WelcomePanel;
+  if (nodeStore.isOfficialContentState) {
+    return OfficialContentPanel;
   }
   return MarkdownEditor;
 });
@@ -552,7 +579,7 @@ async function animateContentTransition() {
   // Skip animation when content area is hidden in compact nav mode.
   // The deferred compactMode switch will trigger animateCompactToggle
   // which handles the nav→content transition with proper animation.
-  if (isCompact.value && compactMode.value === 'nav') {
+  if (layoutType.value === 'small' && compactMode.value === 'nav') {
     nodeStore.applyPendingData();
     return;
   }
@@ -576,6 +603,16 @@ async function animateContentTransition() {
     }
 
     nodeStore.applyPendingData();
+
+    // Wait for style to load before revealing bottom areas.
+    // Unauthenticated users always use default CSS style, no wait needed.
+    if (!styleStore.loaded && authStore.isAuthenticated) {
+      await new Promise<void>(resolve => {
+        const stop = watch(() => styleStore.loaded, (v) => {
+          if (v) { stop(); resolve(); }
+        });
+      });
+    }
 
     // Update displayed refs silently — content stays hidden by initial-loading CSS
     displayedSkipContentGlass.value = skipContentGlass.value;
@@ -1613,17 +1650,6 @@ watch(
   overflow: hidden;
 }
 
-.content-direct :deep(.glass-raised) {
-  box-shadow: none;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-.content-direct :deep(.glass-content) {
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 /* Slide-in animation for content-direct (reuses contentPhase state machine).
    Mirrors the content-glass > .glass-content slide but targets the
    content-direct wrapper itself. */
@@ -1662,7 +1688,7 @@ watch(
   transition: opacity 240ms ease;
 }
 
-@media (max-width: 900px) {
+@media (orientation: portrait) and (min-width: 601px) {
   .layout {
     padding: 16px;
     grid-template-columns: 241px minmax(0, 1fr);
@@ -1830,6 +1856,32 @@ watch(
    with inner shadows and borders, no text, no glass items.
    After playInitialAnimation(), slide-in + rise animation plays.
    ================================================================ */
+
+/* Hide inset shell visuals until style is loaded so default blue
+   colors never flash before the account's custom style is applied. */
+.layout.initial-loading .inset-shell {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.layout.initial-loading .content-inset::after {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Logo text uses var(--color-primary) which defaults to blue */
+.layout.initial-loading .logo-area :deep(.logo-title),
+.layout.initial-loading .logo-area :deep(.logo-status) {
+  opacity: 0;
+}
+
+/* Knob well has its own inset ring (not .inset-shell) */
+.layout.initial-loading .knob-area :deep(.knob-well) {
+  border-color: transparent;
+  box-shadow: none;
+}
 
 /* Content area: hide glass content (already handled by slide-in-prep later) */
 .layout.initial-loading .content-glass > .glass-content {
