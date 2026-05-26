@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 import { getDataAdapter } from './nodeStore';
+import type { StyleResult } from '../types/node';
 
 export type ThemeStyle = string;
 
@@ -156,42 +157,37 @@ export const useStyleStore = defineStore('style', () => {
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
-      let data = await adapter.fetchStyle?.(userId);
-      if (!data) return;
+      const resp = await adapter.fetchStyle?.(userId);
+      if (!resp) return;
 
       // If generation is in progress, poll until it completes
-      if (data.generating) {
-        const completed = await _waitForStyleGeneration(userId);
-        if (!completed) return;
-        data = completed;
-      }
+      const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
+      if (!data) return;
 
-      if (data) {
-        const bgUrl = data.backgroundUrl ?? null;
-        const newStyle = data.style ?? 'default';
+      const bgUrl = data.backgroundUrl ?? null;
+      const newStyle = data.style ?? 'default';
 
-        // Non-default styles require a background image; try disk fallback if missing
-        if (newStyle !== 'default') {
-          const resolvedBgUrl = bgUrl ?? await _tryRecoverBgUrl(userId);
-          if (!resolvedBgUrl) {
-            console.warn('[styleStore] AI style has no background URL, keeping default');
-          } else {
-            const ok = await _preloadImage(resolvedBgUrl);
-            if (!ok) {
-              console.warn('[styleStore] Background image preload failed, keeping default');
-            } else {
-              backgroundUrl.value = resolvedBgUrl;
-              styleParams.value = (data.params as Record<string, unknown>) ?? null;
-              distribution.value = data.distribution ?? {};
-              style.value = newStyle;
-            }
-          }
+      // Non-default styles require a background image; try disk fallback if missing
+      if (newStyle !== 'default') {
+        const resolvedBgUrl = bgUrl ?? await _tryRecoverBgUrl(userId);
+        if (!resolvedBgUrl) {
+          console.warn('[styleStore] AI style has no background URL, keeping default');
         } else {
-          backgroundUrl.value = bgUrl;
-          styleParams.value = (data.params as Record<string, unknown>) ?? null;
-          distribution.value = data.distribution ?? {};
-          style.value = newStyle;
+          const ok = await _preloadImage(resolvedBgUrl);
+          if (!ok) {
+            console.warn('[styleStore] Background image preload failed, keeping default');
+          } else {
+            backgroundUrl.value = resolvedBgUrl;
+            styleParams.value = (data.params as Record<string, unknown>) ?? null;
+            distribution.value = data.distribution ?? {};
+            style.value = newStyle;
+          }
         }
+      } else {
+        backgroundUrl.value = bgUrl;
+        styleParams.value = (data.params as Record<string, unknown>) ?? null;
+        distribution.value = data.distribution ?? {};
+        style.value = newStyle;
       }
     } catch {
       // silent fallback
@@ -233,15 +229,12 @@ export const useStyleStore = defineStore('style', () => {
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
-      let data = await adapter.fetchStyle?.(userId);
-      if (!data) return;
+      const resp = await adapter.fetchStyle?.(userId);
+      if (!resp) return;
 
       // If generation is in progress, poll until it completes
-      if (data.generating) {
-        const completed = await _waitForStyleGeneration(userId);
-        if (!completed) return;
-        data = completed;
-      }
+      const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
+      if (!data) return;
 
       // Skip if same as current
       if (data.style === style.value && _paramsEqual(data.params as Record<string, unknown> | null, styleParams.value)) {
@@ -294,15 +287,12 @@ export const useStyleStore = defineStore('style', () => {
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
-      let data = await adapter.fetchStyle?.(userId, true);
-      if (!data) return;
+      const resp = await adapter.fetchStyle?.(userId, true);
+      if (!resp) return;
 
       // If another generation is already in progress, wait for it
-      if (data.generating) {
-        const completed = await _waitForStyleGeneration(userId);
-        if (!completed) return;
-        data = completed;
-      }
+      const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
+      if (!data) return;
 
       const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
