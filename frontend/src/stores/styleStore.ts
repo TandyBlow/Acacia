@@ -11,9 +11,9 @@ function _linearize(c: number): number {
 }
 
 function _relativeLuminance(rgb: number[]): number {
-  return 0.2126 * _linearize(rgb[0])
-       + 0.7152 * _linearize(rgb[1])
-       + 0.0722 * _linearize(rgb[2]);
+  return 0.2126 * _linearize(rgb[0]!)
+       + 0.7152 * _linearize(rgb[1]!)
+       + 0.0722 * _linearize(rgb[2]!);
 }
 
 function _contrastRatio(lum1: number, lum2: number): number {
@@ -34,7 +34,7 @@ function _ensureContrastAgainstWhite(rgb: number[]): number[] {
   let best = [...rgb];
   for (let i = 0; i < 12; i++) {
     const mid = (lo + hi) / 2;
-    const blended = [rgb[0] * (1 - mid), rgb[1] * (1 - mid), rgb[2] * (1 - mid)];
+    const blended = [rgb[0]! * (1 - mid), rgb[1]! * (1 - mid), rgb[2]! * (1 - mid)];
     if (_contrastRatio(_relativeLuminance(blended), WHITE_LUMINANCE) >= MIN_CONTRAST_AGAINST_WHITE) {
       best = blended;
       hi = mid;
@@ -141,14 +141,12 @@ export const useStyleStore = defineStore('style', () => {
     // Text colors: prefer dedicated fields, fall back to leaf colors for backwards compat
     const textPrimary = Array.isArray(p.textPrimaryColor) ? p.textPrimaryColor as number[] : leafMid;
     const textHint = Array.isArray(p.textHintColor) ? p.textHintColor as number[] : leafLight;
-    const skyTop = Array.isArray(p.skyTopColor) ? p.skyTopColor as number[] : [0.5, 0.8, 0.9];
     const skyBottom = Array.isArray(p.skyBottomColor) ? p.skyBottomColor as number[] : [0.9, 0.9, 0.9];
 
     const primary = colorTupleToCSS(textPrimary);
     const hint = colorTupleToCSS(textHint);
     const glassBorderRgb = textPrimary.map((v) => Math.round(v * 255));
     const glassBgRgb = textPrimary.map((v) => Math.round(v * 255));
-    const skyTopRgb = skyTop.map((v) => Math.round(v * 255));
     const skyBottomRgb = skyBottom.map((v) => Math.round(v * 255));
 
     el.style.setProperty('--color-primary', primary);
