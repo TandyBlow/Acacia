@@ -5,6 +5,46 @@ import type { StyleResult } from '../types/node';
 
 export type ThemeStyle = string;
 
+function _linearize(c: number): number {
+  if (c <= 0.04045) return c / 12.92;
+  return Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+function _relativeLuminance(rgb: number[]): number {
+  return 0.2126 * _linearize(rgb[0])
+       + 0.7152 * _linearize(rgb[1])
+       + 0.0722 * _linearize(rgb[2]);
+}
+
+function _contrastRatio(lum1: number, lum2: number): number {
+  const lighter = Math.max(lum1, lum2);
+  const darker = Math.min(lum1, lum2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const MIN_CONTRAST_AGAINST_WHITE = 4.5;
+const WHITE_LUMINANCE = 1.0;
+
+function _ensureContrastAgainstWhite(rgb: number[]): number[] {
+  const textLum = _relativeLuminance(rgb);
+  if (_contrastRatio(textLum, WHITE_LUMINANCE) >= MIN_CONTRAST_AGAINST_WHITE) {
+    return rgb;
+  }
+  let lo = 0.0, hi = 1.0;
+  let best = [...rgb];
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    const blended = [rgb[0] * (1 - mid), rgb[1] * (1 - mid), rgb[2] * (1 - mid)];
+    if (_contrastRatio(_relativeLuminance(blended), WHITE_LUMINANCE) >= MIN_CONTRAST_AGAINST_WHITE) {
+      best = blended;
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  return best.map(v => Math.round(v * 10000) / 10000);
+}
+
 function colorTupleToCSS(rgb: unknown): string {
   if (Array.isArray(rgb) && rgb.length >= 3) {
     const [r, g, b] = rgb.map((v) => Math.round(Number(v) * 255));
@@ -71,6 +111,8 @@ export const useStyleStore = defineStore('style', () => {
   const POLL_INTERVAL = 3000; // 3s
   const POLL_MAX_MS = 360_000; // 6 min (covers 300s image + 60s LLM)
 
+  const styleLocked = ref(false);
+
   const themeClass = computed(() => '');
 
   function applyTheme(): void {
@@ -82,6 +124,8 @@ export const useStyleStore = defineStore('style', () => {
     if (!p || style.value === 'default') {
       el.style.removeProperty('--color-primary');
       el.style.removeProperty('--color-hint');
+      el.style.removeProperty('--color-primary-on-light');
+      el.style.removeProperty('--color-hint-on-light');
       el.style.removeProperty('--color-glass-border');
       el.style.removeProperty('--color-glass-bg');
       el.style.removeProperty('--shadow-inset-a');
@@ -117,8 +161,12 @@ export const useStyleStore = defineStore('style', () => {
     el.style.setProperty('--shadow-raised-b', 'rgba(255,255,255,0.28)');
     el.style.setProperty(
       '--bg-gradient',
-      `linear-gradient(180deg, rgb(${skyTopRgb.join(',')}) 0%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`,
+      `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`,
     );
+    const primaryOnLight = _ensureContrastAgainstWhite(textPrimary);
+    const hintOnLight = _ensureContrastAgainstWhite(textHint);
+    el.style.setProperty('--color-primary-on-light', colorTupleToCSS(primaryOnLight));
+    el.style.setProperty('--color-hint-on-light', colorTupleToCSS(hintOnLight));
   }
 
   async function _waitForStyleGeneration(userId: string): Promise<StyleResult | null> {
@@ -166,6 +214,8 @@ export const useStyleStore = defineStore('style', () => {
 
       const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
+
+      console.log(`[styleStore] 初始加载: 当前应该处于 "${newStyle}" 风格`);
 
       // Non-default styles require a background image; try disk fallback if missing
       if (newStyle !== 'default') {
@@ -215,6 +265,11 @@ export const useStyleStore = defineStore('style', () => {
     applyTheme();
   }
 
+  function resetAndLock(): void {
+    styleLocked.value = true;
+    reset();
+  }
+
   // ── Pending style + trigger ──────────────────────────────────────────
 
   function scheduleCheck(userId: string): void {
@@ -226,6 +281,7 @@ export const useStyleStore = defineStore('style', () => {
   }
 
   async function checkAndFetchStyle(userId: string): Promise<void> {
+    if (styleLocked.value) return;
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
@@ -241,8 +297,10 @@ export const useStyleStore = defineStore('style', () => {
         return;
       }
 
-      const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
+      console.log(`[styleStore] 当前应该处于 "${newStyle}" 风格 (后端返回), 当前显示: "${style.value}"`);
+
+      const bgUrl = data.backgroundUrl ?? null;
       let resolvedBgUrl = bgUrl;
 
       // Non-default styles require a background image; try disk fallback if missing
@@ -263,12 +321,14 @@ export const useStyleStore = defineStore('style', () => {
       pendingStyle.value = newStyle;
       pendingBackgroundUrl.value = resolvedBgUrl;
       isPendingReady.value = true;
+      console.log(`[styleStore] 风格准备中: 目标="${newStyle}", 当前显示="${style.value}", 背景资源已就绪等待视觉过渡...`);
     } catch {
       // silent fallback
     }
   }
 
   function applyPendingStyle(): void {
+    const prevStyle = style.value;
     style.value = pendingStyle.value;
     styleParams.value = pendingParams.value;
     backgroundUrl.value = pendingBackgroundUrl.value;
@@ -281,6 +341,7 @@ export const useStyleStore = defineStore('style', () => {
 
     loaded.value = true;
     applyTheme();
+    console.log(`[styleStore] 风格切换完成: "${style.value}" (从 "${prevStyle}" 切换)`);
   }
 
   async function forceRegenerateStyle(userId: string): Promise<void> {
@@ -316,10 +377,11 @@ export const useStyleStore = defineStore('style', () => {
       pendingStyle.value = newStyle;
       pendingBackgroundUrl.value = resolvedBgUrl;
       isPendingReady.value = true;
+      console.log(`[styleStore] 风格准备中(强制重新生成): 目标="${newStyle}", 当前显示="${style.value}", 背景资源已就绪等待视觉过渡...`);
     } catch {
       // silent fallback
     }
   }
 
-  return { style, styleParams, backgroundUrl, distribution, loaded, generating, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, fetchStyle, forceStyle, reset, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
+  return { style, styleParams, backgroundUrl, distribution, loaded, generating, styleLocked, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, fetchStyle, forceStyle, reset, resetAndLock, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
 });
