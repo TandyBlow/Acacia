@@ -114,17 +114,29 @@ export const useStyleStore = defineStore('style', () => {
       const data = await adapter.fetchStyle?.(userId);
       if (data) {
         const bgUrl = data.backgroundUrl ?? null;
-        // Preload background image so it's cached before the tree renders
-        if (bgUrl) {
-          const ok = await _preloadImage(bgUrl);
-          if (!ok) {
-            console.warn('[styleStore] Background image preload failed, applying without new background');
+        const newStyle = data.style ?? 'default';
+
+        // Non-default styles require a background image; skip if missing or preload fails
+        if (newStyle !== 'default') {
+          if (!bgUrl) {
+            console.warn('[styleStore] AI style has no background URL, keeping default');
+          } else {
+            const ok = await _preloadImage(bgUrl);
+            if (!ok) {
+              console.warn('[styleStore] Background image preload failed, keeping default');
+            } else {
+              backgroundUrl.value = bgUrl;
+              styleParams.value = (data.params as Record<string, unknown>) ?? null;
+              distribution.value = data.distribution ?? {};
+              style.value = newStyle;
+            }
           }
+        } else {
+          backgroundUrl.value = bgUrl;
+          styleParams.value = (data.params as Record<string, unknown>) ?? null;
+          distribution.value = data.distribution ?? {};
+          style.value = newStyle;
         }
-        backgroundUrl.value = bgUrl;
-        styleParams.value = (data.params as Record<string, unknown>) ?? null;
-        distribution.value = data.distribution ?? {};
-        style.value = data.style ?? 'default';
       }
     } catch {
       // silent fallback
@@ -175,17 +187,23 @@ export const useStyleStore = defineStore('style', () => {
       }
 
       const bgUrl = data.backgroundUrl ?? null;
+      const newStyle = data.style ?? 'default';
 
-      // Preload background image if present
-      if (bgUrl) {
+      // Non-default styles require a background image; skip if missing or preload fails
+      if (newStyle !== 'default') {
+        if (!bgUrl) {
+          console.warn('[styleStore] AI style has no background URL, skipping update');
+          return;
+        }
         const loaded = await _preloadImage(bgUrl);
         if (!loaded) {
-          console.warn('[styleStore] Background image preload failed, applying without new background');
+          console.warn('[styleStore] Background image preload failed, skipping update');
+          return;
         }
       }
 
       pendingParams.value = (data.params as Record<string, unknown>) ?? null;
-      pendingStyle.value = data.style ?? 'default';
+      pendingStyle.value = newStyle;
       pendingBackgroundUrl.value = bgUrl;
       isPendingReady.value = true;
     } catch {
@@ -216,12 +234,23 @@ export const useStyleStore = defineStore('style', () => {
       if (!data) return;
 
       const bgUrl = data.backgroundUrl ?? null;
-      if (bgUrl) {
-        await _preloadImage(bgUrl);
+      const newStyle = data.style ?? 'default';
+
+      // Non-default styles require a background image; skip if missing or preload fails
+      if (newStyle !== 'default') {
+        if (!bgUrl) {
+          console.warn('[styleStore] AI style has no background URL, skipping update');
+          return;
+        }
+        const loaded = await _preloadImage(bgUrl);
+        if (!loaded) {
+          console.warn('[styleStore] Background image preload failed, skipping update');
+          return;
+        }
       }
 
       pendingParams.value = (data.params as Record<string, unknown>) ?? null;
-      pendingStyle.value = data.style ?? 'default';
+      pendingStyle.value = newStyle;
       pendingBackgroundUrl.value = bgUrl;
       isPendingReady.value = true;
     } catch {
