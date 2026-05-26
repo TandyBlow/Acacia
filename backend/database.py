@@ -143,6 +143,20 @@ def init_db():
             );
 
             CREATE INDEX IF NOT EXISTS idx_node_chat_memories ON node_chat_memories(owner_id, node_id, compressed_at DESC);
+
+            CREATE TABLE IF NOT EXISTS user_styles (
+                owner_id TEXT PRIMARY KEY,
+                profile_hash TEXT NOT NULL,
+                profile_text TEXT NOT NULL DEFAULT '',
+                style_name TEXT NOT NULL DEFAULT 'default',
+                style_description TEXT NOT NULL DEFAULT '',
+                background_prompt TEXT NOT NULL DEFAULT '',
+                background_url TEXT,
+                params_json TEXT NOT NULL DEFAULT '{}',
+                distribution_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
 
         # Migration: add missing columns

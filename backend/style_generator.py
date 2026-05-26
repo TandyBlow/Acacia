@@ -88,6 +88,16 @@ def _cache_key(nodes_json: str) -> str:
     return hashlib.sha256(nodes_json.encode("utf-8")).hexdigest()
 
 
+def build_profile_text(nodes: list[dict]) -> str:
+    """Build a stable, content-based profile text from node data."""
+    profile_parts = []
+    for n in nodes:
+        name = n.get("name", "")
+        content = (n.get("content") or "")[:200]
+        profile_parts.append(f"{name}:{content}")
+    return "|".join(sorted(profile_parts))
+
+
 def _bigrams(text: str) -> set[str]:
     """Extract character bigrams from text for Jaccard similarity."""
     return {text[i:i+2] for i in range(len(text) - 1)} if len(text) >= 2 else set()
@@ -142,6 +152,18 @@ def _should_regenerate(owner_id: str, profile_text: str) -> bool:
 
     _user_state[owner_id] = {"profile_text": profile_text, "generated_at": now}
     return True
+
+
+def hydrate_user_state(owner_id: str, profile_text: str, generated_at: float = 0.0):
+    """Restore per-user state from persistent storage after server restart."""
+    _user_state[owner_id] = {"profile_text": profile_text, "generated_at": generated_at}
+
+
+def cache_style(key: str, result: dict):
+    """Store a style result in the in-memory cache from an external source."""
+    if "_cached_at" not in result:
+        result["_cached_at"] = time.time()
+    _style_cache[key] = result
 
 
 # ── Prompt ───────────────────────────────────────────────────────────────
@@ -541,12 +563,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
         }
 
     # Build profile text for cache key and prompt
-    profile_parts = []
-    for n in nodes:
-        name = n.get("name", "")
-        content = (n.get("content") or "")[:200]
-        profile_parts.append(f"{name}:{content}")
-    profile_text = "|".join(sorted(profile_parts))
+    profile_text = build_profile_text(nodes)
 
     # Check cache
     cache_key = _cache_key(profile_text)

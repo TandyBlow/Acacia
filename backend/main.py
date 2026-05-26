@@ -17,7 +17,7 @@ from lsystem import generate_lsystem_skeleton
 from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
-from style_generator import _cache_key
+from style_generator import _cache_key, build_profile_text
 from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
 from file_parser import parse_file, get_file_info
 # Lazy import for file_knowledge_service to avoid startup failures
@@ -560,21 +560,19 @@ def debug_profile_text(user: dict = Depends(get_current_user)):
             (owner_id,),
         ).fetchall()
 
-    profile_parts = []
+    profile_text = build_profile_text([{"name": n["name"] or "", "content": n["content"] or ""} for n in nodes])
+    profile_hash = _cache_key(profile_text)
+
     node_breakdown = []
     for n in nodes:
         name = n["name"] or ""
         content = (n["content"] or "")[:200]
-        profile_parts.append(f"{name}:{content}")
         node_breakdown.append({
             "name": name,
             "contentPreview": content,
             "domainTag": n["domain_tag"] or "",
             "hasContent": bool((n["content"] or "").strip()),
         })
-
-    profile_text = "|".join(sorted(profile_parts))
-    profile_hash = _cache_key(profile_text)
 
     return {
         "nodeCount": len(nodes),
