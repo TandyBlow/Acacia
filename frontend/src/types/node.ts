@@ -41,6 +41,8 @@ export interface StyleResult {
   backgroundPrompt?: string;
   backgroundUrl?: string | null;
   styleDescription?: string;
+  /** True when backend has a generation in progress — client should poll. */
+  generating?: boolean;
 }
 
 export interface CoreDataAdapter {

@@ -32,6 +32,40 @@ _MIN_REGENERATE_INTERVAL: float = 300.0  # 5 min cooldown between AI generations
 _PROJECT_ROOT = Path(__file__).parent.parent
 _REFERENCE_IMAGE = _PROJECT_ROOT / "background.png"
 _BG_OUTPUT_DIR = _PROJECT_ROOT / "frontend" / "public" / "backgrounds" / "ai"
+_GENERATING_LOCK_TTL: float = 600.0  # 10 min — stale locks are ignored
+
+
+def _is_generating(owner_id: str) -> bool:
+    """Check if a generation is currently in progress (lock file exists and is fresh)."""
+    lock_file = _BG_OUTPUT_DIR / f"{owner_id}.generating"
+    if not lock_file.exists():
+        return False
+    try:
+        data = _json.loads(lock_file.read_text())
+        started_at = data.get("started_at", 0)
+        if time.time() - started_at > _GENERATING_LOCK_TTL:
+            lock_file.unlink(missing_ok=True)
+            return False
+        return True
+    except Exception:
+        lock_file.unlink(missing_ok=True)
+        return False
+
+
+def _acquire_generation_lock(owner_id: str) -> bool:
+    """Try to acquire the generation lock. Returns False if already locked."""
+    if _is_generating(owner_id):
+        return False
+    _BG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    lock_file = _BG_OUTPUT_DIR / f"{owner_id}.generating"
+    lock_file.write_text(_json.dumps({"started_at": time.time()}))
+    return True
+
+
+def _release_generation_lock(owner_id: str):
+    """Release the generation lock."""
+    lock_file = _BG_OUTPUT_DIR / f"{owner_id}.generating"
+    lock_file.unlink(missing_ok=True)
 
 
 def _cache_key(nodes_json: str) -> str:
@@ -429,6 +463,10 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
     IMPORTANT: This function blocks until background image generation completes.
     The returned style is fully ready to apply (params + background image).
     """
+    # If another request is already generating for this user, tell the client to poll
+    if _is_generating(owner_id):
+        return {"generating": True}
+
     if not nodes:
         return {
             "style": "default",
@@ -521,50 +559,57 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
     total = len(nodes)
     distribution = {tag: round(cnt / total, 4) for tag, cnt in domain_counts.items()}
 
-    # Call DeepSeek
-    print(f"[style] Generating style for {owner_id} with {len(nodes)} nodes...")
+    # Acquire generation lock so concurrent requests poll instead of racing
+    if not _acquire_generation_lock(owner_id):
+        return {"generating": True}
+
     try:
-        raw = _call_deepseek([
-            {"role": "system", "content": STYLE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ])
-        result = _parse_json(raw)
-        print(f"[style] DeepSeek returned style: {result.get('styleName', 'unknown')}")
-    except Exception as e:
-        print(f"[style] DeepSeek call failed: {e}")
-        # Fallback to default
-        return {
-            "style": "default",
-            "params": DEFAULT_PARAMS,
-            "backgroundPrompt": "",
-            "backgroundUrl": None,
+        # Call DeepSeek
+        print(f"[style] Generating style for {owner_id} with {len(nodes)} nodes...")
+        try:
+            raw = _call_deepseek([
+                {"role": "system", "content": STYLE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ])
+            result = _parse_json(raw)
+            print(f"[style] DeepSeek returned style: {result.get('styleName', 'unknown')}")
+        except Exception as e:
+            print(f"[style] DeepSeek call failed: {e}")
+            # Fallback to default
+            return {
+                "style": "default",
+                "params": DEFAULT_PARAMS,
+                "backgroundPrompt": "",
+                "backgroundUrl": None,
+                "distribution": distribution,
+            }
+
+        style_name = result.get("styleName", "default")
+        description = result.get("styleDescription", "")
+        background_prompt = result.get("backgroundPrompt", "")
+        params = _validate_params(result.get("params", {}))
+
+        # Generate background image via gpt-image-2 (BLOCKS until complete)
+        print(f"[style] Generating background image for {owner_id} (force={force})...")
+        background_url = _generate_background_image(background_prompt, owner_id, force=force)
+        if background_url:
+            print(f"[style] Background image ready: {background_url}")
+        else:
+            print(f"[style] Background image generation failed or skipped")
+        _bg_image_cache[cache_key] = background_url
+
+        output = {
+            "style": style_name,
+            "styleDescription": description,
+            "params": params,
+            "backgroundPrompt": background_prompt,
+            "backgroundUrl": background_url,
             "distribution": distribution,
+            "_cached_at": time.time(),
         }
 
-    style_name = result.get("styleName", "default")
-    description = result.get("styleDescription", "")
-    background_prompt = result.get("backgroundPrompt", "")
-    params = _validate_params(result.get("params", {}))
-
-    # Generate background image via gpt-image-2 (BLOCKS until complete)
-    print(f"[style] Generating background image for {owner_id} (force={force})...")
-    background_url = _generate_background_image(background_prompt, owner_id, force=force)
-    if background_url:
-        print(f"[style] Background image ready: {background_url}")
-    else:
-        print(f"[style] Background image generation failed or skipped")
-    _bg_image_cache[cache_key] = background_url
-
-    output = {
-        "style": style_name,
-        "styleDescription": description,
-        "params": params,
-        "backgroundPrompt": background_prompt,
-        "backgroundUrl": background_url,
-        "distribution": distribution,
-        "_cached_at": time.time(),
-    }
-
-    _style_cache[cache_key] = output
-    print(f"[style] Style generation complete for {owner_id}")
-    return output
+        _style_cache[cache_key] = output
+        print(f"[style] Style generation complete for {owner_id}")
+        return output
+    finally:
+        _release_generation_lock(owner_id)

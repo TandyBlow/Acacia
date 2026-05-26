@@ -63,6 +63,13 @@ export const useStyleStore = defineStore('style', () => {
 
   let checkTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Generation polling
+  const generating = ref(false);
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollGeneration = 0;
+  const POLL_INTERVAL = 3000; // 3s
+  const POLL_MAX_MS = 360_000; // 6 min (covers 300s image + 60s LLM)
+
   const themeClass = computed(() => '');
 
   function applyTheme(): void {
@@ -113,11 +120,52 @@ export const useStyleStore = defineStore('style', () => {
     );
   }
 
+  async function _waitForStyleGeneration(userId: string): Promise<StyleResult | null> {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = null;
+    generating.value = true;
+    const gen = ++pollGeneration;
+    const deadline = Date.now() + POLL_MAX_MS;
+
+    while (Date.now() < deadline) {
+      await new Promise<void>(r => {
+        pollTimer = setTimeout(r, POLL_INTERVAL);
+      });
+      pollTimer = null;
+
+      if (gen !== pollGeneration) return null; // Superseded by a newer call
+
+      try {
+        const adapter = getDataAdapter();
+        const data = await adapter.fetchStyle?.(userId);
+        if (data && !data.generating) {
+          generating.value = false;
+          return data;
+        }
+      } catch {
+        // Network error — keep polling
+      }
+    }
+
+    console.warn('[styleStore] Generation polling timed out');
+    generating.value = false;
+    return null;
+  }
+
   async function fetchStyle(userId: string): Promise<void> {
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
-      const data = await adapter.fetchStyle?.(userId);
+      let data = await adapter.fetchStyle?.(userId);
+      if (!data) return;
+
+      // If generation is in progress, poll until it completes
+      if (data.generating) {
+        const completed = await _waitForStyleGeneration(userId);
+        if (!completed) return;
+        data = completed;
+      }
+
       if (data) {
         const bgUrl = data.backgroundUrl ?? null;
         const newStyle = data.style ?? 'default';
@@ -185,8 +233,15 @@ export const useStyleStore = defineStore('style', () => {
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
-      const data = await adapter.fetchStyle?.(userId);
+      let data = await adapter.fetchStyle?.(userId);
       if (!data) return;
+
+      // If generation is in progress, poll until it completes
+      if (data.generating) {
+        const completed = await _waitForStyleGeneration(userId);
+        if (!completed) return;
+        data = completed;
+      }
 
       // Skip if same as current
       if (data.style === style.value && _paramsEqual(data.params as Record<string, unknown> | null, styleParams.value)) {
@@ -239,8 +294,15 @@ export const useStyleStore = defineStore('style', () => {
     try {
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
-      const data = await adapter.fetchStyle?.(userId, true);
+      let data = await adapter.fetchStyle?.(userId, true);
       if (!data) return;
+
+      // If another generation is already in progress, wait for it
+      if (data.generating) {
+        const completed = await _waitForStyleGeneration(userId);
+        if (!completed) return;
+        data = completed;
+      }
 
       const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
@@ -269,5 +331,5 @@ export const useStyleStore = defineStore('style', () => {
     }
   }
 
-  return { style, styleParams, backgroundUrl, distribution, loaded, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, fetchStyle, forceStyle, reset, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
+  return { style, styleParams, backgroundUrl, distribution, loaded, generating, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, fetchStyle, forceStyle, reset, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
 });
