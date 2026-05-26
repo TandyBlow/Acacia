@@ -44,11 +44,17 @@ def _is_generating(owner_id: str) -> bool:
         data = _json.loads(lock_file.read_text())
         started_at = data.get("started_at", 0)
         if time.time() - started_at > _GENERATING_LOCK_TTL:
-            lock_file.unlink(missing_ok=True)
+            try:
+                lock_file.unlink()
+            except FileNotFoundError:
+                pass
             return False
         return True
     except Exception:
-        lock_file.unlink(missing_ok=True)
+        try:
+            lock_file.unlink()
+        except FileNotFoundError:
+            pass
         return False
 
 
@@ -65,7 +71,10 @@ def _acquire_generation_lock(owner_id: str) -> bool:
 def _release_generation_lock(owner_id: str):
     """Release the generation lock."""
     lock_file = _BG_OUTPUT_DIR / f"{owner_id}.generating"
-    lock_file.unlink(missing_ok=True)
+    try:
+        lock_file.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def _cache_key(nodes_json: str) -> str:
