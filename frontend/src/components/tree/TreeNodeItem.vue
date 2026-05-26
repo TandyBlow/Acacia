@@ -6,21 +6,24 @@
         class="expand-btn"
         @click="$emit('toggle', node.id)"
       >
-        {{ expanded ? '-' : '+' }}
+        {{ expanded ? '−' : '+' }}
       </button>
       <span v-else class="expand-placeholder" />
 
-      <button
+      <div
         class="node-btn"
         :class="{
           selected: selectedParentId === node.id,
           blocked: blockedParentIds.includes(node.id),
         }"
-        :disabled="blockedParentIds.includes(node.id)"
-        @click="$emit('select', node.id)"
+        role="button"
+        tabindex="0"
+        @click="handleClick"
+        @keydown.enter.prevent="handleClick"
+        @keydown.space.prevent="handleClick"
       >
         {{ node.name }}
-      </button>
+      </div>
     </div>
 
     <ul v-if="expanded && node.children.length > 0" class="children" data-sortable :data-parent-id="node.id">
@@ -51,12 +54,17 @@ const props = defineProps<{
   blockedParentIds: string[];
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   toggle: [id: string];
   select: [id: string];
 }>();
 
 const expanded = computed(() => props.expandedIds.includes(props.node.id));
+
+function handleClick(): void {
+  if (props.blockedParentIds.includes(props.node.id)) return;
+  emit('select', props.node.id);
+}
 </script>
 
 <style scoped>
@@ -67,6 +75,8 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
 .children {
   margin: 0;
   padding: 0;
+  border-left: 1px solid var(--color-glass-border);
+  margin-left: 12px;
 }
 
 .row {
@@ -74,23 +84,51 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
   align-items: center;
   gap: 8px;
   min-height: 34px;
+  position: relative;
+}
+
+/* Horizontal connector to the vertical guide line */
+.children .row::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: var(--color-glass-border);
 }
 
 .expand-btn,
 .expand-placeholder {
   width: 24px;
   height: 24px;
+  flex-shrink: 0;
 }
 
 .expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--color-glass-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.14);
-  color: var(--color-primary);
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--color-primary-on-light, var(--color-primary));
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
   transition:
     transform 140ms ease,
-    background 160ms ease;
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.expand-btn:hover {
+  border-color: rgba(102, 255, 229, 0.4);
+  background: rgba(102, 255, 229, 0.1);
+  box-shadow: 0 0 12px rgba(102, 255, 229, 0.06);
 }
 
 .expand-placeholder {
@@ -100,15 +138,27 @@ const expanded = computed(() => props.expandedIds.includes(props.node.id));
 .node-btn {
   border: 1px solid var(--color-glass-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--color-primary);
-  padding: 5px 10px;
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--color-primary-on-light, var(--color-primary));
+  padding: 5px 12px;
   text-align: left;
   cursor: pointer;
+  font-size: 14px;
   transition:
     transform 140ms ease,
     background 160ms ease,
-    border-color 160ms ease;
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.node-btn:hover {
+  border-color: rgba(102, 255, 229, 0.35);
+  background: rgba(102, 255, 229, 0.08);
+  box-shadow:
+    2px 2px 6px var(--shadow-raised-a),
+    -2px -2px 6px var(--shadow-raised-b);
 }
 
 .expand-btn:active,

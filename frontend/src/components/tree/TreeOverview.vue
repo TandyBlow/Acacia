@@ -1,9 +1,9 @@
 <template>
   <div ref="treeRef" class="tree-shell">
-    <header class="header">
+    <div class="tree-header">
       <h2>{{ UI.tree.treeOverview }}</h2>
-    </header>
-    <p class="hint">拖拽知识点到目标父节点下即可移动，拖到顶部方框可移至根节点</p>
+      <p class="tree-hint">拖拽知识点到目标父节点下即可移动，拖到顶部方框可移至根节点</p>
+    </div>
 
     <div ref="rootZoneRef" class="root-zone" data-sortable data-parent-id="">
       <span class="root-zone-hint">拖拽至此，移至根节点</span>
@@ -20,7 +20,7 @@
           :selected-parent-id="null"
           :blocked-parent-ids="[]"
           @toggle="toggleExpand"
-          @select="() => {}"
+          @select="handleNodeSelect"
         />
       </ul>
     </div>
@@ -44,6 +44,7 @@ const treeRef = ref<HTMLElement | null>(null);
 const rootZoneRef = ref<HTMLElement | null>(null);
 const rootListRef = ref<HTMLElement | null>(null);
 const expandedIds = ref<string[]>([]);
+const wasDragging = ref(false);
 
 let sortables: Sortable[] = [];
 
@@ -71,6 +72,14 @@ function toggleExpand(id: string): void {
   expandedIds.value = [...expandedIds.value, id];
 }
 
+function handleNodeSelect(nodeId: string): void {
+  if (wasDragging.value) {
+    wasDragging.value = false;
+    return;
+  }
+  store.loadNode(nodeId);
+}
+
 function destroySortables(): void {
   for (const s of sortables) {
     s.destroy();
@@ -88,7 +97,6 @@ function initSortables(): void {
     const nodeId = (evt.dragged as HTMLElement).dataset.nodeId;
     const targetParentId = (evt.to as HTMLElement).dataset.parentId;
     if (!nodeId) return true;
-    // Prevent dropping a node into its own descendant
     if (targetParentId) {
       const descendants = descendantMap.get(nodeId);
       if (descendants && descendants.has(targetParentId)) {
@@ -105,7 +113,6 @@ function initSortables(): void {
 
     if (!nodeId) return;
 
-    // No change in parent — revert via tree refresh
     if (newParentId === oldParentId) {
       await store.refreshTree();
       return;
@@ -129,6 +136,11 @@ function initSortables(): void {
         put: true,
       },
       animation: 150,
+      delay: 400,
+      delayOnTouchOnly: false,
+      onStart: () => {
+        wasDragging.value = true;
+      },
       onEnd: handleDragEnd,
       onMove: handleDragMove,
     }));
@@ -140,11 +152,14 @@ function initSortables(): void {
       group: 'tree-nodes',
       animation: 150,
       sort: false,
-      delay: 0,
-      delayOnTouchOnly: true,
+      delay: 400,
+      delayOnTouchOnly: false,
       touchStartThreshold: 3,
       filter: '.expand-btn',
       preventOnFilter: false,
+      onStart: () => {
+        wasDragging.value = true;
+      },
       onEnd: handleDragEnd,
       onMove: handleDragMove,
     }));
@@ -161,7 +176,6 @@ watch(
   { immediate: true },
 );
 
-// Reinitialize SortableJS after each tree render or expand/collapse
 watch([treeNodes, expandedIds], async () => {
   await nextTick();
   initSortables();
@@ -195,41 +209,67 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  gap: 8px;
-  padding: 8px;
-  color: var(--color-primary);
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+  padding: 20px;
+  color: var(--color-primary-on-light, var(--color-primary));
+  border: 1px solid var(--color-glass-border);
+  border-radius: 24px;
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    5px 5px 10px var(--shadow-raised-a),
+    -5px -5px 10px var(--shadow-raised-b);
 }
 
-.header h2 {
+.tree-header h2 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-hint-on-light, var(--color-hint));
+}
+
+.tree-hint {
   margin: 0;
+  font-size: 12px;
+  color: var(--color-hint-on-light, var(--color-hint));
+  opacity: 0.65;
 }
 
-.hint {
-  margin: 0;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
+/* Root drop zone — glass-inset to suggest a recessed drop target */
 .root-zone {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  border: 2px dashed rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  transition: border-color 160ms ease, background 160ms ease;
+  min-height: 46px;
+  border: 1px solid var(--color-glass-border);
+  border-radius: 24px;
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    inset 5px 5px 10px var(--shadow-inset-a),
+    inset -5px -5px 10px var(--shadow-inset-b);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .root-zone:hover {
   border-color: rgba(102, 255, 229, 0.4);
   background: rgba(102, 255, 229, 0.06);
+  box-shadow:
+    inset 5px 5px 10px var(--shadow-inset-a),
+    inset -5px -5px 10px var(--shadow-inset-b),
+    0 0 18px rgba(102, 255, 229, 0.08);
 }
 
 .root-zone-hint {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--color-hint-on-light, var(--color-hint));
+  opacity: 0.55;
 }
 
 .tree-scroll {
