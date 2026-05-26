@@ -113,7 +113,15 @@ export const useStyleStore = defineStore('style', () => {
       await adapter.tagNodes?.(userId);
       const data = await adapter.fetchStyle?.(userId);
       if (data) {
-        backgroundUrl.value = data.backgroundUrl ?? null;
+        const bgUrl = data.backgroundUrl ?? null;
+        // Preload background image so it's cached before the tree renders
+        if (bgUrl) {
+          const ok = await _preloadImage(bgUrl);
+          if (!ok) {
+            console.warn('[styleStore] Background image preload failed, applying without new background');
+          }
+        }
+        backgroundUrl.value = bgUrl;
         styleParams.value = (data.params as Record<string, unknown>) ?? null;
         distribution.value = data.distribution ?? {};
         style.value = data.style ?? 'default';
