@@ -520,6 +520,13 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
                     image_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
                     if image_path.exists():
                         cached["backgroundUrl"] = f"/backgrounds/ai/{owner_id}.png"
+                # If we have a prompt but still no image, retry generation
+                if cached.get("backgroundUrl") is None and cached.get("backgroundPrompt"):
+                    print(f"[style] Retrying background image generation for cached style of {owner_id}")
+                    retry_url = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
+                    if retry_url:
+                        cached["backgroundUrl"] = retry_url
+                        _bg_image_cache[cache_key] = retry_url
             return cached
 
     # Check if regeneration is warranted (cooldown + change detection)
@@ -529,6 +536,15 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
         if cached:
             if cached.get("backgroundUrl") is None:
                 cached["backgroundUrl"] = _bg_image_cache.get(cache_key)
+                image_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
+                if cached["backgroundUrl"] is None and image_path.exists():
+                    cached["backgroundUrl"] = f"/backgrounds/ai/{owner_id}.png"
+                if cached.get("backgroundUrl") is None and cached.get("backgroundPrompt"):
+                    print(f"[style] Retrying background image for cached style of {owner_id}")
+                    retry_url = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
+                    if retry_url:
+                        cached["backgroundUrl"] = retry_url
+                        _bg_image_cache[cache_key] = retry_url
             return cached
         # Cache miss: image may exist on disk from an interrupted previous request.
         # Recover it so the user doesn't lose a successfully generated background.
