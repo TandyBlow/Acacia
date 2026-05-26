@@ -12,13 +12,6 @@ function colorTupleToCSS(rgb: unknown): string {
   return 'rgb(102,128,255)';
 }
 
-function hexFromTuple(rgb: unknown, alpha = 1): string {
-  if (Array.isArray(rgb) && rgb.length >= 3) {
-    const [r, g, b] = rgb.map((v) => Math.round(Number(v) * 255));
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-  return `rgba(102,128,255,${alpha})`;
-}
 
 function _paramsEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
   if (a === b) return true;

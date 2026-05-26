@@ -168,6 +168,7 @@ watch([treeNodes, expandedIds], async () => {
 }, { flush: 'post' });
 
 onMounted(async () => {
+  void rootListRef;
   registerRegion({
     id: 'content-treeoverview',
     type: 'glass',

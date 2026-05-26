@@ -270,7 +270,6 @@ const {
   endConversation,
   regenerateWithTreeContext,
   markConcept,
-  clearChat,
   compressAndClear,
   recordNavigationTransition,
   mentionedConcepts,

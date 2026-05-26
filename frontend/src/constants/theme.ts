@@ -1,4 +1,3 @@
-import type { ThemeStyle } from '../stores/styleStore';
 
 export interface TreeStyleParams {
   // --- Trunk ---
