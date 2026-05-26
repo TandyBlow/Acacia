@@ -1,7 +1,16 @@
+/* Utility: text auto-contrast via mix-blend-mode: difference.
+   Text color automatically inverts against the background behind it,
+   ensuring readability regardless of background brightness. */
+.text-auto-contrast {
+  mix-blend-mode: difference;
+}
+
 :root {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --color-primary: #6680ff;
   --color-hint: #66ffe5;
+  --color-primary-on-light: #6680ff;
+  --color-hint-on-light: #66ffe5;
   --color-glass-border: rgba(109, 138, 255, 0.28);
   --color-glass-bg: rgba(255, 255, 255, 0.12);
   --shadow-inset-a: rgba(38, 85, 108, 0.56);
@@ -63,7 +72,7 @@ body,
 body {
   padding-bottom: var(--safe-bottom, 0px);
   min-width: 320px;
-  background: var(--bg-gradient);
+  /* background is set via styleStore.applyTheme() to avoid flash of default blue gradient */
 }
 
 button,

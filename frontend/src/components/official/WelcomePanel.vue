@@ -69,13 +69,14 @@ import GlassWrapper from '../ui/GlassWrapper.vue';
   padding: 32px;
   max-width: 680px;
   margin: 0 auto;
+  mix-blend-mode: difference;
 }
 
 .welcome-content h1 {
   margin: 0 0 28px;
   font-size: 26px;
   font-weight: 700;
-  color: #FFBB33;
+  color: var(--color-hint);
 }
 
 .welcome-section {
