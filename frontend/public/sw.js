@@ -1,7 +1,9 @@
 const APP_SHELL_CACHE = 'app-shell-v1'
-const PRECACHE_URLS = self.__WB_MANIFEST.map((entry) =>
-  typeof entry === 'string' ? entry : entry.url,
-)
+const PRECACHE_URLS = [...new Set(
+  self.__WB_MANIFEST.map((entry) =>
+    typeof entry === 'string' ? entry : entry.url,
+  ),
+)]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
