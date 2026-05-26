@@ -43,6 +43,8 @@ export interface StyleResult {
   styleDescription?: string;
   /** True when backend has a generation in progress — client should poll. */
   generating?: boolean;
+  /** Human-readable reason when background image generation failed. */
+  bgError?: string;
 }
 
 export interface CoreDataAdapter {

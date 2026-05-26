@@ -381,7 +381,7 @@ def _validate_params(params: dict) -> dict:
 
 # ── Background image generation ──────────────────────────────────────────
 
-def _generate_background_image(background_prompt: str, owner_id: str, force: bool = False) -> str | None:
+def _generate_background_image(background_prompt: str, owner_id: str, force: bool = False) -> tuple[str | None, str | None]:
     """Generate a styled background image via gpt-image-2 image editing API.
 
     Uses the reference background.png as base image and applies the style
@@ -392,30 +392,34 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
         owner_id: User ID for cache key.
         force: If True, regenerate even if cached file exists.
 
-    Returns URL path like /backgrounds/ai/{owner_id}.png, or None on failure.
+    Returns (url, error) tuple. url is like /backgrounds/ai/{owner_id}.png.
+    error is a human-readable reason string when generation is skipped/fails.
     """
     api_key = os.getenv("IMAGE_API_KEY")
     api_url = os.getenv("IMAGE_API_URL", "https://ai.centos.hk/v1/images/edits")
     model = os.getenv("IMAGE_MODEL", "gpt-image-2")
 
     if not api_key:
-        print("[style] IMAGE_API_KEY not set, skipping background generation")
-        return None
+        msg = "IMAGE_API_KEY not set on server"
+        print(f"[style] {msg}, skipping background generation")
+        return None, msg
 
     if not background_prompt:
-        print("[style] No backgroundPrompt, skipping background generation")
-        return None
+        msg = "No backgroundPrompt from LLM"
+        print(f"[style] {msg}, skipping background generation")
+        return None, msg
 
     output_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
 
     # Skip if already generated for this user (unless force=True)
     if not force and output_path.exists():
         print(f"[style] Background image already exists: {output_path}")
-        return f"/backgrounds/ai/{owner_id}.png"
+        return f"/backgrounds/ai/{owner_id}.png", None
 
     if not _REFERENCE_IMAGE.exists():
-        print(f"[style] Reference image not found: {_REFERENCE_IMAGE}")
-        return None
+        msg = f"Reference image not found: {_REFERENCE_IMAGE}"
+        print(f"[style] {msg}")
+        return None, msg
 
     _BG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -436,8 +440,9 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
         with httpx.Client(timeout=300.0) as client:
             resp = client.post(api_url, headers=headers, files=files, data=data)
             if resp.status_code != 200:
+                msg = f"Image API returned {resp.status_code}: {resp.text[:200]}"
                 print(f"[style] gpt-image-2 error {resp.status_code}: {resp.text[:200]}")
-                return None
+                return None, msg
 
             result = resp.json()
             if "data" in result and len(result["data"]) > 0:
@@ -446,13 +451,15 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
                 with open(output_path, "wb") as f:
                     f.write(image_data)
                 print(f"[style] Background image saved: {output_path} ({len(image_data)/1024:.1f} KB)")
-                return f"/backgrounds/ai/{owner_id}.png"
+                return f"/backgrounds/ai/{owner_id}.png", None
             else:
+                msg = f"Image API unexpected response: {str(result)[:200]}"
                 print(f"[style] gpt-image-2 unexpected response: {str(result)[:200]}")
-                return None
+                return None, msg
     except Exception as e:
+        msg = f"Image generation exception: {e}"
         print(f"[style] Background generation failed: {e}")
-        return None
+        return None, msg
 
 
 # ── Public API ────────────────────────────────────────────────────────────
@@ -523,7 +530,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
                 # If we have a prompt but still no image, retry generation
                 if cached.get("backgroundUrl") is None and cached.get("backgroundPrompt"):
                     print(f"[style] Retrying background image generation for cached style of {owner_id}")
-                    retry_url = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
+                    retry_url, _ = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
                     if retry_url:
                         cached["backgroundUrl"] = retry_url
                         _bg_image_cache[cache_key] = retry_url
@@ -541,7 +548,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
                     cached["backgroundUrl"] = f"/backgrounds/ai/{owner_id}.png"
                 if cached.get("backgroundUrl") is None and cached.get("backgroundPrompt"):
                     print(f"[style] Retrying background image for cached style of {owner_id}")
-                    retry_url = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
+                    retry_url, _ = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
                     if retry_url:
                         cached["backgroundUrl"] = retry_url
                         _bg_image_cache[cache_key] = retry_url
@@ -626,11 +633,11 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
 
         # Generate background image via gpt-image-2 (BLOCKS until complete)
         print(f"[style] Generating background image for {owner_id} (force={force})...")
-        background_url = _generate_background_image(background_prompt, owner_id, force=force)
+        background_url, bg_error = _generate_background_image(background_prompt, owner_id, force=force)
         if background_url:
             print(f"[style] Background image ready: {background_url}")
         else:
-            print(f"[style] Background image generation failed or skipped")
+            print(f"[style] Background image generation failed or skipped: {bg_error}")
         _bg_image_cache[cache_key] = background_url
 
         output = {
@@ -642,6 +649,8 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
             "distribution": distribution,
             "_cached_at": time.time(),
         }
+        if bg_error:
+            output["bgError"] = bg_error
 
         _style_cache[cache_key] = output
         print(f"[style] Style generation complete for {owner_id}")
