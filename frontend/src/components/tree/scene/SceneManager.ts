@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { SkeletonData } from '../../../types/tree';
 import type { TreeStyleParams } from '../../../constants/theme';
-import { THEME_PRESETS } from '../../../constants/theme';
+import { THEME_DEFAULT } from '../../../constants/theme';
 import type { ThemeStyle } from '../../../stores/styleStore';
 import { ThemeTransition } from './ThemeTransition';
 import { Tree as EzTree } from '@dgreenheck/ez-tree';
@@ -43,6 +43,8 @@ export class SceneManager {
   // private groundMesh: THREE.Mesh | null = null;
   // private groundMaterial: THREE.ShaderMaterial | null = null;
   private backgroundPlane: BackgroundPlane | null = null;
+  private backgroundUrl: string | null = null;
+  private pendingBackgroundUrl: string | null | undefined = undefined;
 
   private mainLight!: THREE.DirectionalLight;
   private ambientLight!: THREE.AmbientLight;
@@ -100,13 +102,13 @@ export class SceneManager {
   // private particleMesh: THREE.Mesh | null = null;
   // private particleMaterial: THREE.ShaderMaterial | null = null;
 
-  constructor(container: HTMLElement, initialStyle: ThemeStyle, callbacks: SceneManagerCallbacks, customParams?: TreeStyleParams | null) {
+  constructor(container: HTMLElement, initialStyle: ThemeStyle, callbacks: SceneManagerCallbacks, customParams?: TreeStyleParams | null, backgroundUrl?: string | null) {
     this.container = container;
     this.currentStyle = initialStyle;
-    const preset = THEME_PRESETS[initialStyle];
-    const base: TreeStyleParams = (preset ? { ...preset } : { ...THEME_PRESETS['default'] }) as TreeStyleParams;
+    this.backgroundUrl = backgroundUrl ?? null;
+    const base: TreeStyleParams = { ...THEME_DEFAULT };
     this.currentParams = customParams ? ({ ...base, ...customParams } as TreeStyleParams) : base;
-    this.themeTransition = new ThemeTransition(initialStyle);
+    this.themeTransition = new ThemeTransition(initialStyle, customParams);
     this.callbacks = callbacks;
     this.loadLeafTextures();
   }
@@ -167,16 +169,50 @@ export class SceneManager {
     this.animate();
   }
 
-  switchTheme(newStyle: ThemeStyle) {
+  switchTheme(newStyle: ThemeStyle, newBackgroundUrl?: string | null) {
     if (newStyle === this.currentStyle && !this.themeTransition.isRunning) return;
     this.currentStyle = newStyle;
-    this.themeTransition.startTransition(newStyle);
+    this.themeTransition.startTransition(newStyle, this.currentParams);
+
+    // Update background URL if provided
+    if (newBackgroundUrl !== undefined) {
+      this.backgroundUrl = newBackgroundUrl;
+    }
 
     // 切换背景图
     if (this.backgroundPlane) {
-      const backgroundPath = `/backgrounds/${newStyle}.png`;
-      this.backgroundPlane.updateTexture(backgroundPath);
-      console.log('[SceneManager] 切换背景图:', backgroundPath);
+      if (this.backgroundUrl) {
+        this.backgroundPlane.updateTexture(this.backgroundUrl);
+        console.log('[SceneManager] 切换AI背景图:', this.backgroundUrl);
+      } else {
+        if (newStyle !== 'default') {
+          console.error('[SceneManager] AI背景图不可用，回退到默认背景');
+        }
+        this.backgroundPlane.updateTexture('/backgrounds/default.png');
+      }
+    }
+  }
+
+  /** Update the AI-generated background image URL and reload the background. */
+  updateBackgroundUrl(url: string | null) {
+    this.backgroundUrl = url;
+    if (this.backgroundPlane && url) {
+      this.backgroundPlane.updateTexture(url);
+    } else if (this.backgroundPlane && !url) {
+      if (this.currentStyle !== 'default') {
+        console.error('[SceneManager] AI背景图URL为空，回退到默认背景');
+      }
+      this.backgroundPlane.updateTexture('/backgrounds/default.png');
+    }
+  }
+
+  /** Transition to AI-generated custom params with smooth interpolation.
+   *  Background URL is deferred until the transition completes. */
+  transitionToParams(targetParams: TreeStyleParams, targetStyle: ThemeStyle, newBackgroundUrl?: string | null) {
+    this.currentStyle = targetStyle;
+    this.themeTransition.startTransition(targetStyle, targetParams);
+    if (newBackgroundUrl !== undefined) {
+      this.pendingBackgroundUrl = newBackgroundUrl;
     }
   }
 
@@ -600,12 +636,20 @@ export class SceneManager {
   }
 
   private initBackground() {
-    // 使用新的2D背景图系统
-    const backgroundPath = `/backgrounds/${this.currentStyle}.png`;
+    let backgroundPath: string;
+
+    if (this.backgroundUrl) {
+      backgroundPath = this.backgroundUrl;
+    } else {
+      if (this.currentStyle !== 'default') {
+        console.error('[SceneManager] AI背景图不可用，回退到默认背景');
+      }
+      backgroundPath = '/backgrounds/default.png';
+    }
+
     this.backgroundPlane = new BackgroundPlane(backgroundPath, this.camera);
     this.scene.add(this.backgroundPlane.getMesh());
-
-    console.log('[SceneManager] 使用2D背景图:', backgroundPath);
+    console.log('[SceneManager] 使用2D背景图:', this.currentStyle, backgroundPath);
   }
 
   // --- Private: Ground (disabled) ---
@@ -876,6 +920,12 @@ export class SceneManager {
     const transitionParams = this.themeTransition.update(performance.now());
     if (transitionParams) {
       this.applyStyleParams(transitionParams);
+    }
+
+    // Apply deferred background after transition completes
+    if (!this.themeTransition.isRunning && this.pendingBackgroundUrl !== undefined) {
+      this.updateBackgroundUrl(this.pendingBackgroundUrl);
+      this.pendingBackgroundUrl = undefined;
     }
 
     // Background is now 2D image, no time uniform to update

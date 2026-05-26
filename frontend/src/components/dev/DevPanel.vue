@@ -28,6 +28,18 @@
             <span class="dev-toggle-thumb" />
           </button>
         </div>
+        <div class="dev-toggle-row">
+          <span class="dev-toggle-label">当前风格</span>
+          <span class="dev-style-name">{{ currentStyleName }}</span>
+        </div>
+        <button
+          type="button"
+          class="dev-action-btn"
+          :disabled="styleRegenRunning"
+          @click="onStyleRegen"
+        >
+          {{ styleRegenRunning ? '生成中...' : '重新生成风格' }}
+        </button>
         <button
           type="button"
           class="dev-action-btn"
@@ -65,19 +77,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, inject } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, inject } from 'vue';
 import { useDevStore } from '../../stores/devStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNodeStore } from '../../stores/nodeStore';
+import { useStyleStore } from '../../stores/styleStore';
 import { invalidateSkeleton } from '../../composables/useTreeSkeleton';
 
 const devStore = useDevStore();
 const authStore = useAuthStore();
 const nodeStore = useNodeStore();
+const styleStore = useStyleStore();
 const isExpanded = ref(false);
 const waitingForScene = ref(false);
 const treeFadeRunning = ref(false);
 const logoutRunning = ref(false);
+const styleRegenRunning = ref(false);
+
+const currentStyleName = computed(() => styleStore.style || 'default');
 
 async function onLogout() {
   if (logoutRunning.value) return;
@@ -108,6 +125,18 @@ async function onTreeFadeTest() {
 function emitSceneReady() {
   window.dispatchEvent(new CustomEvent('dev-scene-ready'));
   waitingForScene.value = false;
+}
+
+async function onStyleRegen() {
+  if (styleRegenRunning.value) return;
+  const userId = authStore.user?.id;
+  if (!userId) return;
+  styleRegenRunning.value = true;
+  try {
+    await styleStore.forceRegenerateStyle(userId);
+  } finally {
+    styleRegenRunning.value = false;
+  }
 }
 
 function onWaitingForScene() {
@@ -219,6 +248,13 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--color-primary);
   opacity: 0.75;
+}
+
+.dev-style-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-hint);
+  opacity: 0.85;
 }
 
 .dev-toggle {

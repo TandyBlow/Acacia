@@ -1,0 +1,109 @@
+{
+  "styleName": "纸本光阴·沉静智识",
+  "styleDescription": "仿佛黄昏时分的大学图书馆外，秋日暖阳透过银杏叶洒在古老石板路上的光景，融合了纸张的温润与知识沉淀的宁静。",
+  "backgroundPrompt": "黄昏时分，天空从顶部深邃的靛蓝渐变到底部羊皮纸般的米白暖光，远处古典大学校园的哥特式钟楼轮廓隐约可见，秋日银杏树的金黄与暖灰的建筑外墙交织，地面铺着被落叶覆盖的石板路，空气中有淡淡的薄雾和微光粒子浮动。",
+  "params": {
+    "trunkBaseColor": [
+      0.25,
+      0.15,
+      0.1
+    ],
+    "trunkMidColor": [
+      0.35,
+      0.2,
+      0.12
+    ],
+    "trunkTipColor": [
+      0.5,
+      0.3,
+      0.15
+    ],
+    "leafMidColor": [
+      0.08,
+      0.08,
+      0.12
+    ],
+    "leafLightColor": [
+      0.35,
+      0.25,
+      0.15
+    ],
+    "leafDarkColor": [
+      0.05,
+      0.04,
+      0.06
+    ],
+    "leafShadowSize": -0.3,
+    "leafShadowSoftness": 0.9,
+    "leafHighlightSize": -0.2,
+    "leafHighlightSoftness": 0.8,
+    "leafAlphaClipping": 0.45,
+    "leafTextureIndex": 2,
+    "windStrength": 0.2,
+    "windFrequency": 0.35,
+    "windScale": 0.4,
+    "skyTopColor": [
+      0.05,
+      0.05,
+      0.15
+    ],
+    "skyBottomColor": [
+      0.85,
+      0.78,
+      0.65
+    ],
+    "groundColor": [
+      0.6,
+      0.5,
+      0.4
+    ],
+    "groundUndulation": 0.25,
+    "particleColor": [
+      0.9,
+      0.85,
+      0.7
+    ],
+    "particleShape": 1,
+    "particleSpeed": 0.3,
+    "particleDirection": 1,
+    "particleSpawnRate": 6,
+    "particleSize": 0.8,
+    "mainLightColor": [
+      0.95,
+      0.85,
+      0.6
+    ],
+    "mainLightIntensity": 2.2,
+    "ambientLightColor": [
+      0.5,
+      0.45,
+      0.35
+    ],
+    "ambientLightIntensity": 0.45,
+    "bloomStrength": 0.06,
+    "bloomRadius": 0.35,
+    "bloomThreshold": 0.65,
+    "outlineColor": [
+      0.15,
+      0.12,
+      0.1
+    ],
+    "outlineWidth": 0.25,
+    "bgCamY": 2.8,
+    "bgCamPitch": -0.2,
+    "bgCamZ": -5.0,
+    "bgFovZoom": 2.0,
+    "bgGroundY": -2.0,
+    "bgHillFreq": 0.3,
+    "bgHillAmp": 5.0,
+    "bgHillDepth": 40.0,
+    "bgBldgDepth": 40.0,
+    "bgBuildingDensity": 0.5,
+    "bgBuildingHeight": 4.0,
+    "bgFogDistance": 60.0,
+    "bgBarrelK": 0.3,
+    "bgPlatformHeight": 0.12,
+    "bgPlatformFade": 0.03,
+    "bgPlatformTexWidth": 1536.0
+  }
+}

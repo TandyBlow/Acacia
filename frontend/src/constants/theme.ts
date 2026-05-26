@@ -17,6 +17,10 @@ export interface TreeStyleParams {
   leafAlphaClipping: number;
   leafTextureIndex: number;
 
+  // --- Text (UI typography, independent from leaf colors) ---
+  textPrimaryColor: [number, number, number];
+  textHintColor: [number, number, number];
+
   // --- Wind ---
   windStrength: number;
   windFrequency: number;
@@ -87,6 +91,9 @@ export const THEME_DEFAULT: TreeStyleParams = {
   leafAlphaClipping: 0.5,
   leafTextureIndex: 0,
 
+  textPrimaryColor: [0.40, 0.50, 1.00],
+  textHintColor: [0.40, 1.00, 0.90],
+
   windStrength: 0.3,
   windFrequency: 0.4,
   windScale: 0.5,
@@ -134,205 +141,6 @@ export const THEME_DEFAULT: TreeStyleParams = {
   bgPlatformTexWidth: 1536.0,
 };
 
-export const THEME_SAKURA: TreeStyleParams = {
-  trunkBaseColor: [0.25, 0.18, 0.12],
-  trunkMidColor: [0.35, 0.25, 0.18],
-  trunkTipColor: [0.40, 0.30, 0.25],
-
-  leafMidColor: [1.0, 0.72, 0.77],
-  leafLightColor: [1.0, 0.88, 0.90],
-  leafDarkColor: [0.50, 0.20, 0.35],
-  leafShadowSize: -0.20,
-  leafShadowSoftness: 0.9,
-  leafHighlightSize: -0.30,
-  leafHighlightSoftness: 0.8,
-  leafAlphaClipping: 0.5,
-  leafTextureIndex: 2,
-
-  windStrength: 0.25,
-  windFrequency: 0.35,
-  windScale: 0.45,
-
-  skyTopColor: [1.0, 0.78, 0.84],
-  skyBottomColor: [1.0, 0.96, 0.97],
-
-  groundColor: [0.30, 0.20, 0.15],
-  groundUndulation: 0.25,
-
-  particleColor: [1.0, 0.72, 0.77],
-  particleShape: 1,
-  particleSpeed: 0.3,
-  particleDirection: 2,
-  particleSpawnRate: 12,
-  particleSize: 1.25,
-
-  mainLightColor: [1.0, 0.90, 0.80],
-  mainLightIntensity: 2.8,
-  ambientLightColor: [1.0, 0.85, 0.88],
-  ambientLightIntensity: 0.55,
-
-  bloomStrength: 0.15,
-  bloomRadius: 0.6,
-  bloomThreshold: 0.7,
-
-  outlineColor: [0.20, 0.12, 0.10],
-  outlineWidth: 0.25,
-
-  bgCamY: 3.2,
-  bgCamPitch: -0.18,
-  bgCamZ: -5.5,
-  bgFovZoom: 1.6,
-  bgGroundY: 0.4,
-  bgHillFreq: 0.25,
-  bgHillAmp: 4.0,
-  bgHillDepth: 45.0,
-  bgBldgDepth: 35.0,
-  bgBuildingDensity: 0.4,
-  bgBuildingHeight: 3.0,
-  bgFogDistance: 55.0,
-  bgBarrelK: 0.3,
-  bgPlatformHeight: 0.12,
-  bgPlatformFade: 0.03,
-  bgPlatformTexWidth: 1536.0,
-};
-
-export const THEME_CYBERPUNK: TreeStyleParams = {
-  trunkBaseColor: [0.08, 0.06, 0.15],
-  trunkMidColor: [0.12, 0.08, 0.22],
-  trunkTipColor: [0.05, 0.20, 0.18],
-
-  leafMidColor: [0.0, 1.0, 0.88],
-  leafLightColor: [0.4, 0.0, 1.0],
-  leafDarkColor: [0.05, 0.10, 0.30],
-  leafShadowSize: -0.30,
-  leafShadowSoftness: 0.7,
-  leafHighlightSize: -0.15,
-  leafHighlightSoftness: 1.2,
-  leafAlphaClipping: 0.5,
-  leafTextureIndex: 1,
-
-  windStrength: 0.4,
-  windFrequency: 0.5,
-  windScale: 0.6,
-
-  skyTopColor: [0.04, 0.04, 0.10],
-  skyBottomColor: [0.05, 0.10, 0.17],
-
-  groundColor: [0.04, 0.03, 0.08],
-  groundUndulation: 0.15,
-
-  particleColor: [0.0, 0.8, 1.0],
-  particleShape: 2,
-  particleSpeed: 0.6,
-  particleDirection: 0,
-  particleSpawnRate: 15,
-  particleSize: 0.7,
-
-  mainLightColor: [0.5, 0.5, 1.0],
-  mainLightIntensity: 2.0,
-  ambientLightColor: [0.1, 0.1, 0.4],
-  ambientLightIntensity: 0.4,
-
-  bloomStrength: 0.125,
-  bloomRadius: 0.2,
-  bloomThreshold: 0.7,
-
-  outlineColor: [0.0, 0.3, 0.5],
-  outlineWidth: 0.35,
-
-  bgCamY: 2.2,
-  bgCamPitch: -0.12,
-  bgCamZ: -7.0,
-  bgFovZoom: 2.0,
-  bgGroundY: 0.6,
-  bgHillFreq: 0.4,
-  bgHillAmp: 3.0,
-  bgHillDepth: 30.0,
-  bgBldgDepth: 60.0,
-  bgBuildingDensity: 0.8,
-  bgBuildingHeight: 12.0,
-  bgFogDistance: 40.0,
-  bgBarrelK: 0.3,
-  bgPlatformHeight: 0.12,
-  bgPlatformFade: 0.03,
-  bgPlatformTexWidth: 1536.0,
-};
-
-export const THEME_INK: TreeStyleParams = {
-  trunkBaseColor: [0.15, 0.12, 0.10],
-  trunkMidColor: [0.20, 0.18, 0.15],
-  trunkTipColor: [0.25, 0.22, 0.18],
-
-  leafMidColor: [0.30, 0.38, 0.25],
-  leafLightColor: [0.50, 0.58, 0.45],
-  leafDarkColor: [0.10, 0.15, 0.10],
-  leafShadowSize: -0.35,
-  leafShadowSoftness: 0.8,
-  leafHighlightSize: -0.20,
-  leafHighlightSoftness: 0.9,
-  leafAlphaClipping: 0.5,
-  leafTextureIndex: 0,
-
-  windStrength: 0.15,
-  windFrequency: 0.3,
-  windScale: 0.35,
-
-  skyTopColor: [0.92, 0.90, 0.85],
-  skyBottomColor: [0.85, 0.82, 0.75],
-
-  groundColor: [0.55, 0.50, 0.40],
-  groundUndulation: 0.35,
-
-  particleColor: [0.15, 0.12, 0.10],
-  particleShape: 3,
-  particleSpeed: 0.15,
-  particleDirection: 3,
-  particleSpawnRate: 3,
-  particleSize: 0.8,
-
-  mainLightColor: [0.9, 0.88, 0.82],
-  mainLightIntensity: 2.2,
-  ambientLightColor: [0.6, 0.58, 0.55],
-  ambientLightIntensity: 0.6,
-
-  bloomStrength: 0.0125,
-  bloomRadius: 0.1,
-  bloomThreshold: 0.85,
-
-  outlineColor: [0.10, 0.08, 0.06],
-  outlineWidth: 0.4,
-
-  bgCamY: 3.5,
-  bgCamPitch: -0.2,
-  bgCamZ: -8.0,
-  bgFovZoom: 2.2,
-  bgGroundY: 0.3,
-  bgHillFreq: 0.15,
-  bgHillAmp: 8.0,
-  bgHillDepth: 60.0,
-  bgBldgDepth: 30.0,
-  bgBuildingDensity: 0.2,
-  bgBuildingHeight: 2.0,
-  bgFogDistance: 80.0,
-  bgBarrelK: 0.3,
-  bgPlatformHeight: 0.12,
-  bgPlatformFade: 0.03,
-  bgPlatformTexWidth: 1536.0,
-};
-
-export const THEME_PRESETS: Record<ThemeStyle, TreeStyleParams> = {
+export const THEME_PRESETS: Record<string, TreeStyleParams> = {
   default: THEME_DEFAULT,
-  sakura: THEME_SAKURA,
-  cyberpunk: THEME_CYBERPUNK,
-  ink: THEME_INK,
-};
-
-/** Phase 2 default platform-type-to-vista-style mapping.
- *  Matches ROADMAP success criterion #2.
- *  Refined in Phase 3 StyleTemplate system. */
-export const STYLE_TO_PLATFORM_TYPE: Record<ThemeStyle, number> = {
-  default: 0,   // cliff
-  sakura: 3,    // temple-base
-  cyberpunk: 2, // rooftop
-  ink: 4,       // megalith
 };

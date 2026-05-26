@@ -39,6 +39,7 @@ export interface StyleResult {
   distribution: Record<string, number>;
   params?: Record<string, unknown>;
   backgroundPrompt?: string;
+  backgroundUrl?: string | null;
   styleDescription?: string;
 }
 
@@ -55,7 +56,7 @@ export interface CoreDataAdapter {
 export interface TreeDataAdapter {
   fetchTreeSkeleton(userId: string, canvasW?: number, canvasH?: number): Promise<SkeletonData>;
   tagNodes(userId: string): Promise<void>;
-  fetchStyle(userId: string): Promise<StyleResult>;
+  fetchStyle(userId: string, force?: boolean): Promise<StyleResult>;
   testSakuraTag(userId: string): Promise<void>;
 }
 

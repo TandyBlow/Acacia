@@ -8,12 +8,21 @@ import { UI } from '../constants/uiStrings';
 
 import { usePageTransition } from '../composables/usePageTransition';
 import { getToken } from '../utils/api';
+import { useStyleStore } from './styleStore';
+import { useAuthStore } from './authStore';
 
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
   return UI.errors.unknown;
+}
+
+function _triggerStyleCheck(): void {
+  const userId = useAuthStore().user?.id;
+  if (userId) {
+    useStyleStore().scheduleCheck(userId);
+  }
 }
 
 let dataAdapter: DataAdapter | null = null;
@@ -334,6 +343,7 @@ export const useNodeStore = defineStore('node', () => {
       if (activeNode.value?.id === nodeId) {
         activeNode.value = { ...activeNode.value, content };
       }
+      _triggerStyleCheck();
       return true;
     } catch (error) {
       errorMessage.value = formatError(error);
@@ -342,7 +352,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function onKnobClick(): Promise<void> {
-    if (viewState.value === ViewStates.DAILY_QUIZ || viewState.value === ViewStates.WELCOME) {
+    if (viewState.value === ViewStates.DAILY_QUIZ || viewState.value === ViewStates.WELCOME || viewState.value === ViewStates.TREE_OVERVIEW) {
       cancelOperation();
       return;
     }
@@ -369,6 +379,7 @@ export const useNodeStore = defineStore('node', () => {
         );
         nodeCache.invalidate(currentNodeId.value);
         await loadNode(created.id);
+        _triggerStyleCheck();
         return;
       }
 
@@ -378,6 +389,7 @@ export const useNodeStore = defineStore('node', () => {
         nodeCache.invalidate(operationNode.value.parentId);
         const reloadId = currentNodeId.value;
         await loadNode(reloadId, { replace: true });
+        _triggerStyleCheck();
         return;
       }
 

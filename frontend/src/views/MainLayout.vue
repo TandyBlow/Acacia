@@ -121,6 +121,13 @@ import { useOfficialTransition } from '../composables/useOfficialTransition';
 import { COMPACT_BREAKPOINT, COMPACT_HEIGHT_BREAKPOINT, MIN_SPACE_WIDTH, MIN_SPACE_HEIGHT } from '../constants/app';
 import { UI } from '../constants/uiStrings';
 
+/**
+ * View states that render as content-direct panels (no outer content-glass).
+ * Each panel component supplies its own GlassWrapper to avoid nested active areas.
+ * When adding a new official knowledge point, add its viewState here.
+ */
+const CONTENT_DIRECT_STATES = ['add', 'daily_quiz', 'welcome', 'tree_overview'];
+
 const isDev = import.meta.env.DEV;
 
 const nodeStore = useNodeStore();
@@ -284,7 +291,7 @@ const isPageAnimating = computed(() =>
 
 // Track previous viewState to detect small-layout special-state transitions.
 // In small layout, Navigation runs its own internal animation for
-// add/daily_quiz/welcome enter/exit — Content must skip its slide animation
+// CONTENT_DIRECT_STATES enter/exit — Content must skip its slide animation
 // to avoid the two systems fighting over DOM and CSS classes simultaneously.
 let prevCompactViewState = nodeStore.viewState;
 
@@ -369,7 +376,7 @@ onMounted(() => {
       element: navigationRef,
       shouldShow: (state) => {
         if (state.layout === 'small') {
-          const specialStates = ['add', 'daily_quiz', 'welcome'];
+          const specialStates = CONTENT_DIRECT_STATES;
           if (specialStates.includes(state.viewState)) return true;
           return state.compactMode === 'nav';
         }
@@ -385,7 +392,7 @@ onMounted(() => {
       element: contentAreaRef,
       shouldShow: (state) => {
         if (state.layout === 'small') {
-          const specialStates = ['add', 'daily_quiz', 'welcome'];
+          const specialStates = CONTENT_DIRECT_STATES;
           if (specialStates.includes(state.viewState)) return true;
           return state.compactMode !== 'nav';
         }
@@ -444,16 +451,16 @@ watch(compactMode, (newMode, oldMode) => {
 
 const isSmallLayoutMixed = computed(() => {
   if (!isCompact.value || compactMode.value !== 'nav') return false;
-  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  const specialStates = CONTENT_DIRECT_STATES;
   return specialStates.includes(nodeStore.viewState);
 });
 
-// In special states (add/daily_quiz/welcome), skip the outer content-glass
+// In CONTENT_DIRECT_STATES, skip the outer content-glass
 // active area. The content components bring their own GlassWrappers, which
 // become direct children of the content-inset bottom area — avoiding nested
 // active areas. Applies to all layouts.
 const skipContentGlass = computed(() => {
-  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  const specialStates = CONTENT_DIRECT_STATES;
   return specialStates.includes(nodeStore.viewState);
 });
 
@@ -582,9 +589,9 @@ async function animateContentTransition() {
     return;
   }
 
-  // When entering or leaving a special state (add/daily_quiz/welcome),
+  // When entering or leaving a CONTENT_DIRECT_STATES view,
   // the wrapper element changes between content-glass and content-direct.
-  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  const specialStates = CONTENT_DIRECT_STATES;
   const wasSpecial = specialStates.includes(prevCompactViewState);
   const isSpecial = specialStates.includes(nodeStore.viewState);
   prevCompactViewState = nodeStore.viewState;
@@ -721,11 +728,11 @@ async function animateContentTransition() {
     // ================================================================
 
     // Only apply pending data for node navigations, not for
-    // viewState transitions (add/daily_quiz/welcome). For viewState
+    // viewState transitions (CONTENT_DIRECT_STATES). For viewState
     // transitions, executeDataLoading already set the target viewState
     // and pendingNodeContext may carry stale data from a previous
     // navigation that would incorrectly revert viewState to 'display'.
-    const specialStates = ['add', 'daily_quiz', 'welcome'];
+    const specialStates = CONTENT_DIRECT_STATES;
     if (!specialStates.includes(nodeStore.viewState)) {
       nodeStore.applyPendingData();
     }
@@ -815,7 +822,7 @@ async function animateContentTransition() {
 
     // Apply pending data NOW — viewState is updated, so showTree is current.
     // Skip for special state entry to avoid reverting viewState to 'display'.
-    const specialStates2 = ['add', 'daily_quiz', 'welcome'];
+    const specialStates2 = CONTENT_DIRECT_STATES;
     if (!specialStates2.includes(nodeStore.viewState)) {
       nodeStore.applyPendingData();
     }
@@ -1003,10 +1010,8 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
     // Content → Nav
     // ================================================================
 
-    // Exit any special state (add/move/delete/daily_quiz/welcome) so the
-    // user returns to display mode when switching back. Use setViewState
-    // directly to avoid triggering a competing page transition.
-    const specialStates = ['add', 'move', 'delete', 'daily_quiz', 'welcome', 'tree_overview'];
+    // Exit any special state so the user returns to display mode.
+    const specialStates = ['move', 'delete', ...CONTENT_DIRECT_STATES];
     if (specialStates.includes(nodeStore.viewState)) {
       nodeStore.setViewState('display');
     }
@@ -1379,13 +1384,13 @@ watch(contentKey, (_newKey, oldKey) => {
 });
 
 // Directly trigger content animation when viewState enters/leaves
-// special states (add/daily_quiz/welcome). The isTransitioning-based
+// CONTENT_DIRECT_STATES. The isTransitioning-based
 // watcher above may not fire for synchronous viewState transitions
 // because isTransitioning goes true→false within the same tick.
 watch(() => nodeStore.viewState, (newState, oldState) => {
   if (contentAnimating.value) return;
 
-  const specialStates = ['add', 'daily_quiz', 'welcome'];
+  const specialStates = CONTENT_DIRECT_STATES;
   const wasSpecial = specialStates.includes(oldState);
   const isSpecial = specialStates.includes(newState);
 
@@ -1593,8 +1598,8 @@ watch(
 }
 
 /* ================================================================
-   content-direct: replaces content-glass in special states
-   (add/daily_quiz/welcome) across all layouts.
+   content-direct: replaces content-glass for CONTENT_DIRECT_STATES
+   across all layouts.
    Content sits directly in the content-inset bottom area without
    an outer active-area wrapper. Content components' own GlassWrappers
    are flattened so they don't introduce a second raised layer.

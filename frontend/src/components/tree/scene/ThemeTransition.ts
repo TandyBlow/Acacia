@@ -1,5 +1,5 @@
 import type { TreeStyleParams } from '../../../constants/theme';
-import { THEME_PRESETS } from '../../../constants/theme';
+import { THEME_PRESETS, THEME_DEFAULT } from '../../../constants/theme';
 import type { ThemeStyle } from '../../../stores/styleStore';
 
 function easeInOutCubic(t: number): number {
@@ -9,6 +9,7 @@ function easeInOutCubic(t: number): number {
 const TUPLE_KEYS = new Set<string>([
   'trunkBaseColor', 'trunkMidColor', 'trunkTipColor',
   'leafMidColor', 'leafLightColor', 'leafDarkColor',
+  'textPrimaryColor', 'textHintColor',
   'skyTopColor', 'skyBottomColor',
   'groundColor',
   'particleColor',
@@ -40,14 +41,15 @@ export class ThemeTransition {
   private duration = 800;
   private isTransitioning = false;
 
-  constructor(initialStyle: ThemeStyle) {
-    this.current = { ...THEME_PRESETS[initialStyle] };
-    this.target = { ...THEME_PRESETS[initialStyle] };
+  constructor(initialStyle: ThemeStyle, customParams?: TreeStyleParams | null) {
+    const initial = THEME_PRESETS[initialStyle] || customParams || THEME_DEFAULT;
+    this.current = { ...initial };
+    this.target = { ...initial };
   }
 
-  startTransition(newStyle: ThemeStyle) {
+  startTransition(newStyle: ThemeStyle, customParams?: TreeStyleParams | null) {
     this.current = this.getCurrentInterpolated();
-    this.target = { ...THEME_PRESETS[newStyle] };
+    this.target = { ...(THEME_PRESETS[newStyle] || customParams || THEME_DEFAULT) };
     this.t = 0;
     this.startTime = performance.now();
     this.isTransitioning = true;

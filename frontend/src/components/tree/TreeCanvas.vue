@@ -93,7 +93,7 @@ async function loadTree() {
       onBranchClick: (nodeId: string) => {
         console.log('Clicked branch, node_id:', nodeId);
       },
-    }, customParams);
+    }, customParams, styleStore.backgroundUrl);
 
     // Always preload user overrides when userId is available, even if stats
     // are empty. Using nodeCount=0 maps to tier-0 (seedling) params, which
@@ -188,10 +188,7 @@ onMounted(() => {
 
 watch(() => styleStore.style, (newStyle) => {
   if (manager) {
-    const knownStyles = ['default', 'sakura', 'cyberpunk', 'ink'];
-    if (knownStyles.includes(newStyle)) {
-      manager.switchTheme(newStyle);
-    }
+    manager.switchTheme(newStyle, styleStore.backgroundUrl);
   }
 });
 
@@ -199,6 +196,26 @@ watch(() => styleStore.style, (newStyle) => {
 watch(() => styleStore.styleParams, (newParams) => {
   if (manager && newParams && newParams.leafMidColor) {
     manager.applyStyleParamsPublic(newParams as unknown as import('../../constants/theme').TreeStyleParams);
+  }
+});
+
+// Smooth transition for pending AI-generated style (background preloaded, ready to apply)
+watch(() => styleStore.isPendingReady, (ready) => {
+  if (!ready || !manager || !styleStore.pendingParams) return;
+  const targetParams = styleStore.pendingParams as unknown as import('../../constants/theme').TreeStyleParams;
+  const targetStyle = styleStore.pendingStyle;
+  const bgUrl = styleStore.pendingBackgroundUrl;
+  manager.transitionToParams(targetParams, targetStyle, bgUrl ?? null);
+  // Apply pending after transition completes (800ms duration + 100ms buffer)
+  setTimeout(() => {
+    styleStore.applyPendingStyle();
+  }, 900);
+});
+
+// Update background when AI-generated image URL changes
+watch(() => styleStore.backgroundUrl, (newUrl) => {
+  if (manager) {
+    manager.updateBackgroundUrl(newUrl ?? null);
   }
 });
 

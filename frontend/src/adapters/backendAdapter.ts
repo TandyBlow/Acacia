@@ -53,8 +53,9 @@ export const backendAdapter: DataAdapter = {
     await apiFetch('/tag-nodes', { method: 'POST' });
   },
 
-  async fetchStyle(_userId: string): Promise<StyleResult> {
-    return apiFetch<StyleResult>('/style');
+  async fetchStyle(_userId: string, force?: boolean): Promise<StyleResult> {
+    const qs = force ? '?force=1' : '';
+    return apiFetch<StyleResult>(`/style${qs}`);
   },
 
   async testSakuraTag(): Promise<void> {

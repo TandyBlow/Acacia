@@ -20,20 +20,59 @@ function hexFromTuple(rgb: unknown, alpha = 1): string {
   return `rgba(102,128,255,${alpha})`;
 }
 
+function _paramsEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a).filter(k => k !== '_cached_at');
+  const keysB = Object.keys(b).filter(k => k !== '_cached_at');
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    const va = a[key];
+    const vb = b[key];
+    if (Array.isArray(va) && Array.isArray(vb)) {
+      if (va.length !== vb.length || va.some((v, i) => Number(v).toFixed(4) !== Number(vb[i]).toFixed(4))) return false;
+    } else if (typeof va === 'number' && typeof vb === 'number') {
+      if (Number(va).toFixed(4) !== Number(vb).toFixed(4)) return false;
+    } else if (va !== vb) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function _preloadImage(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
 export const useStyleStore = defineStore('style', () => {
   const style = ref<ThemeStyle>('default');
   const styleParams = ref<Record<string, unknown> | null>(null);
+  const backgroundUrl = ref<string | null>(null);
   const distribution = ref<Record<string, number>>({});
   const loaded = ref(false);
+
+  // Pending style — held until background image is preloaded, then applied with transition
+  const pendingParams = ref<Record<string, unknown> | null>(null);
+  const pendingStyle = ref<ThemeStyle>('default');
+  const pendingBackgroundUrl = ref<string | null>(null);
+  const isPendingReady = ref(false);
+
+  let checkTimer: ReturnType<typeof setTimeout> | null = null;
 
   const themeClass = computed(() => '');
 
   function applyTheme(): void {
     const el = document.documentElement;
-    el.classList.remove('theme-sakura', 'theme-cyberpunk', 'theme-ink');
 
     const p = styleParams.value;
-    if (!p) {
+    // Only apply AI style overrides for non-default styles.
+    // Default style uses the hardcoded CSS defaults in style.css.
+    if (!p || style.value === 'default') {
       el.style.removeProperty('--color-primary');
       el.style.removeProperty('--color-hint');
       el.style.removeProperty('--color-glass-border');
@@ -48,13 +87,16 @@ export const useStyleStore = defineStore('style', () => {
 
     const leafMid = Array.isArray(p.leafMidColor) ? p.leafMidColor as number[] : [0.4, 0.5, 0.4];
     const leafLight = Array.isArray(p.leafLightColor) ? p.leafLightColor as number[] : [0.6, 0.7, 0.5];
+    // Text colors: prefer dedicated fields, fall back to leaf colors for backwards compat
+    const textPrimary = Array.isArray(p.textPrimaryColor) ? p.textPrimaryColor as number[] : leafMid;
+    const textHint = Array.isArray(p.textHintColor) ? p.textHintColor as number[] : leafLight;
     const skyTop = Array.isArray(p.skyTopColor) ? p.skyTopColor as number[] : [0.5, 0.8, 0.9];
     const skyBottom = Array.isArray(p.skyBottomColor) ? p.skyBottomColor as number[] : [0.9, 0.9, 0.9];
 
-    const primary = colorTupleToCSS(leafMid);
-    const hint = colorTupleToCSS(leafLight);
-    const glassBorderRgb = leafMid.map((v) => Math.round(v * 255));
-    const glassBgRgb = leafMid.map((v) => Math.round(v * 255));
+    const primary = colorTupleToCSS(textPrimary);
+    const hint = colorTupleToCSS(textHint);
+    const glassBorderRgb = textPrimary.map((v) => Math.round(v * 255));
+    const glassBgRgb = textPrimary.map((v) => Math.round(v * 255));
     const skyTopRgb = skyTop.map((v) => Math.round(v * 255));
     const skyBottomRgb = skyBottom.map((v) => Math.round(v * 255));
 
@@ -78,9 +120,10 @@ export const useStyleStore = defineStore('style', () => {
       await adapter.tagNodes?.(userId);
       const data = await adapter.fetchStyle?.(userId);
       if (data) {
-        style.value = data.style ?? 'default';
-        distribution.value = data.distribution ?? {};
+        backgroundUrl.value = data.backgroundUrl ?? null;
         styleParams.value = (data.params as Record<string, unknown>) ?? null;
+        distribution.value = data.distribution ?? {};
+        style.value = data.style ?? 'default';
       }
     } catch {
       // silent fallback
@@ -90,10 +133,11 @@ export const useStyleStore = defineStore('style', () => {
     }
   }
 
-  function forceStyle(s: ThemeStyle, dist?: Record<string, number>, params?: Record<string, unknown>): void {
+  function forceStyle(s: ThemeStyle, dist?: Record<string, number>, params?: Record<string, unknown>, bgUrl?: string | null): void {
     style.value = s;
     if (dist) distribution.value = dist;
     if (params) styleParams.value = params;
+    if (bgUrl !== undefined) backgroundUrl.value = bgUrl;
     loaded.value = true;
     applyTheme();
   }
@@ -101,10 +145,88 @@ export const useStyleStore = defineStore('style', () => {
   function reset(): void {
     style.value = 'default';
     styleParams.value = null;
+    backgroundUrl.value = null;
     distribution.value = {};
     loaded.value = false;
     applyTheme();
   }
 
-  return { style, styleParams, distribution, loaded, themeClass, fetchStyle, forceStyle, reset };
+  // ── Pending style + trigger ──────────────────────────────────────────
+
+  function scheduleCheck(userId: string): void {
+    if (checkTimer) clearTimeout(checkTimer);
+    checkTimer = setTimeout(() => {
+      checkTimer = null;
+      checkAndFetchStyle(userId);
+    }, 30_000); // 30s debounce
+  }
+
+  async function checkAndFetchStyle(userId: string): Promise<void> {
+    try {
+      const adapter = getDataAdapter();
+      await adapter.tagNodes?.(userId);
+      const data = await adapter.fetchStyle?.(userId);
+      if (!data) return;
+
+      // Skip if same as current
+      if (data.style === style.value && _paramsEqual(data.params as Record<string, unknown> | null, styleParams.value)) {
+        return;
+      }
+
+      const bgUrl = data.backgroundUrl ?? null;
+
+      // Preload background image if present
+      if (bgUrl) {
+        const loaded = await _preloadImage(bgUrl);
+        if (!loaded) {
+          console.warn('[styleStore] Background image preload failed, applying without new background');
+        }
+      }
+
+      pendingParams.value = (data.params as Record<string, unknown>) ?? null;
+      pendingStyle.value = data.style ?? 'default';
+      pendingBackgroundUrl.value = bgUrl;
+      isPendingReady.value = true;
+    } catch {
+      // silent fallback
+    }
+  }
+
+  function applyPendingStyle(): void {
+    style.value = pendingStyle.value;
+    styleParams.value = pendingParams.value;
+    backgroundUrl.value = pendingBackgroundUrl.value;
+    distribution.value = {};  // distribution will be set by the next full fetch if needed
+
+    pendingParams.value = null;
+    pendingStyle.value = 'default';
+    pendingBackgroundUrl.value = null;
+    isPendingReady.value = false;
+
+    loaded.value = true;
+    applyTheme();
+  }
+
+  async function forceRegenerateStyle(userId: string): Promise<void> {
+    try {
+      const adapter = getDataAdapter();
+      await adapter.tagNodes?.(userId);
+      const data = await adapter.fetchStyle?.(userId, true);
+      if (!data) return;
+
+      const bgUrl = data.backgroundUrl ?? null;
+      if (bgUrl) {
+        await _preloadImage(bgUrl);
+      }
+
+      pendingParams.value = (data.params as Record<string, unknown>) ?? null;
+      pendingStyle.value = data.style ?? 'default';
+      pendingBackgroundUrl.value = bgUrl;
+      isPendingReady.value = true;
+    } catch {
+      // silent fallback
+    }
+  }
+
+  return { style, styleParams, backgroundUrl, distribution, loaded, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, fetchStyle, forceStyle, reset, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
 });

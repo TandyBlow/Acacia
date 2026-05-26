@@ -475,10 +475,10 @@ def tag_nodes_endpoint(user: dict = Depends(get_current_user)):
 
 
 @app.get("/style")
-def get_style_endpoint(user: dict = Depends(get_current_user)):
+def get_style_endpoint(force: int = 0, user: dict = Depends(get_current_user)):
     owner_id = user["sub"]
     try:
-        return compute_style_sqlite(owner_id)
+        return compute_style_sqlite(owner_id, force=bool(force))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 

@@ -10,27 +10,37 @@ export class BackgroundPlane {
   private texture: THREE.Texture | null = null;
   private camera: THREE.OrthographicCamera;
 
-  constructor(texturePath: string, camera: THREE.OrthographicCamera) {
+  /**
+   * @param texturePath  PNG path to load (used for known presets)
+   * @param camera       Orthographic camera for sizing
+   * @param readyTexture If provided, use this texture directly instead of loading from texturePath
+   */
+  constructor(texturePath: string, camera: THREE.OrthographicCamera, readyTexture?: THREE.Texture) {
     this.camera = camera;
 
-    // 创建几何体（初始大小，会在updateSize中调整）
     const geometry = new THREE.PlaneGeometry(1, 1);
 
-    // 创建材质
     this.material = new THREE.MeshBasicMaterial({
-      color: 0x87ceeb, // 天蓝色占位
+      color: 0x87ceeb,
       depthWrite: false,
-      depthTest: false, // 改为false，确保背景总是在最后面
+      depthTest: false,
     });
 
-    // 创建网格
     this.mesh = new THREE.Mesh(geometry, this.material);
-    this.mesh.position.set(0, 0, -20); // 放在树后面，居中
-    this.mesh.renderOrder = -1; // 最先渲染
+    this.mesh.position.set(0, 0, -20);
+    this.mesh.renderOrder = -1;
     this.mesh.name = 'background-plane';
 
-    // 加载纹理
-    this.loadTexture(texturePath);
+    if (readyTexture) {
+      this.texture = readyTexture;
+      this.material.map = readyTexture;
+      this.material.color.setHex(0xffffff);
+      this.material.needsUpdate = true;
+      this.updateSize();
+      console.log('[BackgroundPlane] 使用预生成纹理');
+    } else {
+      this.loadTexture(texturePath);
+    }
   }
 
   /**
@@ -38,26 +48,32 @@ export class BackgroundPlane {
    */
   private loadTexture(texturePath: string): void {
     const loader = new THREE.TextureLoader();
+    const fallbackPath = '/backgrounds/default.png';
 
-    loader.load(
-      texturePath,
-      (texture) => {
-        // 纹理加载成功
-        this.texture = texture;
-        this.material.map = texture;
-        this.material.color.setHex(0xffffff); // 恢复白色（显示纹理原色）
-        this.material.needsUpdate = true;
+    const tryLoad = (path: string) => {
+      loader.load(
+        path,
+        (texture) => {
+          this.texture = texture;
+          this.material.map = texture;
+          this.material.color.setHex(0xffffff);
+          this.material.needsUpdate = true;
+          this.updateSize();
+          console.log('[BackgroundPlane] 背景纹理加载成功:', path);
+        },
+        undefined,
+        (error) => {
+          if (path !== fallbackPath) {
+            console.warn('[BackgroundPlane] 背景纹理加载失败，回退到默认:', path);
+            tryLoad(fallbackPath);
+          } else {
+            console.warn('[BackgroundPlane] 默认背景纹理也加载失败:', error);
+          }
+        }
+      );
+    };
 
-        // 更新尺寸以适配相机
-        this.updateSize();
-
-        console.log('[BackgroundPlane] 背景纹理加载成功:', texturePath);
-      },
-      undefined,
-      (error) => {
-        console.warn('[BackgroundPlane] 背景纹理加载失败:', texturePath, error);
-      }
-    );
+    tryLoad(texturePath);
   }
 
   /**
@@ -109,6 +125,20 @@ export class BackgroundPlane {
 
     // 加载新纹理
     this.loadTexture(texturePath);
+  }
+
+  /**
+   * 直接设置纹理（用于程序化生成的渐变等）
+   */
+  setTexture(texture: THREE.Texture): void {
+    if (this.texture) {
+      this.texture.dispose();
+    }
+    this.texture = texture;
+    this.material.map = texture;
+    this.material.color.setHex(0xffffff);
+    this.material.needsUpdate = true;
+    this.updateSize();
   }
 
   /**

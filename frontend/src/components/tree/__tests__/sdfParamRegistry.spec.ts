@@ -7,7 +7,7 @@ import {
   applyParamsToUniforms,
 } from '../scene/SdfParamRegistry';
 import type { SdfParamEntry } from '../scene/SdfParamRegistry';
-import { THEME_DEFAULT, THEME_SAKURA, THEME_CYBERPUNK, THEME_INK } from '../../../constants/theme';
+import { THEME_DEFAULT } from '../../../constants/theme';
 import type { TreeStyleParams } from '../../../constants/theme';
 
 describe('SdfParamRegistry', () => {
@@ -182,13 +182,11 @@ describe('billboard uniforms (BIL-02)', () => {
     expect(uniforms.uPlatformTexWidth.value).toBe(1536.0);
   });
 
-  it('billboard tsKey values exist in all 4 theme presets', () => {
-    const presets = [THEME_DEFAULT, THEME_SAKURA, THEME_CYBERPUNK, THEME_INK];
-    for (const preset of presets) {
-      expect(typeof preset.bgBarrelK).toBe('number');
-      expect(typeof preset.bgPlatformHeight).toBe('number');
-      expect(typeof preset.bgPlatformFade).toBe('number');
-      expect(typeof preset.bgPlatformTexWidth).toBe('number');
-    }
+  it('billboard tsKey values exist in default theme', () => {
+    const preset = THEME_DEFAULT;
+    expect(typeof preset.bgBarrelK).toBe('number');
+    expect(typeof preset.bgPlatformHeight).toBe('number');
+    expect(typeof preset.bgPlatformFade).toBe('number');
+    expect(typeof preset.bgPlatformTexWidth).toBe('number');
   });
 });
