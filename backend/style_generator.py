@@ -472,9 +472,13 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
     IMPORTANT: This function blocks until background image generation completes.
     The returned style is fully ready to apply (params + background image).
     """
-    # If another request is already generating for this user, tell the client to poll
-    if _is_generating(owner_id):
-        return {"generating": True}
+    # If another request is already generating for this user, tell the client to poll.
+    # Wrapped defensively — lock check failure must never crash the endpoint.
+    try:
+        if _is_generating(owner_id):
+            return {"generating": True}
+    except Exception as e:
+        print(f"[style] WARNING: _is_generating failed for {owner_id}: {e}")
 
     if not nodes:
         return {
@@ -568,8 +572,14 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
     total = len(nodes)
     distribution = {tag: round(cnt / total, 4) for tag, cnt in domain_counts.items()}
 
-    # Acquire generation lock so concurrent requests poll instead of racing
-    if not _acquire_generation_lock(owner_id):
+    # Acquire generation lock so concurrent requests poll instead of racing.
+    # Wrapped defensively — lock failure must never block generation.
+    try:
+        locked = _acquire_generation_lock(owner_id)
+    except Exception as e:
+        print(f"[style] WARNING: _acquire_generation_lock failed for {owner_id}: {e}")
+        locked = True  # Proceed without lock if the mechanism is broken
+    if not locked:
         return {"generating": True}
 
     try:
