@@ -333,7 +333,8 @@ function parseMarkdownContent(instance: Editor, content: string): JSONContent | 
     const parsed = mgr.parse(processed);
     instance.schema.nodeFromJSON(parsed).check();
     return parsed;
-  } catch {
+  } catch (err) {
+    console.error('[MarkdownEditor] parseMarkdownContent failed:', err, 'content preview:', content.slice(0, 200));
     return null;
   }
 }
@@ -361,14 +362,20 @@ function escapeLatexForHtmlAttr(latex: string): string {
  * which respects extension parseHTML rules and creates inlineMath/blockMath nodes.
  */
 function preprocessMathForMarkdown(text: string): string {
+  // Fast path: no $ delimiters means no LaTeX math to preprocess
+  if (!text.includes('$')) {
+    return text;
+  }
+
   // Block math first ($$...$$) — supports multiline with [\s\S]+?
   // Use a non-greedy match so adjacent blocks stay separate
   let result = text.replace(/\$\$([\s\S]+?)\$\$/g, (_full, latex: string) => {
     return `<div data-type="block-math" data-latex="${escapeLatexForHtmlAttr(latex.trim())}"></div>`;
   });
 
-  // Inline math ($...$) — single-line only, exclude $ in content
-  result = result.replace(/\$([^$\n]+?)\$/g, (_full, latex: string) => {
+  // Inline math ($...$) — single-line only.
+  // The lookahead (?![ \d]) prevents matching currency values like $100 or $ 50.
+  result = result.replace(/\$(?![ \d])([^$\n]+?)\$/g, (_full, latex: string) => {
     return `<span data-type="inline-math" data-latex="${escapeLatexForHtmlAttr(latex.trim())}"></span>`;
   });
 
@@ -1109,7 +1116,6 @@ const editor = useEditor({
         },
       },
     }),
-    Paragraph,
     ChatPromptParagraph,
     Markdown.configure({
       markedOptions: {

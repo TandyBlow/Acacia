@@ -102,14 +102,25 @@ h2 {
   width: 100%;
   border: 1px solid var(--color-glass-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: var(--color-primary);
   padding: 16px 18px;
   font-size: 17px;
+  box-shadow:
+    5px 5px 10px var(--shadow-raised-a),
+    -5px -5px 10px var(--shadow-raised-b);
+  transition: box-shadow 240ms ease, border-color 240ms ease;
 }
 
 .name-input:focus {
   outline: 2px solid rgba(102, 255, 229, 0.35);
+  border-color: rgba(102, 255, 229, 0.4);
+  box-shadow:
+    5px 5px 10px var(--shadow-raised-a),
+    -5px -5px 10px var(--shadow-raised-b),
+    0 0 18px rgba(102, 255, 229, 0.08);
 }
 
 .target-name {

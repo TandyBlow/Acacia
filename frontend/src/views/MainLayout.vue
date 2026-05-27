@@ -760,6 +760,20 @@ async function animateContentTransition() {
   await sleep(CONTENT_SINK_MS);
   if (token !== contentAnimToken.value) return;
 
+  // Wait for data loading to complete before applying pending data.
+  // Without this, a slow backend response causes applyPendingData() to
+  // find no pendingNodeContext yet, so activeNode stays null and the
+  // content animation ends with the tree still showing — the nav item
+  // disappears (childNodes already updated) but the content never changes.
+  if (isTransitioning.value) {
+    await new Promise<void>(resolve => {
+      const stop = watch(isTransitioning, (v) => {
+        if (!v) { stop(); resolve(); }
+      });
+    });
+    if (token !== contentAnimToken.value) return;
+  }
+
   if (wasShowingTree) {
     // ================================================================
     // TREE EXIT PATH: mask fade-in → DOM swap → slide-in

@@ -25,19 +25,10 @@
 }
 
 .cell-leave-active {
-  transition: opacity 0ms step-end;
-  transition-delay: var(--cell-anim-ms, 240ms);
-}
-
-.cell-leave-active .glass-content {
   transition: opacity var(--cell-anim-ms, 240ms) ease;
 }
 
 .cell-leave-to {
-  opacity: 0;
-}
-
-.cell-leave-to .glass-content {
   opacity: 0;
 }
 

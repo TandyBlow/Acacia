@@ -85,12 +85,12 @@ export function usePageTransition() {
       return;
     }
 
-    // Any navigation exits special states (add/move/delete/daily_quiz/welcome).
+    // Any navigation exits special states (add/move/delete/daily_quiz/tree_overview/official_content).
     // Must happen before isTransitioning=true so animateContentTransition
     // sees the correct viewState and routes to the proper animation path.
     if (trigger.type === 'navigate') {
       const nodeStore = useNodeStore();
-      if (nodeStore.isEditState || nodeStore.isDailyQuizState || nodeStore.isOfficialContentState) {
+      if (nodeStore.isEditState || nodeStore.isDailyQuizState || nodeStore.isOfficialContentState || nodeStore.isTreeOverviewState) {
         nodeStore.setViewState('display');
       }
     }
