@@ -101,16 +101,19 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
         if row and row["profile_hash"] == profile_hash:
             # Profile text unchanged — return persisted result, no AI call needed.
             result = _row_to_style_dict(row)
-            print(f"[style] DB hit for {owner_id}: style={result.get('style')}, bgUrl={result.get('backgroundUrl')}, bgPrompt={result.get('backgroundPrompt')[:60] if result.get('backgroundPrompt') else 'EMPTY'}")
+            debug = f"DB hit: style={result.get('style')}, bgUrl={result.get('backgroundUrl')}, bgPrompt={'SET' if result.get('backgroundPrompt') else 'EMPTY'}"
+            print(f"[style] {debug}")
             # If background generation failed previously (e.g. missing API key),
             # retry it now.
             if result.get("backgroundUrl") is None:
                 prompt = result.get("backgroundPrompt") or None
                 if prompt:
                     from style_generator import _generate_background_image, _bg_image_cache
+                    debug += " | Action: retry bg gen"
                     print(f"[style] Retrying background image for persisted style of {owner_id}")
                     retry_url, retry_err = _generate_background_image(prompt, owner_id, force=False)
                     if retry_url:
+                        debug += " -> OK"
                         print(f"[style] Background retry succeeded: {retry_url}")
                         result["backgroundUrl"] = retry_url
                         _bg_image_cache[profile_hash] = retry_url
@@ -123,23 +126,32 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
                         except Exception as e:
                             print(f"[style] Failed to update background_url in DB for {owner_id}: {e}")
                     else:
+                        debug += f" -> FAIL: {retry_err}"
                         print(f"[style] Background retry failed: {retry_err}")
                 else:
+                    debug += " | Action: full regenerate (no prompt)"
                     print(f"[style] No backgroundPrompt in DB for {owner_id}, triggering full regeneration")
                     # Force regeneration since we have no prompt to retry with
                     result = generate_style(owner_id, node_dicts, force=True)
+                    if result.get("generating"):
+                        debug += " -> generating..."
+                    else:
+                        debug += f" -> bgUrl={result.get('backgroundUrl')}"
                     if not result.get("generating"):
                         try:
                             with get_db_ctx() as conn2:
                                 _persist_style(conn2, owner_id, profile_hash, profile_text, result)
                         except Exception as e:
                             print(f"[style] Failed to persist regenerated style for {owner_id}: {e}")
+            result["_debug"] = debug
             # Warm in-memory caches for subsequent requests in this process
             cache_style(profile_hash, result)
             hydrate_user_state(owner_id, row["profile_text"], 0)
             return result
 
         if row and row["profile_hash"] != profile_hash:
+            result = _row_to_style_dict(row)
+            result["_debug"] = f"DB hit but profile changed: oldHash={row['profile_hash'][:8]}... newHash={profile_hash[:8]}..., oldBgUrl={result.get('backgroundUrl')}"
             # Profile changed. Hydrate user state so _should_regenerate()
             # can run Jaccard comparison against the previous text.
             hydrate_user_state(owner_id, row["profile_text"], 0)
