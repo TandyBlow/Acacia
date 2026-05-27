@@ -214,7 +214,7 @@ export const useStyleStore = defineStore('style', () => {
         return;
       }
 
-      console.log(`[styleStore] fetchStyle 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}`);
+      console.log(`[styleStore] fetchStyle 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}, _debug="${(resp as any)._debug || 'N/A'}"`);
 
       // If generation is in progress, poll until it completes
       if (resp.generating) {
@@ -302,7 +302,7 @@ export const useStyleStore = defineStore('style', () => {
       const resp = await adapter.fetchStyle?.(userId);
       if (!resp) return;
 
-      console.log(`[styleStore] checkAndFetch 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}`);
+      console.log(`[styleStore] checkAndFetch 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}, _debug="${(resp as any)._debug || 'N/A'}"`);
 
       // If generation is in progress, poll until it completes
       const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
