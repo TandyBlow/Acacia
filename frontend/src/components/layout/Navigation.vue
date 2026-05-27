@@ -121,7 +121,10 @@ const visibleOfficialNodes = computed(() =>
 
 const pressedOfficialId = computed<string | null>(() => {
   const state = viewState.value;
-  return state === 'daily_quiz' || state === 'official_content' || state === 'tree_overview' ? state : null;
+  if (state === 'daily_quiz') return 'daily_quiz';
+  if (state === 'tree_overview') return 'tree_overview';
+  if (state === 'official_content') return store.officialNodeContent?.id ?? null;
+  return null;
 });
 
 // Official section visibility, synchronized with page nav animation

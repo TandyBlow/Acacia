@@ -1,8 +1,10 @@
 const APP_SHELL_CACHE = 'app-shell-v1'
 const PRECACHE_URLS = [...new Set(
-  self.__WB_MANIFEST.map((entry) =>
-    typeof entry === 'string' ? entry : entry.url,
-  ),
+  self.__WB_MANIFEST.map((entry) => {
+    let url = typeof entry === 'string' ? entry : entry.url
+    if (url.startsWith('/')) url = url.slice(1)
+    return url
+  }),
 )]
 
 self.addEventListener('install', (event) => {

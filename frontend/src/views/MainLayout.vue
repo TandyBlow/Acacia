@@ -696,6 +696,7 @@ async function animateContentTransition() {
 
         contentPhase.value = 'tree-mask';
 
+        await nextTick();
         await waitForSceneReady(token);
         if (token !== contentAnimToken.value) return;
         treeMaskVisible.value = false;
@@ -791,6 +792,8 @@ async function animateContentTransition() {
 
     if (willShowTree) {
       // Staying in tree — just rise
+      treeMaskVisible.value = false;
+      treeOverlayActive.value = true;
       contentPhase.value = 'rising';
       await nextTick();
       if (token !== contentAnimToken.value) return;
@@ -881,6 +884,7 @@ async function animateContentTransition() {
 
     // Content didn't change — skip slide, just rise
     if (contentKey.value === oldKey) {
+      treeMaskVisible.value = false;
       contentPhase.value = 'rising';
       await nextTick();
       if (token !== contentAnimToken.value) return;
@@ -914,6 +918,7 @@ async function animateContentTransition() {
       contentPhase.value = 'tree-mask';
 
       // Wait for tree scene to be ready, then fade mask out
+      await nextTick();
       await waitForSceneReady(token);
       if (token !== contentAnimToken.value) return;
       treeMaskVisible.value = false;
@@ -998,6 +1003,7 @@ async function playInitialAnimation(): Promise<void> {
     // Nav/breadcrumbs/knob slide in while tree mask is up
     entrancePhase.value = 'sliding';
 
+    await nextTick();
     await waitForSceneReady(token);
     if (token !== contentAnimToken.value) return;
     treeMaskVisible.value = false;
@@ -1150,6 +1156,7 @@ async function animateCompactToggle(_oldMode: CompactMode, newMode: CompactMode)
       if (maskEl) maskEl.style.transition = '';
 
       // Wait for tree scene to be ready, then fade mask out
+      await nextTick();
       await waitForSceneReady(token);
       if (token !== contentAnimToken.value) return;
       treeMaskVisible.value = false;
