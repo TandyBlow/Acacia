@@ -34,6 +34,10 @@ jobs:
             chmod 600 /opt/acacia/backend/.env
             chown acacia:acacia /opt/acacia/backend/.env
 
+            echo ">>> ensure backgrounds dir writable" | tee -a "$LOG"
+            mkdir -p /opt/acacia/frontend/public/backgrounds/ai
+            chown -R acacia:acacia /opt/acacia/frontend/public/backgrounds
+
             echo ">>> pip install" | tee -a "$LOG"
             cd /opt/acacia/backend
             venv/bin/pip install -r requirements.txt --quiet 2>&1 | tee -a "$LOG"
