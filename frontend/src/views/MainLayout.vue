@@ -118,6 +118,7 @@ import { useStyleStore } from '../stores/styleStore';
 import { useAppInit } from '../composables/useAppInit';
 import { useKnobDispatch, type CompactMode } from '../composables/useKnobDispatch';
 import { usePageTransition } from '../composables/usePageTransition';
+import { useDemoAutopilot } from '../composables/useDemoAutopilot';
 import type { LayoutType } from '../types/transition';
 import { useOfficialTransition } from '../composables/useOfficialTransition';
 import { COMPACT_BREAKPOINT, MIN_SPACE_HEIGHT } from '../constants/app';
@@ -145,6 +146,9 @@ const {
 
 useAppInit();
 const { compactMode, layoutType } = useKnobDispatch();
+
+// Demo autopilot — activated by ?demo in URL
+useDemoAutopilot(initialized, isAuthenticated);
 
 const { registerRegion, unregisterRegion, startTransition, syncRegionVisibility, isTransitioning } = usePageTransition();
 
@@ -315,9 +319,17 @@ function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
   }) as T;
 }
 
+function getLayoutHeight(): number {
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim();
+  if (v && v.endsWith('px')) {
+    return parseFloat(v) || window.innerHeight;
+  }
+  return window.innerHeight;
+}
+
 function updateLayoutState(): void {
   const w = window.innerWidth;
-  const h = window.innerHeight;
+  const h = getLayoutHeight();
 
   isTooSmall.value = h < MIN_SPACE_HEIGHT;
 
@@ -351,7 +363,7 @@ const handleResize = debounce(updateLayoutState, 150);
 // CSS @media applies instantly on resize; this keeps JS display state in sync.
 function handleResizeImmediate(): void {
   const w = window.innerWidth;
-  const h = window.innerHeight;
+  const h = getLayoutHeight();
 
   let newLayout: LayoutType;
   if (h < MIN_SPACE_HEIGHT) {
