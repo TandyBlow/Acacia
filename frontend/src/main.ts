@@ -152,6 +152,7 @@ let edgeTouchId: number | null = null;
 
 document.addEventListener('touchstart', (e: TouchEvent) => {
   const t = e.changedTouches[0];
+  if (!t) return;
   if (t.clientX <= 20) {
     edgeTouchId = t.identifier;
   }
