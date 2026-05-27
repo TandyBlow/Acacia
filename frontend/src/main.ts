@@ -178,15 +178,40 @@ document.addEventListener('touchcancel', () => {
 });
 
 // ── History trap ────────────────────────────────────────────────────
-// Last line of defense: if the browser still fires popstate despite the
-// layers above, push the same URL back so the user never leaves the app.
-// Push two entries so that consecutive back gestures consume the first
-// without emptying the stack and exiting the app.
-history.pushState(null, '', location.href);
-history.pushState(null, '', location.href);
-window.addEventListener('popstate', () => {
-  history.pushState(null, '', location.href);
-  history.pushState(null, '', location.href);
+// Block browser swipe-back navigation at the history level.
+// pushState alone isn't reliable on mobile — browsers may fire multiple
+// back() calls per gesture, or skip popstate on the second swipe.
+//
+// Strategy: maintain a counter in history.state so we can detect any
+// back-navigation (including rapid consecutive ones) and push forward
+// again via location.hash. Hash-based entries are always treated as
+// real navigable history by all major mobile browsers.
+//
+// The URL will briefly show #_N but we clean it with replaceState.
+
+let hashSeq = 0;
+const hashGuard = () => {
+  hashSeq++;
+  window.location.hash = `_${hashSeq}`;
+  // Clean the hash from the URL bar without creating a new history entry
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+};
+
+// Seed: create initial history entries via hash so the stack never bottoms out
+hashGuard();
+hashGuard();
+
+window.addEventListener('hashchange', () => {
+  hashGuard();
+  hashGuard();
+});
+
+// Final fallback: if the browser still tries to unload, block it.
+// Modern Chrome (116+) ignores preventDefault without returnValue,
+// but older browsers and some WebViews still respect this.
+window.addEventListener('beforeunload', (e) => {
+  e.preventDefault();
+  e.returnValue = '';
 });
 
 // ── App bootstrap ────────────────────────────────────────────────────
