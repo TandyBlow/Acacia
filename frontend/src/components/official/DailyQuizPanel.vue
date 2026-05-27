@@ -529,7 +529,7 @@ onMounted(async () => {
 .quiz-node-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-hint);
+  color: var(--color-hint-on-light, var(--color-hint));
   opacity: 0.85;
 }
 

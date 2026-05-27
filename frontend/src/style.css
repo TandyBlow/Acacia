@@ -11,6 +11,8 @@
   --color-hint: #c7940a;
   --color-primary-on-light: #6680ff;
   --color-hint-on-light: #9e7608;
+  --color-primary-on-dark: #99adff;
+  --color-hint-on-dark: #daa520;
   --color-glass-border: rgba(109, 138, 255, 0.28);
   --color-glass-bg: rgba(255, 255, 255, 0.12);
   --shadow-inset-a: rgba(38, 85, 108, 0.56);

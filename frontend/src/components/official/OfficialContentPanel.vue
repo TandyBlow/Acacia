@@ -79,8 +79,7 @@ onMounted(() => {
   margin: 0 0 28px;
   font-size: 26px;
   font-weight: 700;
-  color: var(--color-hint);
-}
+  color: var(--color-hint-on-light, var(--color-hint));
 
 .oc-body {
   font-size: 15px;

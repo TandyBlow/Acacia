@@ -24,6 +24,8 @@ function _contrastRatio(lum1: number, lum2: number): number {
 
 const MIN_CONTRAST_AGAINST_WHITE = 4.5;
 const WHITE_LUMINANCE = 1.0;
+const MIN_CONTRAST_AGAINST_BLACK = 4.5;
+const BLACK_LUMINANCE = 0.0;
 
 function _ensureContrastAgainstWhite(rgb: number[]): number[] {
   const textLum = _relativeLuminance(rgb);
@@ -43,6 +45,30 @@ function _ensureContrastAgainstWhite(rgb: number[]): number[] {
     }
   }
   return best.map(v => Math.round(v * 10000) / 10000);
+}
+
+function _ensureContrastAgainstDark(rgb: number[]): number[] {
+  const textLum = _relativeLuminance(rgb);
+  if (_contrastRatio(textLum, BLACK_LUMINANCE) >= MIN_CONTRAST_AGAINST_BLACK) {
+    return rgb;
+  }
+  let lo = 0.0, hi = 1.0;
+  let best = [...rgb];
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    const blended = [rgb[0]! + (1 - rgb[0]!) * mid, rgb[1]! + (1 - rgb[1]!) * mid, rgb[2]! + (1 - rgb[2]!) * mid];
+    if (_contrastRatio(_relativeLuminance(blended), BLACK_LUMINANCE) >= MIN_CONTRAST_AGAINST_BLACK) {
+      best = blended;
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  return best.map(v => Math.round(v * 10000) / 10000);
+}
+
+function _isSkyDark(skyBottomColor: number[]): boolean {
+  return _relativeLuminance(skyBottomColor) < 0.5;
 }
 
 function colorTupleToCSS(rgb: unknown): string {
@@ -124,6 +150,8 @@ export const useStyleStore = defineStore('style', () => {
       el.style.removeProperty('--color-hint');
       el.style.removeProperty('--color-primary-on-light');
       el.style.removeProperty('--color-hint-on-light');
+      el.style.removeProperty('--color-primary-on-dark');
+      el.style.removeProperty('--color-hint-on-dark');
       el.style.removeProperty('--color-glass-border');
       el.style.removeProperty('--color-glass-bg');
       el.style.removeProperty('--shadow-inset-a');
@@ -132,6 +160,7 @@ export const useStyleStore = defineStore('style', () => {
       el.style.removeProperty('--shadow-raised-b');
       el.style.removeProperty('--bg-gradient');
       document.body.style.background = 'linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%)';
+      el.setAttribute('data-theme-brightness', 'light');
       return;
     }
 
@@ -164,6 +193,11 @@ export const useStyleStore = defineStore('style', () => {
     const hintOnLight = _ensureContrastAgainstWhite(textHint);
     el.style.setProperty('--color-primary-on-light', colorTupleToCSS(primaryOnLight));
     el.style.setProperty('--color-hint-on-light', colorTupleToCSS(hintOnLight));
+    const primaryOnDark = _ensureContrastAgainstDark(textPrimary);
+    const hintOnDark = _ensureContrastAgainstDark(textHint);
+    el.style.setProperty('--color-primary-on-dark', colorTupleToCSS(primaryOnDark));
+    el.style.setProperty('--color-hint-on-dark', colorTupleToCSS(hintOnDark));
+    el.setAttribute('data-theme-brightness', _isSkyDark(skyBottom) ? 'dark' : 'light');
   }
 
   async function _waitForStyleGeneration(userId: string): Promise<StyleResult | null> {
