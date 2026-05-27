@@ -217,6 +217,11 @@ export const useStyleStore = defineStore('style', () => {
       console.log(`[styleStore] fetchStyle 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}`);
 
       // If generation is in progress, poll until it completes
+      if (resp.generating) {
+        console.log('[styleStore] 后台正在生成风格，等待完成...');
+      }
+
+      // If generation is in progress, poll until it completes
       const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
       if (!data) return;
 
