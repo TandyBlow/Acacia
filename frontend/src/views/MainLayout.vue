@@ -1717,166 +1717,167 @@ watch(
   transition: opacity 240ms ease;
 }
 
-@media (orientation: portrait) and (min-width: 601px) {
-  .layout {
-    padding: 16px;
-    grid-template-columns: 241px minmax(0, 1fr);
-    grid-template-rows: 54px minmax(0, 1fr) 100px;
-    row-gap: 10px;
-    column-gap: 10px;
-  }
-
-  .logo-area {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .breadcrumbs-area {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .navigation-area {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .content-area {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .knob-area {
-    grid-column: 1 / span 2;
-    grid-row: 3;
-    justify-self: center;
-    width: min(100%, 260px);
-  }
+/* Medium layout: portrait tablet (w <= h, w >= 601px).
+   Driven by JS layoutType (keyboard-stable), NOT @media (orientation)
+   which would falsely deactivate when the keyboard shrinks viewport height. */
+.layout.medium {
+  padding: 16px;
+  grid-template-columns: 241px minmax(0, 1fr);
+  grid-template-rows: 54px minmax(0, 1fr) 100px;
+  row-gap: 10px;
+  column-gap: 10px;
 }
 
-@media (max-width: 600px) {
-  .layout {
-    position: absolute;
-    inset: 0;
-    padding: 8px;
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
+.layout.medium .logo-area {
+  grid-column: 1;
+  grid-row: 1;
+}
 
-  .merged-area,
-  .merged-shell {
-    display: contents !important;
-  }
+.layout.medium .breadcrumbs-area {
+  grid-column: 2;
+  grid-row: 1;
+}
 
-  .navigation-shell {
-    box-shadow:
-      inset 9px 9px 18px var(--shadow-inset-a),
-      inset -9px -9px 18px var(--shadow-inset-b);
-  }
+.layout.medium .navigation-area {
+  grid-column: 1;
+  grid-row: 2;
+}
 
-  .content-inset::after {
-    box-shadow:
-      inset 9px 9px 18px var(--shadow-inset-a),
-      inset -9px -9px 18px var(--shadow-inset-b);
-  }
+.layout.medium .content-area {
+  grid-column: 2;
+  grid-row: 2;
+}
 
-  .content-area {
-    padding: 0;
-  }
+.layout.medium .knob-area {
+  grid-column: 1 / span 2;
+  grid-row: 3;
+  justify-self: center;
+  width: min(100%, 260px);
+}
 
-  .tree-mask {
-    border-radius: 0;
-  }
+/* Small layout: compact (w <= 600px).
+   Also driven by JS layoutType for the same reason. */
+.layout.compact {
+  position: absolute;
+  inset: 0;
+  padding: 8px;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
 
-  /* Compact content mode: breadcrumbs + content + knob */
-  .layout.compact-content {
-    grid-template-rows: 54px minmax(0, 1fr) 90px;
-  }
+.layout.compact .merged-area,
+.layout.compact .merged-shell {
+  display: contents !important;
+}
 
-  .layout.compact-content .breadcrumbs-area {
-    grid-column: 1;
-    grid-row: 1;
-  }
+.layout.compact .navigation-shell {
+  box-shadow:
+    inset 9px 9px 18px var(--shadow-inset-a),
+    inset -9px -9px 18px var(--shadow-inset-b);
+}
 
-  .layout.compact-content .content-area {
-    grid-column: 1;
-    grid-row: 2;
-  }
+.layout.compact .content-inset::after {
+  box-shadow:
+    inset 9px 9px 18px var(--shadow-inset-a),
+    inset -9px -9px 18px var(--shadow-inset-b);
+}
 
-  .layout.compact-content .navigation-area {
-    grid-column: 1;
-    grid-row: 2;
-  }
+.layout.compact .content-area {
+  padding: 0;
+}
 
-  .layout.compact-content .knob-area {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: center;
-    width: min(100%, 260px);
-  }
+.layout.compact .tree-mask {
+  border-radius: 0;
+}
 
-  /* Compact nav mode: breadcrumbs + navigation + knob */
-  .layout.compact-nav {
-    grid-template-rows: 54px minmax(0, 1fr) 90px;
-  }
+/* Compact content mode: breadcrumbs + content + knob */
+.layout.compact-content {
+  grid-template-rows: 54px minmax(0, 1fr) 90px;
+}
 
-  .layout.compact-nav .breadcrumbs-area {
-    grid-column: 1;
-    grid-row: 1;
-  }
+.layout.compact-content .breadcrumbs-area {
+  grid-column: 1;
+  grid-row: 1;
+}
 
-  .layout.compact-nav .navigation-area {
-    grid-column: 1;
-    grid-row: 2;
-  }
+.layout.compact-content .content-area {
+  grid-column: 1;
+  grid-row: 2;
+}
 
-  .layout.compact-nav .content-area {
-    grid-column: 1;
-    grid-row: 2;
-  }
+.layout.compact-content .navigation-area {
+  grid-column: 1;
+  grid-row: 2;
+}
 
-  .layout.compact-nav .knob-area {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: center;
-    width: min(100%, 260px);
-  }
+.layout.compact-content .knob-area {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: center;
+  width: min(100%, 260px);
+}
 
-  /* Compact mixed mode: both nav (anchor only) and content visible in row 2.
-     merged-shell is the sole bottom area filling row 2 with its inherent
-     inset-shell styling. Both children are stripped of their own bottom-area
-     visuals to avoid doubled inner shadows. */
-  .layout.compact-mixed .merged-area,
-  .layout.compact-mixed .merged-shell {
-    display: flex !important;
-    flex-direction: column-reverse;
-    grid-column: 1;
-    grid-row: 2;
-    min-height: 0;
-  }
+/* Compact nav mode: breadcrumbs + navigation + knob */
+.layout.compact-nav {
+  grid-template-rows: 54px minmax(0, 1fr) 90px;
+}
 
-  .layout.compact-mixed .content-area {
-    flex: 1;
-    min-height: 0;
-  }
+.layout.compact-nav .breadcrumbs-area {
+  grid-column: 1;
+  grid-row: 1;
+}
 
-  .layout.compact-mixed .navigation-area {
-    flex: 0 0 58px;
-    min-height: 0;
-  }
+.layout.compact-nav .navigation-area {
+  grid-column: 1;
+  grid-row: 2;
+}
 
-  /* Navigation anchor area — no bottom-area visual of its own */
-  .layout.compact-mixed .navigation-shell {
-    background: transparent;
-    border-color: transparent;
-    box-shadow: none;
-  }
+.layout.compact-nav .content-area {
+  grid-column: 1;
+  grid-row: 2;
+}
 
-  /* merged-shell is the sole bottom area in compact-mixed.
-     content-inset::after must be stripped to avoid doubled inner shadows. */
-  .layout.compact-mixed .content-inset::after {
-    box-shadow: none;
-  }
+.layout.compact-nav .knob-area {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: center;
+  width: min(100%, 260px);
+}
+
+/* Compact mixed mode: both nav (anchor only) and content visible in row 2.
+   merged-shell is the sole bottom area filling row 2 with its inherent
+   inset-shell styling. Both children are stripped of their own bottom-area
+   visuals to avoid doubled inner shadows. */
+.layout.compact-mixed .merged-area,
+.layout.compact-mixed .merged-shell {
+  display: flex !important;
+  flex-direction: column-reverse;
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+}
+
+.layout.compact-mixed .content-area {
+  flex: 1;
+  min-height: 0;
+}
+
+.layout.compact-mixed .navigation-area {
+  flex: 0 0 58px;
+  min-height: 0;
+}
+
+/* Navigation anchor area — no bottom-area visual of its own */
+.layout.compact-mixed .navigation-shell {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* merged-shell is the sole bottom area in compact-mixed.
+   content-inset::after must be stripped to avoid doubled inner shadows. */
+.layout.compact-mixed .content-inset::after {
+  box-shadow: none;
 }
 
 /* ================================================================
