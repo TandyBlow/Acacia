@@ -180,8 +180,12 @@ document.addEventListener('touchcancel', () => {
 // ── History trap ────────────────────────────────────────────────────
 // Last line of defense: if the browser still fires popstate despite the
 // layers above, push the same URL back so the user never leaves the app.
+// Push two entries so that consecutive back gestures consume the first
+// without emptying the stack and exiting the app.
+history.pushState(null, '', location.href);
 history.pushState(null, '', location.href);
 window.addEventListener('popstate', () => {
+  history.pushState(null, '', location.href);
   history.pushState(null, '', location.href);
 });
 
