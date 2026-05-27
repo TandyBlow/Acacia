@@ -42,13 +42,16 @@ if (safeBottom > 0) {
 }
 
 // ── Keyboard-stable layout ──────────────────────────────────────────
-// Strategy: always track viewport height on resize (when keyboard is
-// inactive) so preKeyboardHeight is fresh regardless of whether focusin
-// or resize fires first when the keyboard appears.  On phones focusin
-// usually fires first; on tablets resize often fires first.
+// Strategy: detect keyboard appearance by the signature of a sudden
+// height drop (>100px) without a significant width change (<50px).
+// This works regardless of whether focusin or resize fires first —
+// on phones focusin usually leads, on tablets resize often leads.
 
 let preKeyboardHeight = window.innerHeight;
 let keyboardActive = false;
+// Track last known dimensions to detect sudden drops
+let lastKnownFullHeight = window.innerHeight;
+let lastKnownFullWidth = window.innerWidth;
 
 function lockHeight(): void {
   document.documentElement.style.setProperty('--app-height', `${preKeyboardHeight}px`);
@@ -58,10 +61,10 @@ function unlockHeight(): void {
   document.documentElement.style.removeProperty('--app-height');
 }
 
-// Detect keyboard open.  Don't re-capture preKeyboardHeight here —
-// the resize handler (below) already keeps it current so it is always
-// the last known full-height before the keyboard appeared, even when
-// resize fires before focusin on tablets.
+// focusin serves as a confirmation signal — if the resize-based
+// detection missed the keyboard (unusual tablet behavior), this
+// catches it.  Does NOT re-capture preKeyboardHeight; resize handler
+// already set it before the height dropped.
 document.addEventListener('focusin', (e: Event) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
@@ -79,7 +82,7 @@ document.addEventListener('focusout', () => {
     setTimeout(() => {
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-        return; // focus just moved to another input — keep locked
+        return;
       }
       keyboardActive = false;
       unlockHeight();
@@ -87,19 +90,43 @@ document.addEventListener('focusout', () => {
   }
 });
 
-// While keyboard is open, keep pushing the pre-keyboard height back.
-// While keyboard is closed, keep preKeyboardHeight current so it's
-// always ready when the keyboard opens (resize fires before focusin
-// on some tablets).
+// Primary keyboard detection: height drops >100px with stable width
+// is the keyboard appearing.  Height recovering to near pre-keyboard
+// level is the keyboard closing.
 window.addEventListener('resize', () => {
+  const h = window.innerHeight;
+  const w = window.innerWidth;
+
   if (keyboardActive) {
-    lockHeight();
+    // Height recovered? Keyboard closed (covers both dismissing the
+    // keyboard and rotating the device while keyboard is open).
+    if (h >= preKeyboardHeight - 50) {
+      keyboardActive = false;
+      unlockHeight();
+      lastKnownFullHeight = h;
+      lastKnownFullWidth = w;
+    } else {
+      lockHeight();
+    }
   } else {
-    preKeyboardHeight = window.innerHeight;
+    const heightDrop = lastKnownFullHeight - h;
+    const widthChange = Math.abs(lastKnownFullWidth - w);
+
+    if (heightDrop > 100 && widthChange < 50) {
+      // Keyboard appeared — lock to the last full height
+      preKeyboardHeight = lastKnownFullHeight;
+      keyboardActive = true;
+      lockHeight();
+    } else {
+      // Normal resize (rotation, desktop window resize) — keep tracking
+      lastKnownFullHeight = h;
+      lastKnownFullWidth = w;
+      preKeyboardHeight = h;
+    }
   }
 });
 
-// visualViewport also fires when keyboard appears — same lock
+// visualViewport also fires when keyboard appears — same logic
 window.visualViewport?.addEventListener('resize', () => {
   if (keyboardActive) {
     lockHeight();
