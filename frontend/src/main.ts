@@ -118,10 +118,15 @@ window.addEventListener('resize', () => {
       keyboardActive = true;
       lockHeight();
     } else {
-      // Normal resize (rotation, desktop window resize) — keep tracking
-      lastKnownFullHeight = h;
-      lastKnownFullWidth = w;
-      preKeyboardHeight = h;
+      // Update tracking, but skip gradual height decreases with stable
+      // width: those are keyboard animation intermediate frames.  Only
+      // update on rotation (large width change) or height increase.
+      const isGradualDrop = heightDrop > 0 && heightDrop <= 100 && widthChange < 50;
+      if (!isGradualDrop) {
+        lastKnownFullHeight = h;
+        lastKnownFullWidth = w;
+        preKeyboardHeight = h;
+      }
     }
   }
 });
