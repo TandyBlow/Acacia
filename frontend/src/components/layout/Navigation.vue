@@ -906,6 +906,7 @@ onUnmounted(() => ro?.disconnect());
   font-size: 14px;
   font-weight: 700;
   color: var(--color-hint-on-light, var(--color-hint));
+  transition: filter 160ms ease, text-shadow 160ms ease;
 }
 
 /* ================================================================
