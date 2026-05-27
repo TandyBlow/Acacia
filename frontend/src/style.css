@@ -53,6 +53,9 @@ html {
   height: var(--app-height, 100lvh);
   margin: 0;
   overflow: hidden;
+  /* Prevent mobile browser swipe-back navigation and pull-to-refresh.
+     This is a single-page app — there is no history to go back to. */
+  overscroll-behavior: none;
 }
 
 body,
