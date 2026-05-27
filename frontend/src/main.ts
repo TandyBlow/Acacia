@@ -42,11 +42,12 @@ if (safeBottom > 0) {
 }
 
 // ── Keyboard-stable layout ──────────────────────────────────────────
-// Strategy: capture viewport height BEFORE keyboard appears (on focusin),
-// lock html to that height while keyboard is visible, unlock on focusout.
-// This is the approach used by production PWAs and hybrid apps.
+// Strategy: always track viewport height on resize (when keyboard is
+// inactive) so preKeyboardHeight is fresh regardless of whether focusin
+// or resize fires first when the keyboard appears.  On phones focusin
+// usually fires first; on tablets resize often fires first.
 
-let preKeyboardHeight = 0;
+let preKeyboardHeight = window.innerHeight;
 let keyboardActive = false;
 
 function lockHeight(): void {
@@ -57,12 +58,14 @@ function unlockHeight(): void {
   document.documentElement.style.removeProperty('--app-height');
 }
 
-// Capture height before keyboard opens
+// Detect keyboard open.  Don't re-capture preKeyboardHeight here —
+// the resize handler (below) already keeps it current so it is always
+// the last known full-height before the keyboard appeared, even when
+// resize fires before focusin on tablets.
 document.addEventListener('focusin', (e: Event) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
     if (!keyboardActive) {
-      preKeyboardHeight = window.innerHeight;
       keyboardActive = true;
       lockHeight();
     }
@@ -84,11 +87,15 @@ document.addEventListener('focusout', () => {
   }
 });
 
-// Reinforce lock during keyboard — the browser may fire resize events
-// while keyboard is open; we keep pushing the pre-keyboard height back.
+// While keyboard is open, keep pushing the pre-keyboard height back.
+// While keyboard is closed, keep preKeyboardHeight current so it's
+// always ready when the keyboard opens (resize fires before focusin
+// on some tablets).
 window.addEventListener('resize', () => {
   if (keyboardActive) {
     lockHeight();
+  } else {
+    preKeyboardHeight = window.innerHeight;
   }
 });
 
