@@ -143,6 +143,47 @@ if ('virtualKeyboard' in navigator) {
   (navigator as { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard!.overlaysContent = true;
 }
 
+// ── Left-edge swipe guard ──────────────────────────────────────────
+// Block browser swipe-back navigation triggered by left-edge gestures.
+// Three-layer defense: CSS touch-action (layer 1), this touch interceptor
+// (layer 2), and the History trap below (layer 3).
+
+let edgeTouchId: number | null = null;
+
+document.addEventListener('touchstart', (e: TouchEvent) => {
+  const t = e.changedTouches[0];
+  if (t.clientX <= 20) {
+    edgeTouchId = t.identifier;
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', (e: TouchEvent) => {
+  if (edgeTouchId === null) return;
+  const t = Array.from(e.changedTouches).find(t => t.identifier === edgeTouchId);
+  if (t && t.clientX > 40) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', (e: TouchEvent) => {
+  if (edgeTouchId === null) return;
+  if (Array.from(e.changedTouches).some(t => t.identifier === edgeTouchId)) {
+    edgeTouchId = null;
+  }
+});
+
+document.addEventListener('touchcancel', () => {
+  edgeTouchId = null;
+});
+
+// ── History trap ────────────────────────────────────────────────────
+// Last line of defense: if the browser still fires popstate despite the
+// layers above, push the same URL back so the user never leaves the app.
+history.pushState(null, '', location.href);
+window.addEventListener('popstate', () => {
+  history.pushState(null, '', location.href);
+});
+
 // ── App bootstrap ────────────────────────────────────────────────────
 
 const app = createApp(App);
