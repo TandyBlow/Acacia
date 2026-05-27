@@ -448,7 +448,7 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
         owner_id: User ID for cache key.
         force: If True, regenerate even if cached file exists.
 
-    Returns (url, error) tuple. url is like /backgrounds/ai/{owner_id}.png.
+    Returns (url, error) tuple. url is like /api/backgrounds/ai/{owner_id}.png.
     error is a human-readable reason string when generation is skipped/fails.
     """
     api_key = os.getenv("IMAGE_API_KEY")
@@ -470,7 +470,7 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
     # Skip if already generated for this user (unless force=True)
     if not force and output_path.exists():
         print(f"[style] Background image already exists: {output_path}")
-        return f"/backgrounds/ai/{owner_id}.png", None
+        return f"/api/backgrounds/ai/{owner_id}.png", None
 
     if not _REFERENCE_IMAGE.exists():
         msg = f"Reference image not found: {_REFERENCE_IMAGE}"
@@ -507,7 +507,7 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
                 with open(output_path, "wb") as f:
                     f.write(image_data)
                 print(f"[style] Background image saved: {output_path} ({len(image_data)/1024:.1f} KB)")
-                return f"/backgrounds/ai/{owner_id}.png", None
+                return f"/api/backgrounds/ai/{owner_id}.png", None
             else:
                 msg = f"Image API unexpected response: {str(result)[:200]}"
                 print(f"[style] gpt-image-2 unexpected response: {str(result)[:200]}")
@@ -577,7 +577,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
                 if cached["backgroundUrl"] is None:
                     image_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
                     if image_path.exists():
-                        cached["backgroundUrl"] = f"/backgrounds/ai/{owner_id}.png"
+                        cached["backgroundUrl"] = f"/api/backgrounds/ai/{owner_id}.png"
                 # If we have a prompt but still no image, retry generation
                 if cached.get("backgroundUrl") is None and cached.get("backgroundPrompt"):
                     print(f"[style] Retrying background image generation for cached style of {owner_id}")
@@ -596,7 +596,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
                 cached["backgroundUrl"] = _bg_image_cache.get(cache_key)
                 image_path = _BG_OUTPUT_DIR / f"{owner_id}.png"
                 if cached["backgroundUrl"] is None and image_path.exists():
-                    cached["backgroundUrl"] = f"/backgrounds/ai/{owner_id}.png"
+                    cached["backgroundUrl"] = f"/api/backgrounds/ai/{owner_id}.png"
                 if cached.get("backgroundUrl") is None and cached.get("backgroundPrompt"):
                     print(f"[style] Retrying background image for cached style of {owner_id}")
                     retry_url, _ = _generate_background_image(cached["backgroundPrompt"], owner_id, force=False)
@@ -613,7 +613,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
                 "style": "default",
                 "params": DEFAULT_PARAMS,
                 "backgroundPrompt": "",
-                "backgroundUrl": f"/backgrounds/ai/{owner_id}.png",
+                "backgroundUrl": f"/api/backgrounds/ai/{owner_id}.png",
                 "distribution": {},
                 "_cached_at": time.time(),
             }

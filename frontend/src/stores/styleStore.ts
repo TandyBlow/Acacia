@@ -84,7 +84,7 @@ function _preloadImage(url: string): Promise<boolean> {
 }
 
 async function _tryRecoverBgUrl(userId: string): Promise<string | null> {
-  const fallbackUrl = `/backgrounds/ai/${userId}.png`;
+  const fallbackUrl = `/api/backgrounds/ai/${userId}.png`;
   const ok = await _preloadImage(fallbackUrl);
   return ok ? fallbackUrl : null;
 }

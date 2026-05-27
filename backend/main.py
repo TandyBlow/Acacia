@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, status, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -547,6 +548,18 @@ def get_style_endpoint(force: int = 0, user: dict = Depends(get_current_user)):
         return compute_style_sqlite(owner_id, force=bool(force))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/backgrounds/ai/{filename}")
+def serve_bg_image(filename: str):
+    """Serve AI-generated background images (bypasses nginx static file issues)."""
+    import re
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    filepath = os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "backgrounds", "ai", filename)
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="Background image not found")
+    return FileResponse(filepath, media_type="image/png")
 
 
 @app.get("/debug/profile-text")
