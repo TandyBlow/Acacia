@@ -101,6 +101,24 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
         if row and row["profile_hash"] == profile_hash:
             # Profile text unchanged — return persisted result, no AI call needed.
             result = _row_to_style_dict(row)
+            # If background generation failed previously (e.g. missing API key),
+            # retry it now that we have a background prompt.
+            if result.get("backgroundUrl") is None and result.get("backgroundPrompt"):
+                from style_generator import _generate_background_image, _bg_image_cache
+                print(f"[style] Retrying background image for persisted style of {owner_id}")
+                retry_url, _ = _generate_background_image(result["backgroundPrompt"], owner_id, force=False)
+                if retry_url:
+                    result["backgroundUrl"] = retry_url
+                    _bg_image_cache[profile_hash] = retry_url
+                    # Persist the recovered URL back to DB
+                    try:
+                        with get_db_ctx() as conn2:
+                            conn2.execute(
+                                "UPDATE user_styles SET background_url = ?, updated_at = datetime('now') WHERE owner_id = ?",
+                                (retry_url, owner_id),
+                            )
+                    except Exception as e:
+                        print(f"[style] Failed to update background_url in DB for {owner_id}: {e}")
             # Warm in-memory caches for subsequent requests in this process
             cache_style(profile_hash, result)
             hydrate_user_state(owner_id, row["profile_text"], 0)
