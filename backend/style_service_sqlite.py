@@ -11,6 +11,13 @@ from style_generator import (
 )
 
 
+def _fix_bg_url(url):
+    """Rewrite old /backgrounds/ai/ URLs to /api/backgrounds/ai/ so they go through backend."""
+    if url and isinstance(url, str) and url.startswith("/backgrounds/ai/") and "/api/" not in url:
+        return "/api" + url
+    return url
+
+
 def _row_to_style_dict(row) -> dict:
     """Convert a user_styles DB row into the style result dict format."""
     try:
@@ -26,10 +33,23 @@ def _row_to_style_dict(row) -> dict:
         "styleDescription": row["style_description"] or "",
         "params": params,
         "backgroundPrompt": row["background_prompt"] or "",
-        "backgroundUrl": row["background_url"],
+        "backgroundUrl": _fix_bg_url(row["background_url"]),
         "distribution": distribution,
         "_cached_at": 0,  # force TTL miss so _should_regenerate() runs Jaccard check
     }
+
+
+def _maybe_fix_persisted_url(owner_id: str, bg_url):
+    """If the DB has an old-format URL, fix it and persist."""
+    if bg_url and isinstance(bg_url, str) and "/api/" not in bg_url and bg_url.startswith("/backgrounds/"):
+        fixed = _fix_bg_url(bg_url)
+        try:
+            with get_db_ctx() as conn:
+                conn.execute("UPDATE user_styles SET background_url = ? WHERE owner_id = ?", (fixed, owner_id))
+        except Exception:
+            pass
+        return fixed
+    return bg_url
 
 
 def _persist_style(conn, owner_id: str, profile_hash: str, profile_text: str, result: dict):
@@ -99,7 +119,8 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
             ).fetchone()
 
         if row and row["profile_hash"] == profile_hash:
-            # Profile text unchanged — return persisted result, no AI call needed.
+            # Fix old-format URL in DB before returning
+            _maybe_fix_persisted_url(owner_id, row["background_url"])
             result = _row_to_style_dict(row)
             debug = f"DB hit: style={result.get('style')}, bgUrl={result.get('backgroundUrl')}, bgPrompt={'SET' if result.get('backgroundPrompt') else 'EMPTY'}"
             print(f"[style] {debug}")
@@ -131,7 +152,6 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
                 else:
                     debug += " | Action: full regenerate (no prompt)"
                     print(f"[style] No backgroundPrompt in DB for {owner_id}, triggering full regeneration")
-                    # Force regeneration since we have no prompt to retry with
                     result = generate_style(owner_id, node_dicts, force=True)
                     if result.get("generating"):
                         debug += " -> generating..."
@@ -144,7 +164,6 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
                         except Exception as e:
                             print(f"[style] Failed to persist regenerated style for {owner_id}: {e}")
             result["_debug"] = debug
-            # Warm in-memory caches for subsequent requests in this process
             cache_style(profile_hash, result)
             hydrate_user_state(owner_id, row["profile_text"], 0)
             return result
@@ -152,14 +171,8 @@ def compute_style_sqlite(owner_id: str, force: bool = False) -> dict:
         if row and row["profile_hash"] != profile_hash:
             result = _row_to_style_dict(row)
             result["_debug"] = f"DB hit but profile changed: oldHash={row['profile_hash'][:8]}... newHash={profile_hash[:8]}..., oldBgUrl={result.get('backgroundUrl')}"
-            # Profile changed. Hydrate user state so _should_regenerate()
-            # can run Jaccard comparison against the previous text.
             hydrate_user_state(owner_id, row["profile_text"], 0)
-            # Pre-populate cache with old result keyed by NEW profile hash.
-            # _cached_at=0 ensures the TTL check misses, forcing fallthrough
-            # to _should_regenerate(). If Jaccard >= 0.80, the second cache
-            # lookup finds this entry and returns old style without AI call.
-            cache_style(profile_hash, _row_to_style_dict(row))
+            cache_style(profile_hash, result)
 
     # ── Generate (or regenerate) ──
     result = generate_style(owner_id, node_dicts, force=force)
