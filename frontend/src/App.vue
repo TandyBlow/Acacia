@@ -25,7 +25,7 @@ function retry() {
 </script>
 
 <template>
-  <n-config-provider :locale="zhCN">
+  <n-config-provider :locale="zhCN" abstract>
     <template v-if="!hasError">
       <MainLayout />
       <CinematicDemo v-if="isCinemaMode" />

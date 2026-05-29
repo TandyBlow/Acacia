@@ -79,6 +79,17 @@
         >
           {{ profileLoading ? '加载中...' : '查看知识画像' }}
         </button>
+        <div class="dev-section-label">演示账号切换</div>
+        <button
+          v-for="acct in DEMO_ACCOUNTS"
+          :key="acct.username"
+          type="button"
+          class="dev-action-btn dev-demo-acct-btn"
+          :disabled="demoSwitchRunning === acct.username"
+          @click="onSwitchDemoAccount(acct)"
+        >
+          {{ demoSwitchRunning === acct.username ? '切换中...' : acct.label }}
+        </button>
       </div>
     </div>
     <!-- 知识画像文本弹层 -->
@@ -158,6 +169,20 @@ import { useStyleStore } from '../../stores/styleStore';
 import { getToken } from '../../utils/api';
 import { invalidateSkeleton } from '../../composables/useTreeSkeleton';
 
+interface DemoAccount {
+  username: string;
+  label: string;
+  desc: string;
+}
+
+const DEMO_PASSWORD = 'demo123';
+const DEMO_ACCOUNTS: DemoAccount[] = [
+  { username: 'alex_gamedev', label: '游戏设计爱好者', desc: '18节点 · 游戏引擎/关卡设计/AI' },
+  { username: 'jamie_fullstack', label: '全栈开发者', desc: '17节点 · React/Node.js/DevOps' },
+  { username: 'emma_piano', label: '钢琴学生', desc: '16节点 · 巴赫/肖邦/踏板技法' },
+  { username: 'yuki_japanese', label: '日语学习者', desc: '18节点 · N2语法/动漫日语/文化' },
+];
+
 const devStore = useDevStore();
 const authStore = useAuthStore();
 const nodeStore = useNodeStore();
@@ -170,6 +195,7 @@ const styleRegenRunning = ref(false);
 const resetGrowthRunning = ref(false);
 const profileLoading = ref(false);
 const profileVisible = ref(false);
+const demoSwitchRunning = ref<string | null>(null);
 const profileData = ref<{
   nodeCount: number;
   profileTextLength: number;
@@ -269,6 +295,33 @@ async function onShowProfileText() {
     console.error('获取知识画像失败:', e);
   } finally {
     profileLoading.value = false;
+  }
+}
+
+async function onSwitchDemoAccount(acct: DemoAccount) {
+  if (demoSwitchRunning.value) return;
+  demoSwitchRunning.value = acct.username;
+  try {
+    if (authStore.isAuthenticated) {
+      await authStore.logout();
+      nodeStore.resetAfterLogout();
+      invalidateSkeleton();
+      await new Promise(r => setTimeout(r, 500));
+    }
+    authStore.mode = 'login';
+    authStore.username = acct.username;
+    authStore.password = DEMO_PASSWORD;
+    const ok = await authStore.submitByKnob();
+    if (ok) {
+      const uid = authStore.user?.id;
+      if (uid) {
+        await styleStore.fetchStyle(uid);
+      }
+    }
+  } catch (e: unknown) {
+    console.error('切换演示账号失败:', e);
+  } finally {
+    demoSwitchRunning.value = null;
   }
 }
 
@@ -510,6 +563,28 @@ onBeforeUnmount(() => {
 
 .dev-profile-btn:not(:disabled):hover {
   background: rgba(180, 160, 255, 0.22);
+}
+
+.dev-section-label {
+  margin-top: 10px;
+  padding: 4px 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-primary);
+  opacity: 0.4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dev-demo-acct-btn {
+  border-color: rgba(255, 200, 80, 0.3);
+  background: rgba(255, 200, 80, 0.08);
+  color: rgba(255, 200, 80, 0.85);
+  font-size: 12px;
+}
+
+.dev-demo-acct-btn:not(:disabled):hover {
+  background: rgba(255, 200, 80, 0.18);
 }
 
 .dev-profile-overlay {

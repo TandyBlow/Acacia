@@ -171,10 +171,20 @@ def load_checkpoint():
 
 
 def save_checkpoint(results):
-    tmp = str(OUTPUT_FILE) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        _json.dump(results, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, str(OUTPUT_FILE))
+    """Write checkpoint directly (avoid os.replace which fails on Windows when file is in use)."""
+    for attempt in range(3):
+        try:
+            with open(str(OUTPUT_FILE), "w", encoding="utf-8") as f:
+                _json.dump(results, f, ensure_ascii=False, indent=2)
+            return
+        except PermissionError:
+            if attempt < 2:
+                time.sleep(1)
+            else:
+                print("  [warn] failed to save checkpoint after 3 attempts")
+        except Exception as e:
+            print(f"  [warn] checkpoint save error: {e}")
+            return
 
 
 # ── Single persona generation with retry ────────────────────────────────────
@@ -240,9 +250,9 @@ def main():
         if entry:
             results.append(entry)
             save_checkpoint(results)
-            print(f"  ✓ {entry['styleName']} | bg: {entry['bgPath'] or 'N/A'}")
+            print(f"  [OK] {entry['styleName']} | bg: {entry['bgPath'] or 'N/A'}")
         else:
-            print(f"  ✗ 所有重试均失败，跳过")
+            print(f"  [FAIL] all retries exhausted, skipping")
 
         # Brief pause between requests to be kind to APIs
         time.sleep(0.5)

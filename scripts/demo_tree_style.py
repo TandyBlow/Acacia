@@ -22,9 +22,9 @@ OUTPUT_DIR = PROJECT_ROOT / "scripts" / "demo_output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Config ────────────────────────────────────────────────────────────────
-DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
-DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_MODEL = "deepseek-chat"
+LLM_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_URL = "https://api.deepseek.com/v1/chat/completions"
+LLM_MODEL = "deepseek-chat"
 
 IMAGE_API_KEY = os.environ.get("IMAGE_API_KEY", "")
 if not IMAGE_API_KEY:
@@ -169,9 +169,9 @@ def build_user_profile(nodes: list[dict]) -> str:
 
 def call_deepseek_for_style(user_profile: str) -> dict:
     """Call DeepSeek to generate style params from knowledge profile."""
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key = os.environ.get("LLM_API_KEY", "")
     if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY not set")
+        raise RuntimeError("LLM_API_KEY not set")
 
     user_prompt = f"""以下是一个学习者的知识库内容，请分析并生成匹配的视觉风格参数：
 
@@ -184,7 +184,7 @@ def call_deepseek_for_style(user_profile: str) -> dict:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": STYLE_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -195,7 +195,7 @@ def call_deepseek_for_style(user_profile: str) -> dict:
 
     print("  [DeepSeek] 请求风格生成...")
     with httpx.Client(timeout=120) as client:
-        resp = client.post(DEEPSEEK_URL, headers=headers, json=payload)
+        resp = client.post(LLM_URL, headers=headers, json=payload)
         if resp.status_code != 200:
             raise RuntimeError(f"DeepSeek error {resp.status_code}: {resp.text[:300]}")
 
@@ -455,19 +455,19 @@ body {{
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
-    # Read DEEPSEEK_KEY from env or backend/.env
-    dsk = os.environ.get("DEEPSEEK_API_KEY", "")
+    # Read LLM_KEY from env or backend/.env
+    dsk = os.environ.get("LLM_API_KEY", "")
     if not dsk:
         env_path = PROJECT_ROOT / "backend" / ".env"
         if env_path.exists():
             for line in open(env_path):
-                if line.startswith("DEEPSEEK_API_KEY="):
+                if line.startswith("LLM_API_KEY="):
                     dsk = line.strip().split("=", 1)[1].strip('"')
                     break
     if not dsk:
-        print("ERROR: DEEPSEEK_API_KEY not found. Set it in environment or backend/.env")
+        print("ERROR: LLM_API_KEY not found. Set it in environment or backend/.env")
         sys.exit(1)
-    os.environ["DEEPSEEK_API_KEY"] = dsk
+    os.environ["LLM_API_KEY"] = dsk
 
     # Determine user
     user_id = sys.argv[1] if len(sys.argv) > 1 else None

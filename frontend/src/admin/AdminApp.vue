@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :locale="zhCN">
+  <n-config-provider :locale="zhCN" abstract>
     <div class="admin-app">
       <div v-if="loading" class="admin-loading">{{ $t('admin.loading') }}</div>
       <div v-else-if="!isAuthenticated" class="admin-login">

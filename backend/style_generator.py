@@ -367,9 +367,9 @@ def _fix_contrast(text_rgb: list[float], bg_lum: float) -> list[float]:
 # ── Internal helpers ──────────────────────────────────────────────────────
 
 def _call_deepseek(messages: list) -> str:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    api_key = os.getenv("LLM_API_KEY")
     if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY not set")
+        raise RuntimeError("LLM_API_KEY not set")
 
     headers = {
         "Authorization": f"Bearer {api_key}",

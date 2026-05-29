@@ -127,7 +127,7 @@ def classify_intent_llm(user_input: str) -> str:
 
     from chat_service import parse_json_response
 
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    api_key = os.getenv("LLM_API_KEY")
     if not api_key:
         return "content_question"  # safe default
 

@@ -188,29 +188,56 @@ document.addEventListener('touchcancel', () => {
 
 // ── History trap ────────────────────────────────────────────────────
 // Block browser swipe-back navigation at the history level.
-// pushState alone isn't reliable on mobile — browsers may fire multiple
-// back() calls per gesture, or skip popstate on the second swipe.
 //
-// Strategy: maintain a counter in history.state so we can detect any
-// back-navigation (including rapid consecutive ones) and push forward
-// again via location.hash. Hash-based entries are always treated as
-// real navigable history by all major mobile browsers.
-//
-// The URL will briefly show #_N but we clean it with replaceState.
+// How it works:
+// 1. Maintain extra history entries ahead of the current position via
+//    location.hash = '_N' so the browser can never navigate "back" out
+//    of the app. Hash-based entries block swipe-back on ALL mobile
+//    browsers (unlike pushState which some WebViews ignore).
+// 2. Immediately clean the URL bar with history.replaceState so the
+//    user never sees #_N.
+// 3. Each location.hash = assignment queues a hashchange event.
+//    pendingInternal tracks how many are our own — when those events
+//    fire we consume them silently. Without this guard each hashchange
+//    would call hashGuard again, creating an infinite cascade.
+// 4. Real browser back-navigation fires popstate (hash may not change
+//    since replaceState stripped it). We listen for popstate to push
+//    fresh entries and re-block the stack.
 
 let hashSeq = 0;
-const hashGuard = () => {
+let pendingInternal = 0;
+
+function hashGuard() {
+  pendingInternal++;
   hashSeq++;
   window.location.hash = `_${hashSeq}`;
-  // Clean the hash from the URL bar without creating a new history entry
-  history.replaceState(null, '', window.location.pathname + window.location.search);
-};
+}
 
-// Seed: create initial history entries via hash so the stack never bottoms out
+// Seed: create initial history entries so the stack never bottoms out
 hashGuard();
 hashGuard();
 
+// Consume hashchange events triggered by our own location.hash assignments.
+// When the last of our events fires, clear the hash with location.hash = ''
+// (pre-incrementing pendingInternal so the resulting hashchange is consumed).
 window.addEventListener('hashchange', () => {
+  if (pendingInternal > 0) {
+    pendingInternal--;
+    if (pendingInternal === 0) {
+      // All our entries processed — clear visible hash
+      pendingInternal = 1;
+      window.location.hash = '';
+    }
+    return;
+  }
+  // Real browser back-navigation: push more guards to re-block
+  hashGuard();
+  hashGuard();
+});
+
+// Real browser back navigation — push more entries to re-block
+window.addEventListener('popstate', () => {
+  if (pendingInternal > 0) return;
   hashGuard();
   hashGuard();
 });

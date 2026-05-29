@@ -1,4 +1,4 @@
-const APP_SHELL_CACHE = 'app-shell-v1'
+const APP_SHELL_CACHE = 'app-shell-v2'
 const PRECACHE_URLS = [...new Set(
   self.__WB_MANIFEST.map((entry) => {
     let url = typeof entry === 'string' ? entry : entry.url
@@ -21,7 +21,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== APP_SHELL_CACHE)
+          .filter((key) => key.startsWith('app-shell-') && key !== APP_SHELL_CACHE)
           .map((key) => caches.delete(key)),
       ),
     ),
@@ -34,45 +34,29 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Network-first for navigation (HTML) so the user always gets the latest
-  // index.html pointing at fresh content-hashed assets. Cache-first for
-  // everything else (immutable JS/CSS/fonts/images — new build = new hash).
-  const isNav = event.request.mode === 'navigate'
+  const isDev = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
+  if (isDev) {
+    event.respondWith(fetch(event.request))
+    return
+  }
 
   event.respondWith((async () => {
-    if (isNav) {
-      try {
-        const networkResponse = await fetch(event.request)
-        if (networkResponse && networkResponse.status === 200) {
-          const cache = await caches.open(APP_SHELL_CACHE)
-          await cache.put(event.request, networkResponse.clone())
-        }
-        return networkResponse
-      } catch {
-        const cachedResponse = await caches.match(event.request)
-        if (cachedResponse) return cachedResponse
-        return caches.match('/index.html')
-      }
-    }
-
-    // Cache-first for non-navigation requests
-    const cachedResponse = await caches.match(event.request)
-    if (cachedResponse) {
-      return cachedResponse
-    }
-
+    // Network-first for everything: always try the network first,
+    // fall back to cache only when offline. This ensures users always
+    // get the latest assets after a deploy.
     try {
       const networkResponse = await fetch(event.request)
-      if (
-        networkResponse &&
-        networkResponse.status === 200 &&
-        event.request.url.startsWith(self.location.origin)
-      ) {
+      if (networkResponse && networkResponse.status === 200) {
         const cache = await caches.open(APP_SHELL_CACHE)
         await cache.put(event.request, networkResponse.clone())
       }
       return networkResponse
     } catch {
+      const cachedResponse = await caches.match(event.request)
+      if (cachedResponse) return cachedResponse
+      if (event.request.mode === 'navigate') {
+        return caches.match('/index.html')
+      }
       return new Response('Offline', {
         status: 503,
         statusText: 'Service Unavailable',

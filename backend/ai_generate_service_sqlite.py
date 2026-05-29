@@ -10,11 +10,11 @@ from uuid import uuid4
 
 import httpx
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    raise RuntimeError("DEEPSEEK_API_KEY 环境变量未设置")
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = "deepseek-chat"
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+if not LLM_API_KEY:
+    raise RuntimeError("LLM_API_KEY 环境变量未设置")
+LLM_BASE_URL = "https://api.deepseek.com"
+LLM_MODEL = "deepseek-chat"
 
 SYSTEM_PROMPT = (
     "你是一个知识点整理助手。用户会输入一些零散的词或句子，你需要："
@@ -34,14 +34,14 @@ ANALYSIS_PROMPT = (
 
 
 def call_llm(user_input: str, system_prompt: str = SYSTEM_PROMPT) -> str:
-    if not DEEPSEEK_API_KEY:
-        raise ValueError("未配置DEEPSEEK_API_KEY环境变量，无法调用AI服务")
+    if not LLM_API_KEY:
+        raise ValueError("未配置LLM_API_KEY环境变量，无法调用AI服务")
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input},
@@ -50,7 +50,7 @@ def call_llm(user_input: str, system_prompt: str = SYSTEM_PROMPT) -> str:
         "response_format": {"type": "json_object"},
     }
     with httpx.Client(timeout=30) as client:
-        resp = client.post(f"{DEEPSEEK_BASE_URL}/v1/chat/completions", headers=headers, json=payload)
+        resp = client.post(f"{LLM_BASE_URL}/v1/chat/completions", headers=headers, json=payload)
         resp.raise_for_status()
     data = resp.json()
     return data["choices"][0]["message"]["content"]

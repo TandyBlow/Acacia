@@ -18,8 +18,8 @@ from style_generator import STYLE_SYSTEM_PROMPT, _call_deepseek, _parse_json
 env_path = PROJECT_ROOT / "backend" / ".env"
 if env_path.exists():
     for line in open(env_path):
-        if line.startswith("DEEPSEEK_API_KEY="):
-            os.environ["DEEPSEEK_API_KEY"] = line.strip().split("=", 1)[1].strip('"')
+        if line.startswith("LLM_API_KEY="):
+            os.environ["LLM_API_KEY"] = line.strip().split("=", 1)[1].strip('"')
 
 IMAGE_API_KEY = os.getenv("IMAGE_API_KEY")
 if not IMAGE_API_KEY:

@@ -9,26 +9,26 @@ import httpx
 # 设置输出编码为UTF-8
 sys.stdout.reconfigure(encoding='utf-8')
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    raise RuntimeError("DEEPSEEK_API_KEY 环境变量未设置")
-DEEPSEEK_MODEL = "deepseek-chat"
-DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+if not LLM_API_KEY:
+    raise RuntimeError("LLM_API_KEY 环境变量未设置")
+LLM_MODEL = "deepseek-chat"
+LLM_URL = "https://api.deepseek.com/v1/chat/completions"
 
 def call_llm(messages: list[dict]) -> str:
     """调用LLM API"""
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": LLM_MODEL,
         "messages": messages,
         "temperature": 0.7,
     }
 
     with httpx.Client(timeout=30) as client:
-        resp = client.post(DEEPSEEK_URL, headers=headers, json=payload)
+        resp = client.post(LLM_URL, headers=headers, json=payload)
         resp.raise_for_status()
 
     data = resp.json()
