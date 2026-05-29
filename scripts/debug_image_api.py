@@ -14,8 +14,10 @@ OUTPUT_DIR = PROJECT_ROOT / "scripts" / "demo_output"
 IMAGE_API_KEY = os.getenv("IMAGE_API_KEY")
 if not IMAGE_API_KEY:
     raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
-IMAGE_API_URL = "https://ai.centos.hk/v1/images/edits"
-IMAGE_MODEL = "gpt-image-2"
+IMAGE_API_URL = os.getenv("IMAGE_API_URL")
+if not IMAGE_API_URL:
+    raise RuntimeError("IMAGE_API_URL 环境变量未设置")
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2")
 
 def test_api_call(prompt: str, output_name: str):
     """Test image API with given prompt."""

@@ -29,6 +29,8 @@ jobs:
             cat > /opt/acacia/backend/.env << 'ENVEOF'
             LLM_API_KEY=${{ secrets.LLM_API_KEY }}
             IMAGE_API_KEY=${{ secrets.IMAGE_API_KEY }}
+            IMAGE_API_URL=${{ secrets.IMAGE_API_URL }}
+            IMAGE_MODEL=${{ secrets.IMAGE_MODEL }}
             DB_PATH=/opt/acacia/data/acacia.db
             ENVEOF
             chmod 600 /opt/acacia/backend/.env

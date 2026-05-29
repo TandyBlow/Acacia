@@ -371,12 +371,15 @@ def _call_deepseek(messages: list) -> str:
     if not api_key:
         raise RuntimeError("LLM_API_KEY not set")
 
+    llm_base_url = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+    llm_model = os.getenv("LLM_MODEL", "deepseek-chat")
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "deepseek-chat",
+        "model": llm_model,
         "messages": messages,
         "temperature": 0.8,
         "max_tokens": 4096,
@@ -384,7 +387,7 @@ def _call_deepseek(messages: list) -> str:
 
     with httpx.Client(timeout=60.0) as client:
         resp = client.post(
-            "https://api.deepseek.com/v1/chat/completions",
+            f"{llm_base_url}/v1/chat/completions",
             headers=headers,
             json=payload,
         )
@@ -452,11 +455,16 @@ def _generate_background_image(background_prompt: str, owner_id: str, force: boo
     error is a human-readable reason string when generation is skipped/fails.
     """
     api_key = os.getenv("IMAGE_API_KEY")
-    api_url = os.getenv("IMAGE_API_URL", "https://ai.centos.hk/v1/images/edits")
+    api_url = os.getenv("IMAGE_API_URL")
     model = os.getenv("IMAGE_MODEL", "gpt-image-2")
 
     if not api_key:
         msg = "IMAGE_API_KEY not set on server"
+        print(f"[style] {msg}, skipping background generation")
+        return None, msg
+
+    if not api_url:
+        msg = "IMAGE_API_URL not set on server"
         print(f"[style] {msg}, skipping background generation")
         return None, msg
 

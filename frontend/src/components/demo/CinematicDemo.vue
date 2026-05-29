@@ -285,8 +285,13 @@ function schedulePhase1Advance() {
   if (!s) return;
   advanceTimer = setTimeout(async () => {
     if (paused.value || cancelled) return;
-    const next = (phase1Idx.value + 1) % phase1Scenes.value.length;
-    await advancePhase1Scene(next);
+    const next = phase1Idx.value + 1;
+    if (next >= phase1Scenes.value.length) {
+      // All Phase 1 scenes done → transition to Phase 2
+      transitionToPhase2();
+    } else {
+      await advancePhase1Scene(next);
+    }
   }, s.durationMs);
 }
 
@@ -464,14 +469,6 @@ async function start() {
   demoPhase.value = 'phase1';
   ready.value = true;
 
-  // After Phase 1 scenes complete, transition to Phase 2
-  // We hook into the advance timer: when the last scene timer fires, it wraps around.
-  // Override: after last scene, auto-transition to Phase 2.
-  const totalPhase1Ms = phase1Scenes.value.reduce((sum, s) => sum + s.durationMs, 0);
-  advanceTimer = setTimeout(() => {
-    transitionToPhase2();
-  }, totalPhase1Ms);
-
   schedulePhase1Advance();
 }
 
@@ -497,7 +494,7 @@ onBeforeUnmount(() => {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
   z-index: 10;
-  background: var(--bg-gradient, linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%));
+  background: #000;
 }
 .loading-ring {
   width: 32px; height: 32px;
@@ -508,7 +505,7 @@ onBeforeUnmount(() => {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-text {
-  font-size: 15px; color: var(--color-hint, #888); margin: 0;
+  font-size: 15px; color: rgba(255,255,255,0.6); margin: 0;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 

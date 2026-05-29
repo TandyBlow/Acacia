@@ -14,7 +14,10 @@ OUTPUT_DIR = PROJECT_ROOT / "scripts" / "demo_output"
 IMAGE_API_KEY = os.getenv("IMAGE_API_KEY")
 if not IMAGE_API_KEY:
     raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
-IMAGE_API_URL = "https://ai.centos.hk/v1/images/edits"
+IMAGE_API_URL = os.getenv("IMAGE_API_URL")
+if not IMAGE_API_URL:
+    raise RuntimeError("IMAGE_API_URL 环境变量未设置")
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2")
 
 TEST_SCENES = [
     # 成功案例（从demo推测）
@@ -43,7 +46,7 @@ def test_scene(name: str, prompt: str):
     image_bytes = open(REFERENCE_IMAGE, "rb").read()
     files = {"image": ("reference.png", image_bytes, "image/png")}
     data = {
-        "model": "gpt-image-2",
+        "model": IMAGE_MODEL,
         "prompt": prompt,
         "size": "1536x1024",
         "n": "1",

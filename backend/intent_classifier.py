@@ -131,12 +131,15 @@ def classify_intent_llm(user_input: str) -> str:
     if not api_key:
         return "content_question"  # safe default
 
+    llm_base_url = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+    llm_model = os.getenv("LLM_MODEL", "deepseek-chat")
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "deepseek-chat",
+        "model": llm_model,
         "messages": [
             {"role": "system", "content": INTENT_CLASSIFY_SYSTEM},
             {"role": "user", "content": user_input},
@@ -147,7 +150,7 @@ def classify_intent_llm(user_input: str) -> str:
     try:
         with httpx.Client(timeout=15.0) as client:
             resp = client.post(
-                "https://api.deepseek.com/v1/chat/completions",
+                f"{llm_base_url}/v1/chat/completions",
                 headers=headers,
                 json=payload,
             )

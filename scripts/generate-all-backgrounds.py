@@ -13,8 +13,10 @@ import time
 API_KEY = os.getenv("IMAGE_API_KEY")
 if not API_KEY:
     raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
-API_URL = "https://ai.centos.hk/v1/images/edits"
-MODEL = "gpt-image-2"
+API_URL = os.getenv("IMAGE_API_URL")
+if not API_URL:
+    raise RuntimeError("IMAGE_API_URL 环境变量未设置")
+MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2")
 
 # 参考图路径
 REFERENCE_IMAGE = Path(__file__).parent.parent / "background.png"

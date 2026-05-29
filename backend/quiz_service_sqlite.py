@@ -16,8 +16,8 @@ from review_service_sqlite import _update_fsrs_params, _calculate_retrievability
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 if not LLM_API_KEY:
     raise RuntimeError("LLM_API_KEY 环境变量未设置")
-LLM_BASE_URL = "https://api.deepseek.com"
-LLM_MODEL = "deepseek-chat"
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
 # ── Prompt templates ──────────────────────────────────────────────
 

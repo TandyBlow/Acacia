@@ -1,0 +1,849 @@
+[
+  {
+    "index": 0,
+    "styleName": "霓光夜都",
+    "styleDescription": "冷峻赛博都市的夜，电光紫与青色交织成流动的光谱，高对比中透出理性的锋芒",
+    "vibe": "黑暗城市夜空下霓虹灯闪烁，电光紫与青色交织，高对比冷峻未来感",
+    "params": {
+      "trunkBaseColor": [
+        0.05,
+        0.02,
+        0.1
+      ],
+      "trunkMidColor": [
+        0.12,
+        0.05,
+        0.2
+      ],
+      "trunkTipColor": [
+        0.2,
+        0.08,
+        0.3
+      ],
+      "leafMidColor": [
+        0.6,
+        0.1,
+        0.8
+      ],
+      "leafLightColor": [
+        0.8,
+        0.2,
+        1.0
+      ],
+      "leafDarkColor": [
+        0.3,
+        0.05,
+        0.5
+      ],
+      "textPrimaryColor": [
+        0.95,
+        0.95,
+        1.0
+      ],
+      "textHintColor": [
+        0.5,
+        0.6,
+        0.8
+      ],
+      "skyTopColor": [
+        0.02,
+        0.01,
+        0.08
+      ],
+      "skyBottomColor": [
+        0.15,
+        0.05,
+        0.25
+      ],
+      "groundColor": [
+        0.08,
+        0.06,
+        0.12
+      ],
+      "particleColor": [
+        0.7,
+        0.2,
+        1.0
+      ],
+      "mainLightColor": [
+        0.8,
+        0.3,
+        1.0
+      ],
+      "ambientLightColor": [
+        0.2,
+        0.05,
+        0.3
+      ],
+      "outlineColor": [
+        0.3,
+        0.1,
+        0.5
+      ],
+      "leafShadowSize": -0.3,
+      "leafShadowSoftness": 1.2,
+      "leafHighlightSize": -0.2,
+      "leafHighlightSoftness": 1.5,
+      "leafAlphaClipping": 0.45,
+      "leafTextureIndex": 1.0,
+      "windStrength": 0.4,
+      "windFrequency": 0.6,
+      "windScale": 0.7,
+      "groundUndulation": 0.15,
+      "particleShape": 1.0,
+      "particleSpeed": 0.3,
+      "particleDirection": 0.5,
+      "particleSpawnRate": 12.0,
+      "particleSize": 1.5,
+      "mainLightIntensity": 3.0,
+      "ambientLightIntensity": 0.4,
+      "bloomStrength": 0.12,
+      "bloomRadius": 0.6,
+      "bloomThreshold": 0.6,
+      "outlineWidth": 0.4,
+      "bgCamY": 2.8,
+      "bgCamPitch": -0.15,
+      "bgCamZ": -5.0,
+      "bgFovZoom": 2.2,
+      "bgGroundY": -2.0,
+      "bgHillFreq": 0.6,
+      "bgHillAmp": 8.0,
+      "bgHillDepth": 40.0,
+      "bgBldgDepth": 50.0,
+      "bgBuildingDensity": 0.8,
+      "bgBuildingHeight": 6.0,
+      "bgFogDistance": 45.0,
+      "bgBarrelK": 0.25,
+      "bgPlatformHeight": 0.1,
+      "bgPlatformFade": 0.02,
+      "bgPlatformTexWidth": 1536.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_000.png"
+  },
+  {
+    "index": 1,
+    "styleName": "深海幽光",
+    "styleDescription": "幽暗深海与寂静墨绿交织，偶有生物荧光闪烁，神秘孤独的视觉世界",
+    "vibe": "深海蓝与墨绿，幽暗静谧，偶有生物荧光闪烁，神秘而孤独",
+    "params": {
+      "trunkBaseColor": [
+        0.05,
+        0.08,
+        0.12
+      ],
+      "trunkMidColor": [
+        0.08,
+        0.15,
+        0.18
+      ],
+      "trunkTipColor": [
+        0.12,
+        0.2,
+        0.22
+      ],
+      "leafMidColor": [
+        0.02,
+        0.25,
+        0.18
+      ],
+      "leafLightColor": [
+        0.35,
+        0.55,
+        0.45
+      ],
+      "leafDarkColor": [
+        0.0,
+        0.12,
+        0.1
+      ],
+      "textPrimaryColor": [
+        0.85,
+        0.92,
+        0.95
+      ],
+      "textHintColor": [
+        0.3673,
+        0.562,
+        0.5133
+      ],
+      "skyTopColor": [
+        0.03,
+        0.05,
+        0.12
+      ],
+      "skyBottomColor": [
+        0.08,
+        0.18,
+        0.2
+      ],
+      "groundColor": [
+        0.05,
+        0.12,
+        0.1
+      ],
+      "particleColor": [
+        0.3,
+        0.7,
+        0.6
+      ],
+      "mainLightColor": [
+        0.15,
+        0.25,
+        0.35
+      ],
+      "ambientLightColor": [
+        0.02,
+        0.08,
+        0.12
+      ],
+      "outlineColor": [
+        0.0,
+        0.18,
+        0.2
+      ],
+      "leafShadowSize": -0.35,
+      "leafShadowSoftness": 1.2,
+      "leafHighlightSize": -0.2,
+      "leafHighlightSoftness": 1.5,
+      "leafAlphaClipping": 0.45,
+      "leafTextureIndex": 2.0,
+      "windStrength": 0.15,
+      "windFrequency": 0.25,
+      "windScale": 0.35,
+      "groundUndulation": 0.45,
+      "particleShape": 1.0,
+      "particleSpeed": 0.25,
+      "particleDirection": 0.8,
+      "particleSpawnRate": 12.0,
+      "particleSize": 0.6,
+      "mainLightIntensity": 1.8,
+      "ambientLightIntensity": 0.35,
+      "bloomStrength": 0.12,
+      "bloomRadius": 0.55,
+      "bloomThreshold": 0.65,
+      "outlineWidth": 0.45,
+      "bgCamY": 2.5,
+      "bgCamPitch": -0.25,
+      "bgCamZ": -5.5,
+      "bgFovZoom": 1.8,
+      "bgGroundY": -2.2,
+      "bgHillFreq": 0.25,
+      "bgHillAmp": 6.0,
+      "bgHillDepth": 50.0,
+      "bgBldgDepth": 45.0,
+      "bgBuildingDensity": 0.2,
+      "bgBuildingHeight": 2.5,
+      "bgFogDistance": 45.0,
+      "bgBarrelK": 0.25,
+      "bgPlatformHeight": 0.1,
+      "bgPlatformFade": 0.02,
+      "bgPlatformTexWidth": 1536.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_001.png"
+  },
+  {
+    "index": 2,
+    "styleName": "极光寂雪",
+    "styleDescription": "冰岛极夜下，极光如绸缎般流动，雪地反射冷冽月光，纯净而深邃的视觉世界",
+    "vibe": "冰岛极夜，深蓝到翠绿的极光在天空流动，地面白雪覆盖，清冷纯净",
+    "params": {
+      "trunkBaseColor": [
+        0.05,
+        0.05,
+        0.08
+      ],
+      "trunkMidColor": [
+        0.08,
+        0.08,
+        0.12
+      ],
+      "trunkTipColor": [
+        0.12,
+        0.1,
+        0.15
+      ],
+      "leafMidColor": [
+        0.1,
+        0.25,
+        0.2
+      ],
+      "leafLightColor": [
+        0.15,
+        0.4,
+        0.3
+      ],
+      "leafDarkColor": [
+        0.05,
+        0.15,
+        0.12
+      ],
+      "textPrimaryColor": [
+        0.85,
+        0.9,
+        0.95
+      ],
+      "textHintColor": [
+        0.5,
+        0.65,
+        0.75
+      ],
+      "skyTopColor": [
+        0.02,
+        0.02,
+        0.08
+      ],
+      "skyBottomColor": [
+        0.08,
+        0.15,
+        0.2
+      ],
+      "groundColor": [
+        0.2,
+        0.22,
+        0.25
+      ],
+      "particleColor": [
+        0.6,
+        0.8,
+        0.9
+      ],
+      "mainLightColor": [
+        0.3,
+        0.5,
+        0.7
+      ],
+      "ambientLightColor": [
+        0.1,
+        0.15,
+        0.25
+      ],
+      "outlineColor": [
+        0.1,
+        0.15,
+        0.2
+      ],
+      "leafShadowSize": -0.3,
+      "leafShadowSoftness": 0.8,
+      "leafHighlightSize": -0.3,
+      "leafHighlightSoftness": 0.6,
+      "leafAlphaClipping": 0.45,
+      "leafTextureIndex": 0.0,
+      "windStrength": 0.2,
+      "windFrequency": 0.3,
+      "windScale": 0.4,
+      "groundUndulation": 0.1,
+      "particleShape": 0.0,
+      "particleSpeed": 0.2,
+      "particleDirection": 1.0,
+      "particleSpawnRate": 6.0,
+      "particleSize": 0.8,
+      "mainLightIntensity": 1.8,
+      "ambientLightIntensity": 0.4,
+      "bloomStrength": 0.05,
+      "bloomRadius": 0.3,
+      "bloomThreshold": 0.6,
+      "outlineWidth": 0.25,
+      "bgCamY": 2.5,
+      "bgCamPitch": -0.15,
+      "bgCamZ": -5.0,
+      "bgFovZoom": 2.0,
+      "bgGroundY": -2.0,
+      "bgHillFreq": 0.2,
+      "bgHillAmp": 4.0,
+      "bgHillDepth": 50.0,
+      "bgBldgDepth": 40.0,
+      "bgBuildingDensity": 0.2,
+      "bgBuildingHeight": 3.0,
+      "bgFogDistance": 70.0,
+      "bgBarrelK": 0.25,
+      "bgPlatformHeight": 0.1,
+      "bgPlatformFade": 0.02,
+      "bgPlatformTexWidth": 1536.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_002.png"
+  },
+  {
+    "index": 3,
+    "styleName": "夜雨东京·孤独霓虹",
+    "styleDescription": "深蓝灰调的雨夜东京，霓虹倒映在湿漉漉的柏油路上，弥漫着孤独而浪漫的都市气息。",
+    "vibe": "雨夜东京街头，深蓝灰色调，霓虹倒映在湿漉漉的柏油路上，孤独浪漫",
+    "params": {
+      "trunkBaseColor": [
+        0.05,
+        0.05,
+        0.08
+      ],
+      "trunkMidColor": [
+        0.1,
+        0.08,
+        0.12
+      ],
+      "trunkTipColor": [
+        0.15,
+        0.12,
+        0.18
+      ],
+      "leafMidColor": [
+        0.15,
+        0.18,
+        0.35
+      ],
+      "leafLightColor": [
+        0.45,
+        0.2,
+        0.35
+      ],
+      "leafDarkColor": [
+        0.05,
+        0.08,
+        0.2
+      ],
+      "textPrimaryColor": [
+        0.85,
+        0.85,
+        0.95
+      ],
+      "textHintColor": [
+        0.6,
+        0.55,
+        0.7
+      ],
+      "skyTopColor": [
+        0.08,
+        0.08,
+        0.15
+      ],
+      "skyBottomColor": [
+        0.15,
+        0.12,
+        0.2
+      ],
+      "groundColor": [
+        0.1,
+        0.08,
+        0.1
+      ],
+      "particleColor": [
+        0.6,
+        0.5,
+        0.7
+      ],
+      "mainLightColor": [
+        0.4,
+        0.2,
+        0.45
+      ],
+      "ambientLightColor": [
+        0.1,
+        0.08,
+        0.15
+      ],
+      "outlineColor": [
+        0.1,
+        0.08,
+        0.12
+      ],
+      "leafShadowSize": -0.25,
+      "leafShadowSoftness": 1.0,
+      "leafHighlightSize": -0.25,
+      "leafHighlightSoftness": 1.0,
+      "leafAlphaClipping": 0.5,
+      "leafTextureIndex": 0.0,
+      "windStrength": 0.3,
+      "windFrequency": 0.4,
+      "windScale": 0.5,
+      "groundUndulation": 0.3,
+      "particleShape": 0.0,
+      "particleSpeed": 0.4,
+      "particleDirection": 1.0,
+      "particleSpawnRate": 8.0,
+      "particleSize": 1.0,
+      "mainLightIntensity": 2.5,
+      "ambientLightIntensity": 0.5,
+      "bloomStrength": 0.075,
+      "bloomRadius": 0.4,
+      "bloomThreshold": 0.7,
+      "outlineWidth": 0.3,
+      "bgCamY": 2.8,
+      "bgCamPitch": -0.2,
+      "bgCamZ": -5.0,
+      "bgFovZoom": 2.0,
+      "bgGroundY": -2.0,
+      "bgHillFreq": 0.3,
+      "bgHillAmp": 5.0,
+      "bgHillDepth": 40.0,
+      "bgBldgDepth": 40.0,
+      "bgBuildingDensity": 0.5,
+      "bgBuildingHeight": 4.0,
+      "bgFogDistance": 60.0,
+      "bgBarrelK": 0.3,
+      "bgPlatformHeight": 0.12,
+      "bgPlatformFade": 0.03,
+      "bgPlatformTexWidth": 1536.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_003.png"
+  },
+  {
+    "index": 4,
+    "styleName": "星云猎户夜",
+    "styleDescription": "深邃宇宙中猎户座星云的低语，紫红交织的星尘与静默星光，为学习者铺开一片沉静的夜空",
+    "vibe": "猎户座星云色彩，深紫与品红交织，星光点点，宇宙深邃无边",
+    "params": {
+      "trunkBaseColor": [
+        0.05,
+        0.02,
+        0.12
+      ],
+      "trunkMidColor": [
+        0.12,
+        0.04,
+        0.18
+      ],
+      "trunkTipColor": [
+        0.2,
+        0.08,
+        0.25
+      ],
+      "leafMidColor": [
+        0.45,
+        0.1,
+        0.5
+      ],
+      "leafLightColor": [
+        0.7,
+        0.3,
+        0.8
+      ],
+      "leafDarkColor": [
+        0.25,
+        0.05,
+        0.3
+      ],
+      "textPrimaryColor": [
+        0.95,
+        0.85,
+        0.95
+      ],
+      "textHintColor": [
+        0.6269,
+        0.4403,
+        0.6735
+      ],
+      "skyTopColor": [
+        0.02,
+        0.01,
+        0.08
+      ],
+      "skyBottomColor": [
+        0.25,
+        0.05,
+        0.3
+      ],
+      "groundColor": [
+        0.06,
+        0.02,
+        0.12
+      ],
+      "particleColor": [
+        0.9,
+        0.6,
+        1.0
+      ],
+      "mainLightColor": [
+        0.7,
+        0.3,
+        0.9
+      ],
+      "ambientLightColor": [
+        0.2,
+        0.05,
+        0.25
+      ],
+      "outlineColor": [
+        0.3,
+        0.1,
+        0.4
+      ],
+      "leafShadowSize": -0.3,
+      "leafShadowSoftness": 1.2,
+      "leafHighlightSize": -0.2,
+      "leafHighlightSoftness": 0.9,
+      "leafAlphaClipping": 0.45,
+      "leafTextureIndex": 1.0,
+      "windStrength": 0.15,
+      "windFrequency": 0.25,
+      "windScale": 0.4,
+      "groundUndulation": 0.15,
+      "particleShape": 1.0,
+      "particleSpeed": 0.1,
+      "particleDirection": 0.5,
+      "particleSpawnRate": 12.0,
+      "particleSize": 0.8,
+      "mainLightIntensity": 1.8,
+      "ambientLightIntensity": 0.6,
+      "bloomStrength": 0.12,
+      "bloomRadius": 0.6,
+      "bloomThreshold": 0.5,
+      "outlineWidth": 0.25,
+      "bgCamY": 2.5,
+      "bgCamPitch": -0.15,
+      "bgCamZ": -4.5,
+      "bgFovZoom": 2.2,
+      "bgGroundY": -1.8,
+      "bgHillFreq": 0.2,
+      "bgHillAmp": 3.0,
+      "bgHillDepth": 35.0,
+      "bgBldgDepth": 30.0,
+      "bgBuildingDensity": 0.0,
+      "bgBuildingHeight": 1.0,
+      "bgFogDistance": 50.0,
+      "bgBarrelK": 0.25,
+      "bgPlatformHeight": 0.1,
+      "bgPlatformFade": 0.02,
+      "bgPlatformTexWidth": 1024.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_004.png"
+  },
+  {
+    "index": 5,
+    "styleName": "寂白留韵",
+    "styleDescription": "灰白基调下，淡木与冷灰交织的克制美学，大量留白营造出呼吸感与静谧氛围。",
+    "vibe": "灰白基调，淡木色家具，冷峻克制，低饱和，留白大量，呼吸感",
+    "params": {
+      "trunkBaseColor": [
+        0.65,
+        0.6,
+        0.55
+      ],
+      "trunkMidColor": [
+        0.75,
+        0.7,
+        0.65
+      ],
+      "trunkTipColor": [
+        0.85,
+        0.8,
+        0.75
+      ],
+      "leafMidColor": [
+        0.8,
+        0.78,
+        0.75
+      ],
+      "leafLightColor": [
+        0.9,
+        0.88,
+        0.85
+      ],
+      "leafDarkColor": [
+        0.6,
+        0.58,
+        0.55
+      ],
+      "textPrimaryColor": [
+        0.15,
+        0.15,
+        0.15
+      ],
+      "textHintColor": [
+        0.3604,
+        0.3473,
+        0.3276
+      ],
+      "skyTopColor": [
+        0.78,
+        0.78,
+        0.8
+      ],
+      "skyBottomColor": [
+        0.85,
+        0.84,
+        0.82
+      ],
+      "groundColor": [
+        0.7,
+        0.68,
+        0.65
+      ],
+      "particleColor": [
+        0.9,
+        0.9,
+        0.92
+      ],
+      "mainLightColor": [
+        0.95,
+        0.93,
+        0.9
+      ],
+      "ambientLightColor": [
+        0.85,
+        0.84,
+        0.82
+      ],
+      "outlineColor": [
+        0.5,
+        0.48,
+        0.45
+      ],
+      "leafShadowSize": -0.35,
+      "leafShadowSoftness": 1.2,
+      "leafHighlightSize": -0.35,
+      "leafHighlightSoftness": 1.2,
+      "leafAlphaClipping": 0.5,
+      "leafTextureIndex": 0.0,
+      "windStrength": 0.2,
+      "windFrequency": 0.3,
+      "windScale": 0.4,
+      "groundUndulation": 0.2,
+      "particleShape": 0.0,
+      "particleSpeed": 0.3,
+      "particleDirection": 1.0,
+      "particleSpawnRate": 6.0,
+      "particleSize": 0.8,
+      "mainLightIntensity": 2.0,
+      "ambientLightIntensity": 0.6,
+      "bloomStrength": 0.03,
+      "bloomRadius": 0.3,
+      "bloomThreshold": 0.8,
+      "outlineWidth": 0.2,
+      "bgCamY": 2.8,
+      "bgCamPitch": -0.2,
+      "bgCamZ": -5.0,
+      "bgFovZoom": 2.0,
+      "bgGroundY": -2.0,
+      "bgHillFreq": 0.2,
+      "bgHillAmp": 3.0,
+      "bgHillDepth": 40.0,
+      "bgBldgDepth": 40.0,
+      "bgBuildingDensity": 0.1,
+      "bgBuildingHeight": 2.0,
+      "bgFogDistance": 80.0,
+      "bgBarrelK": 0.2,
+      "bgPlatformHeight": 0.1,
+      "bgPlatformFade": 0.02,
+      "bgPlatformTexWidth": 1536.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_005.png"
+  },
+  {
+    "index": 6,
+    "styleName": "午夜爵士蓝调",
+    "styleDescription": "慵懒精致的深蓝与琥珀交织，如烟雾般朦胧的都市夜色",
+    "vibe": "午夜爵士酒吧，深蓝与琥珀色灯光，烟雾缭绕，慵懒而精致",
+    "params": {
+      "trunkBaseColor": [
+        0.15,
+        0.1,
+        0.08
+      ],
+      "trunkMidColor": [
+        0.25,
+        0.18,
+        0.12
+      ],
+      "trunkTipColor": [
+        0.35,
+        0.25,
+        0.15
+      ],
+      "leafMidColor": [
+        0.2,
+        0.15,
+        0.25
+      ],
+      "leafLightColor": [
+        0.4,
+        0.3,
+        0.45
+      ],
+      "leafDarkColor": [
+        0.1,
+        0.08,
+        0.15
+      ],
+      "textPrimaryColor": [
+        0.95,
+        0.9,
+        0.85
+      ],
+      "textHintColor": [
+        0.6014,
+        0.5515,
+        0.5017
+      ],
+      "skyTopColor": [
+        0.05,
+        0.02,
+        0.12
+      ],
+      "skyBottomColor": [
+        0.3,
+        0.2,
+        0.15
+      ],
+      "groundColor": [
+        0.15,
+        0.12,
+        0.1
+      ],
+      "particleColor": [
+        0.6,
+        0.5,
+        0.35
+      ],
+      "mainLightColor": [
+        0.7,
+        0.55,
+        0.3
+      ],
+      "ambientLightColor": [
+        0.1,
+        0.08,
+        0.2
+      ],
+      "outlineColor": [
+        0.3,
+        0.2,
+        0.15
+      ],
+      "leafShadowSize": -0.35,
+      "leafShadowSoftness": 1.2,
+      "leafHighlightSize": -0.15,
+      "leafHighlightSoftness": 1.5,
+      "leafAlphaClipping": 0.45,
+      "leafTextureIndex": 1.0,
+      "windStrength": 0.4,
+      "windFrequency": 0.3,
+      "windScale": 0.6,
+      "groundUndulation": 0.2,
+      "particleShape": 2.0,
+      "particleSpeed": 0.3,
+      "particleDirection": 0.0,
+      "particleSpawnRate": 12.0,
+      "particleSize": 1.2,
+      "mainLightIntensity": 2.0,
+      "ambientLightIntensity": 0.6,
+      "bloomStrength": 0.12,
+      "bloomRadius": 0.6,
+      "bloomThreshold": 0.5,
+      "outlineWidth": 0.25,
+      "bgCamY": 2.5,
+      "bgCamPitch": -0.15,
+      "bgCamZ": -6.0,
+      "bgFovZoom": 2.2,
+      "bgGroundY": -1.8,
+      "bgHillFreq": 0.2,
+      "bgHillAmp": 4.0,
+      "bgHillDepth": 30.0,
+      "bgBldgDepth": 35.0,
+      "bgBuildingDensity": 0.6,
+      "bgBuildingHeight": 5.0,
+      "bgFogDistance": 45.0,
+      "bgBarrelK": 0.25,
+      "bgPlatformHeight": 0.1,
+      "bgPlatformFade": 0.02,
+      "bgPlatformTexWidth": 1024.0
+    },
+    "bgPath": "/api/backgrounds/ai/demo_style_006.png"
+  }
+]

@@ -23,14 +23,17 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Config ────────────────────────────────────────────────────────────────
 LLM_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_URL = "https://api.deepseek.com/v1/chat/completions"
-LLM_MODEL = "deepseek-chat"
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_URL = f"{LLM_BASE_URL}/v1/chat/completions"
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
 
 IMAGE_API_KEY = os.environ.get("IMAGE_API_KEY", "")
 if not IMAGE_API_KEY:
     raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
-IMAGE_API_URL = "https://ai.centos.hk/v1/images/edits"
-IMAGE_MODEL = "gpt-image-2"
+IMAGE_API_URL = os.environ.get("IMAGE_API_URL")
+if not IMAGE_API_URL:
+    raise RuntimeError("IMAGE_API_URL 环境变量未设置")
+IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "gpt-image-2")
 
 # ── SQLite helpers ─────────────────────────────────────────────────────────
 

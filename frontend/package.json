@@ -2,6 +2,8 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "description": "知树 Acacia - 把你的知识变成一棵会生长的树",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
