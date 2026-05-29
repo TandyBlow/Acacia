@@ -52,6 +52,12 @@ export function invalidateSkeleton(): void {
   skeletonLoaded.value = false;
 }
 
+/** Pre-set skeleton data so fetchSkeleton returns it without an API call. */
+export function presetSkeleton(data: import('../types/tree').SkeletonData): void {
+  skeletonData.value = data;
+  skeletonLoaded.value = true;
+}
+
 export async function preloadSkeleton(): Promise<void> {
   if (skeletonLoaded.value) return;
   try {

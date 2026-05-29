@@ -5,7 +5,7 @@
         <GlassWrapper>
           <div class="activity-scroll">
             <section v-if="viewState === ViewStates.ADD" class="block">
-              <h2>{{ UI.confirm.addNode }}</h2>
+              <h2>{{ $t('confirm.addNode') }}</h2>
               <input
                 v-model="pendingNodeName"
                 class="name-input"
@@ -15,7 +15,7 @@
             </section>
 
             <section v-else-if="viewState === ViewStates.DELETE" class="block">
-              <h2>{{ UI.confirm.deleteNode }}</h2>
+              <h2>{{ $t('confirm.deleteNode') }}</h2>
               <div class="target-name">{{ operationNode?.name ?? '' }}</div>
 
               <button
@@ -48,7 +48,6 @@ import GlassWrapper from './GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { usePageTransition } from '../../composables/usePageTransition';
 import { ViewStates } from '../../types/node';
-import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
 const { viewState, pendingNodeName, operationNode, operationHasChildren, deleteWithChildren } =

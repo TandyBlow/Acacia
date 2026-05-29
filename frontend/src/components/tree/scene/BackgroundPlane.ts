@@ -142,6 +142,17 @@ export class BackgroundPlane {
   }
 
   /**
+   * 快速切换纹理（不 dispose 旧纹理，用于预加载纹理缓存复用）
+   */
+  swapTexture(texture: THREE.Texture): void {
+    this.texture = texture;
+    this.material.map = texture;
+    this.material.color.setHex(0xffffff);
+    this.material.needsUpdate = true;
+    this.updateSize();
+  }
+
+  /**
    * 获取网格对象
    */
   getMesh(): THREE.Mesh {

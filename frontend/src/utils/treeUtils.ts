@@ -1,5 +1,5 @@
 import type { NodeRecord, TreeNode } from '../types/node';
-import { UI } from '../constants/uiStrings';
+import { i18n } from '../i18n';
 
 export function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -62,7 +62,7 @@ export function assertSiblingNameUnique(
       (ignoreId ? node.id !== ignoreId : true),
   );
   if (duplicate) {
-    throw new Error(UI.errors.siblingNameConflict);
+    throw new Error(i18n.global.t('errors.siblingNameConflict'));
   }
 }
 

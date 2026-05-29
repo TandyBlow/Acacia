@@ -1,0 +1,100 @@
+export default {
+  app: {
+    errorOccurred: '应用遇到了一个错误，请重试。',
+    retry: '重试',
+    insufficientSpace: '空间不足，请调整窗口大小。',
+  },
+
+  nav: {
+    move: '移动',
+    delete: '删除',
+    addNode: '添加知识点',
+    authTip: '注册或登录以继续',
+  },
+
+  auth: {
+    register: '注册',
+    login: '登录',
+    hint: '短按右侧旋钮切换登录/注册，长按旋钮提交。',
+    username: '账号',
+    password: '密码',
+    confirmPassword: '确认密码',
+  },
+
+  confirm: {
+    addNode: '添加节点',
+    deleteNode: '删除节点',
+    logout: '退出登录',
+    logoutPrompt: '当前账号为{username}，请确认退出操作。',
+  },
+
+  breadcrumbs: {
+    home: '主页',
+    welcome: '欢迎！',
+  },
+
+  knob: {
+    holdToConfirm: '长按旋钮，确认操作',
+    clickToHome: '单击旋钮，回到主页',
+    clickToReturn: '单击旋钮，回到主页',
+  },
+
+  tree: {
+    moveNode: '移动节点',
+    home: '主页',
+    devTestSakura: '测试樱花',
+    sakuraDomainTag: '日本文化',
+    noBackend: '树可视化需要后端连接',
+    treeOverview: '知识树概览',
+    selectSource: '点击知识点，选择要移动的对象',
+    selectTarget: '点击目标位置，移动至此',
+    sameParent: '目标位置与当前位置相同',
+  },
+
+  official: {
+    dailyQuiz: '今日成长',
+    welcome: '欢迎',
+    treeOverview: '知识树概览',
+    quizCompleted: '今日成长已完成，明天再来吧！',
+    startQuiz: '开始答题',
+    correct: '回答正确！',
+    incorrect: '回答错误',
+    noDueItems: '没有需要复习的知识点',
+    dueCount: '{n} 个待复习',
+    sessionProgress: '{current}/{total}',
+    sessionComplete: '今日复习完成！',
+    reviewedToday: '今日已复习: {n} 个',
+    finishEarly: '结束复习',
+    nextQuestion: '下一题',
+    backToHome: '返回主页',
+    reviewStats: '正确: {correct}/{total}',
+  },
+
+  errors: {
+    unknown: '发生了未知错误',
+    authFailed: '认证失败，请稍后重试。',
+    unknownUser: '未知用户',
+    authNotInitialized: '认证服务未初始化。',
+    passwordMismatch: '两次输入的密码不一致。',
+    nodeNameEmpty: '节点名称不能为空。',
+    nodeNotFound: '未找到该节点。',
+    parentNotFound: '目标父节点不存在。',
+    cannotMoveToChild: '不能将节点移动到自身或其子节点下。',
+    siblingNameConflict: '同一父节点下已存在同名节点。',
+    createNodeFailed: '创建节点失败。',
+    usernameEmpty: '用户名不能为空。',
+    passwordEmpty: '密码不能为空。',
+    usernameTaken: '该用户名已被注册。',
+    usernamePasswordEmpty: '用户名和密码不能为空。',
+    usernamePasswordWrong: '用户名或密码错误。',
+    signupSuccessNoUser: '注册成功但无法获取用户信息。',
+    loginFailed: '登录失败，请稍后重试。',
+    treeSkeletonRequiresBackend: 'Tree skeleton requires a backend connection.',
+  },
+
+  admin: {
+    loading: '加载中...',
+    title: 'Acacia 内容管理后台',
+    forbidden: '当前账号没有管理员权限',
+  },
+};
