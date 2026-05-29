@@ -1,7 +1,7 @@
 <template>
   <div ref="treeRef" class="tree-shell">
     <div class="tree-header">
-      <h2>{{ $t('tree.treeOverview') }}</h2>
+      <h2>{{ UI.tree.treeOverview }}</h2>
       <p class="tree-hint">拖拽知识点到目标父节点下即可移动，拖到顶部方框可移至根节点</p>
     </div>
 
@@ -35,6 +35,7 @@ import TreeNodeItem from './TreeNodeItem.vue';
 import { useNodeStore, getDataAdapter } from '../../stores/nodeStore';
 import { usePageTransition } from '../../composables/usePageTransition';
 import type { TreeNode } from '../../types/node';
+import { UI } from '../../constants/uiStrings';
 
 const store = useNodeStore();
 const { treeNodes } = storeToRefs(store);

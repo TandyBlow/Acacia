@@ -215,14 +215,11 @@ import { usePageTransition } from '../../composables/usePageTransition';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import Paragraph from '@tiptap/extension-paragraph';
 import Image from '@tiptap/extension-image';
 import { Mathematics, mathMigrationRegex, migrateMathStrings } from '@tiptap/extension-mathematics';
 import { Markdown } from '@tiptap/markdown';
 import type { MarkdownManager } from '@tiptap/markdown';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
 import { useNodeStore } from '../../stores/nodeStore';
@@ -232,54 +229,6 @@ import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import type { EditorState } from 'prosemirror-state';
 import 'highlight.js/styles/github.css';
-
-/**
- * Custom extension that handles 'table' tokens from marked's lexer (when gfm: true).
- * @tiptap/markdown doesn't have a built-in handler for table tokens — its
- * parseFallbackToken drops them. This handler converts marked table tokens
- * directly to TipTap table/tableRow/tableHeader/tableCell JSON without going
- * through generateJSON (which would fail when paragraph is disabled in StarterKit).
- */
-const TableMarkdownParser = Extension.create({
-  name: 'tableMarkdownParser',
-  // These extension fields are read by @tiptap/markdown's MarkdownManager.registerExtension
-  markdownTokenName: 'table',
-  parseMarkdown: (token: any, helpers: any) => {
-    const headerRow: any[] = token.header || [];
-    const bodyRows: any[][] = token.rows || [];
-
-    const allRows: any[] = [];
-
-    // Header row
-    if (headerRow.length > 0) {
-      const headerCells = headerRow.map((cell: any) => ({
-        type: 'tableHeader',
-        attrs: { colspan: 1, rowspan: 1, colwidth: null, align: cell.align ?? null },
-        content: [{
-          type: 'paragraph',
-          content: helpers.parseInline(cell.tokens || []),
-        }],
-      }));
-      allRows.push({ type: 'tableRow', content: headerCells });
-    }
-
-    // Body rows (skip the separator row which is row index 0 after header;
-    // marked already filtered out the separator, so bodyRows are the actual data rows)
-    for (const row of bodyRows) {
-      const cells = row.map((cell: any) => ({
-        type: 'tableCell',
-        attrs: { colspan: 1, rowspan: 1, colwidth: null, align: cell.align ?? null },
-        content: [{
-          type: 'paragraph',
-          content: helpers.parseInline(cell.tokens || []),
-        }],
-      }));
-      allRows.push({ type: 'tableRow', content: cells });
-    }
-
-    return { type: 'table', content: allRows };
-  },
-});
 
 interface UploadedFile {
   file_id: string;
@@ -337,26 +286,21 @@ const lastActiveNodeId = ref<string | null>(null);
 
 const CHAT_PROMPT_TEXT = '想聊点啥？主动换行可以给我发送消息。我会基于我们的聊天记录来填充这个知识点的内容，当然，之后你也可以把我填充的内容剪切到其他知识点中，随你喜欢。';
 
-const LockedParagraphAttr = Extension.create({
-  name: 'lockedParagraphAttr',
-  addGlobalAttributes() {
-    return [
-      {
-        types: ['paragraph'],
-        attributes: {
-          locked: {
-            default: null,
-            parseHTML: element => element.getAttribute('data-locked'),
-            renderHTML: attributes => {
-              if (attributes.locked != null) {
-                return { 'data-locked': attributes.locked };
-              }
-              return {};
-            },
-          },
+const ChatPromptParagraph = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      locked: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-locked'),
+        renderHTML: attributes => {
+          if (attributes.locked != null) {
+            return { 'data-locked': attributes.locked };
+          }
+          return {};
         },
       },
-    ];
+    };
   },
 });
 
@@ -380,205 +324,15 @@ function getMarkdownManager(instance: Editor): MarkdownManager | null {
   return instance.markdown ?? instance.storage?.markdown?.manager ?? null;
 }
 
-/**
- * Protect math HTML tags from angle-bracket escaping so they survive round-trip
- * serialization (getMarkdown → save → re-parse). Returns the placeholder-protected
- * string + a restore function.
- */
-function protectMathHtmlTags(text: string): { protected: string; restore: (s: string) => string } {
-  const tags: string[] = [];
-  const PROTECTED = '\x00MPH';
-  let idx = 0;
-  // Match both inline (<span data-type="inline-math"...) and block (<div data-type="block-math"...)
-  const pattern = /<(span|div)\s+data-type="(?:inline|block)-math"[^>]*><\/(span|div)>/gi;
-  const processed = text.replace(pattern, (match) => {
-    const placeholder = `${PROTECTED}${idx}\x00`;
-    tags.push(match);
-    idx++;
-    return placeholder;
-  });
-  return {
-    protected: processed,
-    restore: (s: string) => s.replace(/\x00MPH(\d+)\x00/g, (_m, i) => tags[parseInt(i)] ?? ''),
-  };
-}
-
-/**
- * Escape all < as &lt; so marked doesn't treat text-in-angle-brackets as HTML tags.
- * Without this, content like <中文> or <**bold** text> creates invalid nodes.
- * Math HTML tags (generated by preprocessMathForMarkdown) are protected from escaping.
- */
-function escapeNonHtmlAngleBrackets(text: string): string {
-  const { protected: processed, restore } = protectMathHtmlTags(text);
-  return restore(processed.replace(/</g, '&lt;'));
-}
-
-/**
- * Recursively strip nodes whose type doesn't exist in the editor schema.
- */
-function stripUnknownNodes(json: JSONContent, schema: Editor['schema']): JSONContent | null {
-  if (!json || typeof json !== 'object') return null;
-  if (!json.type) return json;
-
-  if (!schema.nodes[json.type]) {
-    if (Array.isArray(json.content) && json.content.length > 0) {
-      return {
-        type: 'paragraph',
-        content: json.content
-          .map(c => stripUnknownNodes(c, schema))
-          .filter((c): c is JSONContent => c !== null),
-      };
-    }
-    if (typeof json.text === 'string' && json.text) {
-      return { type: 'text', text: json.text };
-    }
-    return null;
-  }
-
-  const cleaned: JSONContent = { ...json };
-  if (Array.isArray(cleaned.content)) {
-    cleaned.content = cleaned.content
-      .map(c => stripUnknownNodes(c, schema))
-      .filter((c): c is JSONContent => c !== null);
-  }
-  return cleaned;
-}
-
-/** Inline node types that should be wrapped in a paragraph inside block containers. */
-const INLINE_NODE_TYPES = new Set(['text', 'hardBreak', 'image', 'inlineMath', 'mention']);
-
-/** Block nodes whose content model requires paragraphs, not raw inline nodes. */
-const BLOCK_WRAPPER_TYPES = new Set(['listItem', 'blockquote']);
-
-/**
- * Wrap bare inline nodes (text, hardBreak, etc.) in paragraphs inside
- * block containers (listItem, blockquote) that require paragraph children.
- */
-function wrapBareInlineContent(json: JSONContent): JSONContent {
-  if (!json || typeof json !== 'object') return json;
-
-  const result: JSONContent = { ...json };
-
-  if (Array.isArray(result.content)) {
-    // Check if this is a block node whose children are all inline nodes
-    if (BLOCK_WRAPPER_TYPES.has(result.type ?? '') && result.content.length > 0) {
-      const needsParagraph = result.content.some(
-        c => c && typeof c === 'object' && c.type && INLINE_NODE_TYPES.has(c.type),
-      );
-      if (needsParagraph) {
-        // Group inline children into paragraph-wrapped segments,
-        // keeping existing block children (like nested lists) as-is
-        const groups: JSONContent[][] = [];
-        let currentInline: JSONContent[] = [];
-
-        for (const child of result.content) {
-          if (child && typeof child === 'object' && child.type && INLINE_NODE_TYPES.has(child.type)) {
-            currentInline.push(wrapBareInlineContent(child));
-          } else {
-            if (currentInline.length > 0) {
-              groups.push(currentInline);
-              currentInline = [];
-            }
-            groups.push([wrapBareInlineContent(child)]);
-          }
-        }
-        if (currentInline.length > 0) {
-          groups.push(currentInline);
-        }
-
-        result.content = groups.map(group => {
-          // If the group starts with a block node, keep it as-is
-          if (group.length === 1 && group[0]?.type && !INLINE_NODE_TYPES.has(group[0].type)) {
-            return group[0];
-          }
-          return { type: 'paragraph', content: group };
-        });
-      } else {
-        result.content = result.content.map(c => wrapBareInlineContent(c));
-      }
-    } else {
-      result.content = result.content.map(c => wrapBareInlineContent(c));
-    }
-  }
-
-  return result;
-}
-
-/**
- * Workaround for @tiptap/markdown bug: ordered lists corrupt parser state making
- * all subsequent heading content empty. For each empty heading, find its text from
- * the original markdown and re-parse it in isolation (standalone headings aren't
- * affected by the ordered-list bug since there's no list before them).
- */
-function repairEmptyHeadings(json: JSONContent, mgr: MarkdownManager, rawContent: string): void {
-  if (!json.content || json.type !== 'doc') return;
-
-  // Index headings in the raw content by extracting heading lines
-  const rawHeadings: { level: number; text: string }[] = [];
-  const headingRe = /^(#{1,6})\s+(.+)$/gm;
-  let m: RegExpExecArray | null;
-  while ((m = headingRe.exec(rawContent)) !== null) {
-    rawHeadings.push({ level: (m[1] ?? '').length, text: (m[2] ?? '').trim() });
-  }
-
-  let headingIdx = 0;
-  for (const node of json.content) {
-    if (node.type !== 'heading') continue;
-    const h = node as JSONContent & { attrs?: { level?: number }; content?: JSONContent[] };
-
-    // Only repair truly empty headings (content is [] or missing)
-    if (h.content && h.content.length > 0) {
-      headingIdx++;
-      continue;
-    }
-
-    // Find the corresponding raw heading text
-    const rawH = rawHeadings[headingIdx];
-    if (rawH && rawH.level === (h.attrs?.level ?? 1)) {
-      // Re-parse this heading in isolation to get proper inline content
-      const prefix = '#'.repeat(rawH.level);
-      try {
-        const reparsed = mgr.parse(`${prefix} ${rawH.text}`);
-        const reparsedHeading = reparsed.content?.find(n => n.type === 'heading');
-        if (reparsedHeading?.content) {
-          h.content = reparsedHeading.content;
-        }
-      } catch {
-        // Fallback: plain text node
-        h.content = [{ type: 'text', text: rawH.text }];
-      }
-    }
-    headingIdx++;
-  }
-}
-
 function parseMarkdownContent(instance: Editor, content: string): JSONContent | null {
   const mgr = getMarkdownManager(instance);
   if (!mgr) return null;
   try {
-    // Math preprocessing first: convert $...$ / $$...$$ to HTML tags.
-    // Must run before angle-bracket escaping so < inside LaTeX (e.g. $x < y$)
-    // is correctly preserved as &lt; inside the data-latex attribute.
-    const withMath = preprocessMathForMarkdown(content);
-    // Escape unprotected < to &lt; so marked doesn't treat text like <中文> as HTML.
-    // Math HTML tags (span/div with data-type="...math") are protected from escaping.
-    const htmlSafe = escapeNonHtmlAngleBrackets(withMath);
-    // Table tokens are handled by TableMarkdownParser (custom extension registered
-    // on the editor). marked's gfm:true produces 'table' tokens; the extension
-    // converts them directly to TipTap JSON without going through generateJSON.
-    const parsed = mgr.parse(htmlSafe);
-
-    // Strip nodes with unknown types, then wrap bare inline nodes in paragraphs
-    const stripped = stripUnknownNodes(parsed, instance.schema) ?? parsed;
-    const sanitized = wrapBareInlineContent(stripped);
-
-    // Workaround for @tiptap/markdown bug: ordered lists corrupt parser state,
-    // making all subsequent heading content empty. Repair by re-parsing each
-    // empty heading's text from the original markdown content.
-    repairEmptyHeadings(sanitized, mgr, content);
-
-    instance.schema.nodeFromJSON(sanitized).check();
-    return sanitized;
+    // Pre-process LaTeX: convert $...$ / $$...$$ to HTML that Mathematics extension parseHTML recognizes
+    const processed = preprocessMathForMarkdown(content);
+    const parsed = mgr.parse(processed);
+    instance.schema.nodeFromJSON(parsed).check();
+    return parsed;
   } catch (err) {
     console.error('[MarkdownEditor] parseMarkdownContent failed:', err, 'content preview:', content.slice(0, 200));
     return null;
@@ -968,12 +722,6 @@ function buildTreeContext(): string {
   return parts.join('\n');
 }
 
-function onCinemaChatMode() {
-  if (chatMode.value === 'idle') {
-    toggleChat();
-  }
-}
-
 async function toggleChat() {
   if (isAnimating.value) return;
   isAnimating.value = true;
@@ -1333,21 +1081,11 @@ async function enqueueSave(nodeId: string, content: string): Promise<void> {
 }
 
 function syncEditorContent(content: string): void {
-  if (!editor.value) return;
-
-  const normalized = normalizePastedText(content);
-
-  // Empty content: set an empty doc directly, skip the markdown parser
-  if (!normalized) {
-    isApplyingExternalContent.value = true;
-    editor.value.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] }, {
-      emitUpdate: false,
-    });
-    isApplyingExternalContent.value = false;
+  if (!editor.value) {
     return;
   }
 
-  const source = sanitizeMarkdownSource(normalized);
+  const source = sanitizeMarkdownSource(content);
   const parsedDoc = parseMarkdownDoc(editor.value, source);
 
   isApplyingExternalContent.value = true;
@@ -1363,6 +1101,7 @@ const editor = useEditor({
   contentType: 'markdown',
   extensions: [
     StarterKit.configure({
+      paragraph: false,
       codeBlock: false,
       bold: false,
       italic: false,
@@ -1377,10 +1116,10 @@ const editor = useEditor({
         },
       },
     }),
-    LockedParagraphAttr,
+    ChatPromptParagraph,
     Markdown.configure({
       markedOptions: {
-        gfm: true,
+        gfm: false,
         breaks: true,
       },
     }),
@@ -1399,20 +1138,9 @@ const editor = useEditor({
     Mathematics.configure({
       katexOptions: {
         throwOnError: true,
-        strict: false,
         trust: false,
       },
     }),
-    Table.configure({
-      resizable: false,
-      HTMLAttributes: {
-        class: 'md-table',
-      },
-    }),
-    TableRow,
-    TableCell,
-    TableHeader,
-    TableMarkdownParser,
     LockedNodes,
   ],
   editorProps: {
@@ -1550,8 +1278,6 @@ onMounted(() => {
     },
     parent: 'content',
   });
-
-  window.addEventListener('cinema:chat-mode', onCinemaChatMode);
 });
 
 watch(
@@ -1625,7 +1351,6 @@ onBeforeUnmount(() => {
   unregisterRegion('content-editor');
   clearAutoSaveTimer();
   editor.value?.destroy();
-  window.removeEventListener('cinema:chat-mode', onCinemaChatMode);
 });
 </script>
 
@@ -1990,30 +1715,6 @@ onBeforeUnmount(() => {
 
 .editor-input :deep(li) {
   margin: 0.15em 0;
-}
-
-.editor-input :deep(table.md-table) {
-  width: 100%;
-  margin: 0.4em 0 0.9em;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.editor-input :deep(.md-table th) {
-  padding: 6px 10px;
-  border: 1px solid rgba(102, 128, 255, 0.32);
-  background: rgba(102, 128, 255, 0.10);
-  font-weight: 700;
-  text-align: left;
-}
-
-.editor-input :deep(.md-table td) {
-  padding: 5px 10px;
-  border: 1px solid rgba(102, 128, 255, 0.20);
-}
-
-.editor-input :deep(.md-table tr:nth-child(even) td) {
-  background: rgba(102, 128, 255, 0.04);
 }
 
 .editor-input :deep(a) {

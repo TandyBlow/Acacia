@@ -377,47 +377,6 @@ export class SceneManager {
     this.applyOverrides(this.lastUserOverrides);
   }
 
-  /** Cinema demo: rebuild tree geometry at a target growth level. */
-  setGrowthLevel(gm: number, nodeCount: number, maxDepth: number) {
-    if (!this.ezTree) return;
-    const widthDepthRatio = maxDepth > 0 ? nodeCount / maxDepth : 1;
-    const fakeGrowth: GrowthMetrics = {
-      avg_stability: 0,
-      avg_mastery: 0,
-      review_coverage: 0,
-      total_nodes: nodeCount,
-      reviewed_nodes: 0,
-      growth_multiplier: gm,
-    };
-    const overrides = mapUserDataToEzTreeParams(
-      nodeCount, maxDepth, widthDepthRatio, this.userId || 'demo', fakeGrowth,
-    );
-    this.applyOverrides(overrides as any);
-  }
-
-  /** Cinema demo: scale the entire tree group for smooth frame-to-frame growth. */
-  setTreeGroupScale(s: number) {
-    if (this.treeGroup) {
-      this.treeGroup.scale.set(s, s, s);
-    }
-  }
-
-  /** Cinema demo: direct param-to-param transition with custom duration. */
-  transitionToParamsDirect(targetParams: TreeStyleParams, durationMs: number) {
-    this.themeTransition.transitionTo(targetParams, durationMs);
-  }
-
-  /** Cinema demo: swap background texture without reloading from URL. */
-  swapBackgroundTexture(texture: THREE.Texture) {
-    if (this.backgroundPlane) {
-      this.backgroundPlane.swapTexture(texture);
-    }
-  }
-
-  getTreeGroup(): THREE.Group | null {
-    return this.treeGroup;
-  }
-
   // --- Private: Tree generation ---
 
   /**

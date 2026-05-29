@@ -1,13 +1,13 @@
 <template>
   <div ref="authRef" class="auth-shell">
     <div class="auth-card">
-      <h2 class="auth-title">{{ isRegisterMode ? $t('auth.register') : $t('auth.login') }}</h2>
+      <h2 class="auth-title">{{ isRegisterMode ? UI.auth.register : UI.auth.login }}</h2>
       <p class="auth-hint">
-        {{ $t('auth.hint') }}
+        {{ UI.auth.hint }}
       </p>
 
       <label class="field">
-        <span class="field-label">{{ $t('auth.username') }}</span>
+        <span class="field-label">{{ UI.auth.username }}</span>
         <input
           v-model="username"
           type="text"
@@ -19,7 +19,7 @@
       </label>
 
       <label class="field">
-        <span class="field-label">{{ $t('auth.password') }}</span>
+        <span class="field-label">{{ UI.auth.password }}</span>
         <input
           v-model="password"
           type="password"
@@ -31,7 +31,7 @@
       </label>
 
       <label v-if="isRegisterMode" class="field">
-        <span class="field-label">{{ $t('auth.confirmPassword') }}</span>
+        <span class="field-label">{{ UI.auth.confirmPassword }}</span>
         <input
           v-model="confirmPassword"
           type="password"
@@ -54,6 +54,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/authStore';
 import { usePageTransition } from '../../composables/usePageTransition';
+import { UI } from '../../constants/uiStrings';
 
 const authStore = useAuthStore();
 const {

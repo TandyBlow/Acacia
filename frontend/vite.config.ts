@@ -37,15 +37,6 @@ export default defineConfig({
       },
     }),
   ],
-  server: {
-    proxy: {
-      '/api': 'http://localhost:7860',
-      '/backgrounds': 'http://localhost:7860',
-      '/tree': 'http://localhost:7860',
-      '/generate-tree-skeleton': 'http://localhost:7860',
-      '/style': 'http://localhost:7860',
-    },
-  },
   build: {
     rollupOptions: {
       input: {

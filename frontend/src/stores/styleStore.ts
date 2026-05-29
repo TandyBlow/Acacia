@@ -141,42 +141,45 @@ export const useStyleStore = defineStore('style', () => {
 
   const themeClass = computed(() => '');
 
-  function _resetParamsToDOM() {
+  function applyTheme(): void {
     const el = document.documentElement;
-    el.style.removeProperty('--color-primary');
-    el.style.removeProperty('--color-hint');
-    el.style.removeProperty('--color-primary-on-light');
-    el.style.removeProperty('--color-hint-on-light');
-    el.style.removeProperty('--color-primary-on-dark');
-    el.style.removeProperty('--color-hint-on-dark');
-    el.style.removeProperty('--color-glass-border');
-    el.style.removeProperty('--color-glass-bg');
-    el.style.removeProperty('--shadow-inset-a');
-    el.style.removeProperty('--shadow-inset-b');
-    el.style.removeProperty('--shadow-raised-a');
-    el.style.removeProperty('--shadow-raised-b');
-    el.style.removeProperty('--bg-gradient');
-    document.body.style.background = 'linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%)';
-    el.setAttribute('data-theme-brightness', 'light');
-  }
 
-  function _applyParamsToDOM(params: Record<string, unknown>) {
-    const el = document.documentElement;
-    const leafMid = Array.isArray(params.leafMidColor) ? params.leafMidColor as number[] : [0.4, 0.5, 0.4];
-    const leafLight = Array.isArray(params.leafLightColor) ? params.leafLightColor as number[] : [0.6, 0.7, 0.5];
-    const textPrimary = Array.isArray(params.textPrimaryColor) ? params.textPrimaryColor as number[] : leafMid;
-    const textHint = Array.isArray(params.textHintColor) ? params.textHintColor as number[] : leafLight;
-    const skyBottom = Array.isArray(params.skyBottomColor) ? params.skyBottomColor as number[] : [0.9, 0.9, 0.9];
+    const p = styleParams.value;
+    if (!p || style.value === 'default') {
+      el.style.removeProperty('--color-primary');
+      el.style.removeProperty('--color-hint');
+      el.style.removeProperty('--color-primary-on-light');
+      el.style.removeProperty('--color-hint-on-light');
+      el.style.removeProperty('--color-primary-on-dark');
+      el.style.removeProperty('--color-hint-on-dark');
+      el.style.removeProperty('--color-glass-border');
+      el.style.removeProperty('--color-glass-bg');
+      el.style.removeProperty('--shadow-inset-a');
+      el.style.removeProperty('--shadow-inset-b');
+      el.style.removeProperty('--shadow-raised-a');
+      el.style.removeProperty('--shadow-raised-b');
+      el.style.removeProperty('--bg-gradient');
+      document.body.style.background = 'linear-gradient(180deg, #ffffff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%)';
+      el.setAttribute('data-theme-brightness', 'light');
+      return;
+    }
+
+    const leafMid = Array.isArray(p.leafMidColor) ? p.leafMidColor as number[] : [0.4, 0.5, 0.4];
+    const leafLight = Array.isArray(p.leafLightColor) ? p.leafLightColor as number[] : [0.6, 0.7, 0.5];
+    const textPrimary = Array.isArray(p.textPrimaryColor) ? p.textPrimaryColor as number[] : leafMid;
+    const textHint = Array.isArray(p.textHintColor) ? p.textHintColor as number[] : leafLight;
+    const skyBottom = Array.isArray(p.skyBottomColor) ? p.skyBottomColor as number[] : [0.9, 0.9, 0.9];
 
     const primary = colorTupleToCSS(textPrimary);
     const hint = colorTupleToCSS(textHint);
     const glassBorderRgb = textPrimary.map((v) => Math.round(v * 255));
+    const glassBgRgb = textPrimary.map((v) => Math.round(v * 255));
     const skyBottomRgb = skyBottom.map((v) => Math.round(v * 255));
 
     el.style.setProperty('--color-primary', primary);
     el.style.setProperty('--color-hint', hint);
     el.style.setProperty('--color-glass-border', `rgba(${glassBorderRgb.join(',')},0.28)`);
-    el.style.setProperty('--color-glass-bg', `rgba(${glassBorderRgb.join(',')},0.12)`);
+    el.style.setProperty('--color-glass-bg', `rgba(${glassBgRgb.join(',')},0.12)`);
     el.style.setProperty('--shadow-inset-a', `rgba(${glassBorderRgb.map((v) => Math.round(v * 0.4)).join(',')},0.56)`);
     el.style.setProperty('--shadow-inset-b', `rgba(${glassBorderRgb.map((v) => Math.round(v * 0.8 + 60)).join(',')},0.52)`);
     el.style.setProperty('--shadow-raised-a', `rgba(${glassBorderRgb.join(',')},0.14)`);
@@ -186,8 +189,6 @@ export const useStyleStore = defineStore('style', () => {
       `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`,
     );
     document.body.style.background = `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`;
-
-    // WCAG contrast correction
     const primaryOnLight = _ensureContrastAgainstWhite(textPrimary);
     const hintOnLight = _ensureContrastAgainstWhite(textHint);
     el.style.setProperty('--color-primary-on-light', colorTupleToCSS(primaryOnLight));
@@ -197,15 +198,6 @@ export const useStyleStore = defineStore('style', () => {
     el.style.setProperty('--color-primary-on-dark', colorTupleToCSS(primaryOnDark));
     el.style.setProperty('--color-hint-on-dark', colorTupleToCSS(hintOnDark));
     el.setAttribute('data-theme-brightness', _isSkyDark(skyBottom) ? 'dark' : 'light');
-  }
-
-  function applyTheme(): void {
-    const p = styleParams.value;
-    if (!p || style.value === 'default') {
-      _resetParamsToDOM();
-      return;
-    }
-    _applyParamsToDOM(p);
   }
 
   async function _waitForStyleGeneration(userId: string): Promise<StyleResult | null> {
@@ -445,11 +437,5 @@ export const useStyleStore = defineStore('style', () => {
     }
   }
 
-  /** Cinema demo: apply a style's colors to CSS vars only (with WCAG contrast correction).
-   *  Does not change store state — used for rapid theme cycling in Phase 2. */
-  function applyThemeFromParams(params: Record<string, unknown>): void {
-    _applyParamsToDOM(params);
-  }
-
-  return { style, styleParams, backgroundUrl, distribution, loaded, generating, styleLocked, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, applyTheme, applyThemeFromParams, fetchStyle, forceStyle, reset, resetAndLock, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
+  return { style, styleParams, backgroundUrl, distribution, loaded, generating, styleLocked, pendingParams, pendingStyle, pendingBackgroundUrl, isPendingReady, themeClass, applyTheme, fetchStyle, forceStyle, reset, resetAndLock, scheduleCheck, checkAndFetchStyle, applyPendingStyle, forceRegenerateStyle };
 });

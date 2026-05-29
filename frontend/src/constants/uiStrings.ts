@@ -1,10 +1,12 @@
-export default {
+export const UI = {
+  // App-level
   app: {
     errorOccurred: '应用遇到了一个错误，请重试。',
     retry: '重试',
     insufficientSpace: '空间不足，请调整窗口大小。',
   },
 
+  // Navigation
   nav: {
     move: '移动',
     delete: '删除',
@@ -12,6 +14,7 @@ export default {
     authTip: '注册或登录以继续',
   },
 
+  // Auth
   auth: {
     register: '注册',
     login: '登录',
@@ -21,24 +24,28 @@ export default {
     confirmPassword: '确认密码',
   },
 
+  // Confirm panels
   confirm: {
     addNode: '添加节点',
     deleteNode: '删除节点',
     logout: '退出登录',
-    logoutPrompt: '当前账号为{username}，请确认退出操作。',
+    logoutPrompt: (username: string) => `当前账号为${username}，请确认退出操作。`,
   },
 
+  // Breadcrumbs
   breadcrumbs: {
     home: '主页',
     welcome: '欢迎！',
   },
 
+  // Knob
   knob: {
     holdToConfirm: '长按旋钮，确认操作',
     clickToHome: '单击旋钮，回到主页',
     clickToReturn: '单击旋钮，回到主页',
   },
 
+  // Global Tree
   tree: {
     moveNode: '移动节点',
     home: '主页',
@@ -51,6 +58,7 @@ export default {
     sameParent: '目标位置与当前位置相同',
   },
 
+  // Official nodes
   official: {
     dailyQuiz: '今日成长',
     welcome: '欢迎',
@@ -59,17 +67,19 @@ export default {
     startQuiz: '开始答题',
     correct: '回答正确！',
     incorrect: '回答错误',
+    // Daily review session
     noDueItems: '没有需要复习的知识点',
-    dueCount: '{n} 个待复习',
-    sessionProgress: '{current}/{total}',
+    dueCount: (n: number) => `${n} 个待复习`,
+    sessionProgress: (current: number, total: number) => `${current}/${total}`,
     sessionComplete: '今日复习完成！',
-    reviewedToday: '今日已复习: {n} 个',
+    reviewedToday: (n: number) => `今日已复习: ${n} 个`,
     finishEarly: '结束复习',
     nextQuestion: '下一题',
     backToHome: '返回主页',
-    reviewStats: '正确: {correct}/{total}',
+    reviewStats: (correct: number, total: number) => `正确: ${correct}/${total}`,
   },
 
+  // Error messages
   errors: {
     unknown: '发生了未知错误',
     authFailed: '认证失败，请稍后重试。',
@@ -91,10 +101,4 @@ export default {
     loginFailed: '登录失败，请稍后重试。',
     treeSkeletonRequiresBackend: 'Tree skeleton requires a backend connection.',
   },
-
-  admin: {
-    loading: '加载中...',
-    title: 'Acacia 内容管理后台',
-    forbidden: '当前账号没有管理员权限',
-  },
-};
+} as const;

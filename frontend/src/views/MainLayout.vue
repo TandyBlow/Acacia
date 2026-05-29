@@ -1,9 +1,8 @@
 <template>
   <div v-if="isTooSmall" class="insufficient-space">
-    <p>{{ $t('app.insufficientSpace') }}</p>
+    <p>{{ UI.app.insufficientSpace }}</p>
   </div>
   <main v-else class="layout" :class="[layoutClasses, {
-    'cinema-mode': isCinemaMode,
     'compact-toggle-sinking': compactAnimPhase === 'sinking',
     'compact-nav-slide-out': compactAnimPhase === 'nav-slide-out',
     'compact-nav-slide-in-prep': compactAnimPhase === 'nav-slide-in-prep',
@@ -122,6 +121,7 @@ import { usePageTransition } from '../composables/usePageTransition';
 import type { LayoutType } from '../types/transition';
 import { useOfficialTransition } from '../composables/useOfficialTransition';
 import { COMPACT_BREAKPOINT, MIN_SPACE_HEIGHT } from '../constants/app';
+import { UI } from '../constants/uiStrings';
 
 /**
  * View states that render as content-direct panels (no outer content-glass).
@@ -131,7 +131,6 @@ import { COMPACT_BREAKPOINT, MIN_SPACE_HEIGHT } from '../constants/app';
 const CONTENT_DIRECT_STATES = ['add', 'daily_quiz', 'tree_overview', 'official_content'];
 
 const isDev = import.meta.env.DEV;
-const isCinemaMode = typeof window !== 'undefined' && window.location.search.includes('cinema');
 
 const nodeStore = useNodeStore();
 const authStore = useAuthStore();
@@ -1522,14 +1521,6 @@ watch(
   grid-template-columns: 241px minmax(0, 1fr) 82px;
   grid-template-rows: 54px minmax(0, 1fr);
   gap: 12px;
-}
-
-/* Cinema demo mode: lock layout to viewport since keyboard height locking is skipped */
-.layout.cinema-mode {
-  min-height: 100vh;
-  min-height: 100dvh;
-  max-height: 100vh;
-  max-height: 100dvh;
 }
 
 /* Global click shield: block all interaction while any animation is playing */

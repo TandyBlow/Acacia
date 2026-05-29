@@ -1,6 +1,6 @@
 import type { AuthAdapter, AuthResult, AuthUser } from '../types/auth';
 import { LOCAL_USERS_KEY, LOCAL_SESSION_KEY } from '../constants/app';
-import { i18n } from '../i18n';
+import { UI } from '../constants/uiStrings';
 
 interface StoredUser {
   id: string;
@@ -76,15 +76,15 @@ export const localAuth: AuthAdapter = {
   async signUp(username: string, password: string): Promise<AuthResult> {
     const trimmed = username.trim();
     if (!trimmed) {
-      throw new Error(i18n.global.t('errors.usernameEmpty'));
+      throw new Error(UI.errors.usernameEmpty);
     }
     if (!password) {
-      throw new Error(i18n.global.t('errors.passwordEmpty'));
+      throw new Error(UI.errors.passwordEmpty);
     }
 
     const users = readStoredUsers();
     if (users.some((u) => u.username === trimmed)) {
-      throw new Error(i18n.global.t('errors.usernameTaken'));
+      throw new Error(UI.errors.usernameTaken);
     }
 
     const passwordHash = await sha256Hex(password);
@@ -105,7 +105,7 @@ export const localAuth: AuthAdapter = {
   async signIn(username: string, password: string): Promise<AuthResult> {
     const trimmed = username.trim();
     if (!trimmed || !password) {
-      throw new Error(i18n.global.t('errors.usernamePasswordEmpty'));
+      throw new Error(UI.errors.usernamePasswordEmpty);
     }
 
     const users = readStoredUsers();
@@ -113,7 +113,7 @@ export const localAuth: AuthAdapter = {
     const matched = users.find((u) => u.username === trimmed && u.passwordHash === passwordHash);
 
     if (!matched) {
-      throw new Error(i18n.global.t('errors.usernamePasswordWrong'));
+      throw new Error(UI.errors.usernamePasswordWrong);
     }
 
     const authUser: AuthUser = { id: matched.id, username: matched.username };

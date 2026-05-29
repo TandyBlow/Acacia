@@ -1,6 +1,6 @@
 <template>
   <div ref="containerRef" class="tree-canvas">
-    <div v-if="noTreeData" class="no-tree-msg">{{ $t('tree.noBackend') }}</div>
+    <div v-if="noTreeData" class="no-tree-msg">{{ UI.tree.noBackend }}</div>
     <div v-if="!sceneReady && !noTreeData" class="tree-loading-mask">
       <div class="tree-loading-spinner"></div>
     </div>
@@ -15,9 +15,9 @@ import { useStyleStore } from '../../stores/styleStore';
 import { useTreeSkeleton, invalidateSkeleton } from '../../composables/useTreeSkeleton';
 import { useStats } from '../../composables/useStats';
 import { usePageTransition } from '../../composables/usePageTransition';
-import { cinemaTreeCanvas } from '../../composables/useCinemaBridge';
 import { SceneManager } from './scene/SceneManager';
 import type { SkeletonData } from '../../types/tree';
+import { UI } from '../../constants/uiStrings';
 
 const containerRef = ref<HTMLDivElement>();
 const { registerRegion, unregisterRegion } = usePageTransition();
@@ -127,15 +127,6 @@ async function loadTree() {
     // generated with user-appropriate params from frame 1.
 
     treeLoaded = true;
-
-    // Register with cinema bridge so CinematicDemo can control the tree
-    cinemaTreeCanvas.value = {
-      setGrowthLevel: (gm, nodeCount, maxDepth) => manager?.setGrowthLevel(gm, nodeCount, maxDepth),
-      setTreeGroupScale: (s) => manager?.setTreeGroupScale(s),
-      transitionToParamsDirect: (params, durationMs) => manager?.transitionToParamsDirect(params, durationMs),
-      swapBackgroundTexture: (texture) => manager?.swapBackgroundTexture(texture),
-      getManager: () => manager,
-    };
   } catch (err) {
     if (gen !== loadGeneration) return;
     noTreeData.value = true;
@@ -268,25 +259,9 @@ function cleanup() {
 onBeforeUnmount(() => {
   unregisterRegion('content-tree');
   cleanup();
-  cinemaTreeCanvas.value = null;
 });
 
-defineExpose({
-  sceneReady,
-  setGrowthLevel: (gm: number, nodeCount: number, maxDepth: number) => {
-    manager?.setGrowthLevel(gm, nodeCount, maxDepth);
-  },
-  setTreeGroupScale: (s: number) => {
-    manager?.setTreeGroupScale(s);
-  },
-  transitionToParamsDirect: (params: any, durationMs: number) => {
-    manager?.transitionToParamsDirect(params, durationMs);
-  },
-  swapBackgroundTexture: (texture: any) => {
-    manager?.swapBackgroundTexture(texture);
-  },
-  getManager: () => manager,
-});
+defineExpose({ sceneReady });
 </script>
 
 <style scoped>

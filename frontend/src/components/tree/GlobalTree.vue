@@ -1,7 +1,7 @@
 <template>
   <div ref="treeRef" class="tree-shell">
     <header class="header">
-      <h2>{{ $t('tree.moveNode') }}</h2>
+      <h2>{{ UI.tree.moveNode }}</h2>
     </header>
 
     <div class="root-picker">
@@ -10,7 +10,7 @@
         :class="{ selected: moveTargetParentId === null }"
         @click="store.setMoveTargetParent(null)"
       >
-        {{ $t('tree.home') }}
+        {{ UI.tree.home }}
       </button>
     </div>
 
@@ -38,6 +38,7 @@ import { useNodeStore } from '../../stores/nodeStore';
 import { useDevStore } from '../../stores/devStore';
 import { usePageTransition } from '../../composables/usePageTransition';
 import type { TreeNode } from '../../types/node';
+import { UI } from '../../constants/uiStrings';
 
 const store = useNodeStore();
 const devStore = useDevStore();

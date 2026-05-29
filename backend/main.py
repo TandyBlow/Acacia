@@ -551,7 +551,6 @@ def get_style_endpoint(force: int = 0, user: dict = Depends(get_current_user)):
 
 
 @app.get("/backgrounds/ai/{filename}")
-@app.get("/api/backgrounds/ai/{filename}")
 def serve_bg_image(filename: str):
     """Serve AI-generated background images (bypasses nginx static file issues)."""
     import re

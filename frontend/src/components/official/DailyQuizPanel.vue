@@ -37,9 +37,9 @@
                       <div class="quiz-state-icon check">&#10003;</div>
                     </GlassWrapper>
                   </div>
-                  <div class="quiz-state-label">{{ $t('official.noDueItems') }}</div>
+                  <div class="quiz-state-label">{{ UI.official.noDueItems }}</div>
                   <GlassWrapper class="quiz-btn-glass" interactive @click="goBack">
-                    <div class="quiz-btn-glass-label">{{ $t('official.backToHome') }}</div>
+                    <div class="quiz-btn-glass-label">{{ UI.official.backToHome }}</div>
                   </GlassWrapper>
                 </div>
               </template>
@@ -52,13 +52,13 @@
                       <div class="quiz-state-icon check">&#10003;</div>
                     </GlassWrapper>
                   </div>
-                  <div class="quiz-state-label">{{ $t('official.sessionComplete') }}</div>
+                  <div class="quiz-state-label">{{ UI.official.sessionComplete }}</div>
                   <div class="quiz-stats">
-                    <div class="quiz-stat">{{ $t('official.reviewStats', { correct: sessionCorrect, total: queue.length }) }}</div>
-                    <div class="quiz-stat">{{ $t('official.reviewedToday', { n: queue.length }) }}</div>
+                    <div class="quiz-stat">{{ UI.official.reviewStats(sessionCorrect, queue.length) }}</div>
+                    <div class="quiz-stat">{{ UI.official.reviewedToday(queue.length) }}</div>
                   </div>
                   <GlassWrapper class="quiz-btn-glass" interactive @click="goBack">
-                    <div class="quiz-btn-glass-label">{{ $t('official.backToHome') }}</div>
+                    <div class="quiz-btn-glass-label">{{ UI.official.backToHome }}</div>
                   </GlassWrapper>
                 </div>
               </template>
@@ -67,11 +67,11 @@
               <template v-else>
                 <!-- Progress bar -->
                 <div class="quiz-progress-row">
-                  <span class="quiz-progress-text">{{ $t('official.sessionProgress', { current: progress.current, total: progress.total }) }}</span>
+                  <span class="quiz-progress-text">{{ UI.official.sessionProgress(progress.current, progress.total) }}</span>
                   <div class="quiz-progress-track">
                     <div class="quiz-progress-fill" :style="{ width: progress.percent + '%' }"></div>
                   </div>
-                  <button class="quiz-finish-btn" @click="finishSession">{{ $t('official.finishEarly') }}</button>
+                  <button class="quiz-finish-btn" @click="finishSession">{{ UI.official.finishEarly }}</button>
                 </div>
 
                 <!-- Node name -->
@@ -167,7 +167,7 @@
                     </div>
                     <div class="quiz-actions">
                       <GlassWrapper class="quiz-btn-glass" interactive @click="advanceToNext">
-                        <div class="quiz-btn-glass-label">{{ hasNext ? $t('official.nextQuestion') : '完成' }}</div>
+                        <div class="quiz-btn-glass-label">{{ hasNext ? UI.official.nextQuestion : '完成' }}</div>
                       </GlassWrapper>
                     </div>
                   </template>
@@ -203,12 +203,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useDailyQuiz } from '../../composables/useDailyQuiz';
-
-const { t } = useI18n();
+import { UI } from '../../constants/uiStrings';
 
 const nodeStore = useNodeStore();
 
@@ -243,7 +241,7 @@ const isCorrect = computed(() => {
 });
 
 const resultText = computed(() => {
-  return isCorrect.value ? t('official.correct') : t('official.incorrect');
+  return isCorrect.value ? UI.official.correct : UI.official.incorrect;
 });
 
 const canConfirm = computed(() => {

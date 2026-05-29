@@ -4,7 +4,7 @@ import { findTreeNode, collectTreeDescendantIds } from '../utils/treeUtils';
 import * as nodeCache from '../services/nodeCache';
 import type { DataAdapter, NodeRecord, TreeNode, ViewState, OfficialNodeSummary } from '../types/node';
 import { ViewStates } from '../types/node';
-import { i18n } from '../i18n';
+import { UI } from '../constants/uiStrings';
 
 import { usePageTransition } from '../composables/usePageTransition';
 import { apiFetch, getToken } from '../utils/api';
@@ -15,7 +15,7 @@ function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return i18n.global.t('errors.unknown');
+  return UI.errors.unknown;
 }
 
 function _triggerStyleCheck(): void {
@@ -118,12 +118,11 @@ export const useNodeStore = defineStore('node', () => {
   const currentNodeId = computed(() => activeNode.value?.id ?? null);
 
   // 官方知识点列表
-  const t = i18n.global.t.bind(i18n.global);
   const dailyQuizLabel = computed(() => {
     if (dailyQuizDueCount.value > 0) {
-      return `${t('official.dailyQuiz')} (${dailyQuizDueCount.value})`;
+      return `${UI.official.dailyQuiz} (${dailyQuizDueCount.value})`;
     }
-    return t('official.dailyQuiz');
+    return UI.official.dailyQuiz;
   });
 
   const officialNodes = computed<OfficialNode[]>(() => {
@@ -136,7 +135,7 @@ export const useNodeStore = defineStore('node', () => {
       },
       {
         id: 'tree_overview',
-        name: t('official.treeOverview'),
+        name: UI.official.treeOverview,
         visible: true,
         action: () => startTreeOverview(),
       },

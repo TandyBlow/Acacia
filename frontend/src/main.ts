@@ -3,7 +3,6 @@ import { createPinia } from 'pinia';
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
 import App from './App.vue';
 import router from './router';
-import i18n from './i18n';
 import { setAuthAdapter } from './stores/authStore';
 import { setDataAdapter } from './stores/nodeStore';
 import { loadAdapters } from './adapters';
@@ -62,16 +61,11 @@ function unlockHeight(): void {
   document.documentElement.style.removeProperty('--app-height');
 }
 
-// Cinema demo mode: skip all keyboard height locking.
-// The min-height: 100vh fallback in MainLayout.vue is sufficient.
-const isCinemaMode = window.location.search.includes('cinema');
-
 // focusin serves as a confirmation signal — if the resize-based
 // detection missed the keyboard (unusual tablet behavior), this
 // catches it.  Does NOT re-capture preKeyboardHeight; resize handler
 // already set it before the height dropped.
 document.addEventListener('focusin', (e: Event) => {
-  if (isCinemaMode) return;
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
     if (!keyboardActive) {
@@ -100,8 +94,6 @@ document.addEventListener('focusout', () => {
 // is the keyboard appearing.  Height recovering to near pre-keyboard
 // level is the keyboard closing.
 window.addEventListener('resize', () => {
-  if (isCinemaMode) return;
-
   const h = window.innerHeight;
   const w = window.innerWidth;
 
@@ -141,7 +133,6 @@ window.addEventListener('resize', () => {
 
 // visualViewport also fires when keyboard appears — same logic
 window.visualViewport?.addEventListener('resize', () => {
-  if (isCinemaMode) return;
   if (keyboardActive) {
     lockHeight();
   }
@@ -231,7 +222,6 @@ const pinia = createPinia();
 pinia.use(piniaPluginPersistedstate);
 
 app.use(pinia);
-app.use(i18n);
 
 async function bootstrap(): Promise<void> {
   const { data, auth } = await loadAdapters();

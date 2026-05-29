@@ -2,7 +2,7 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import type { AuthUser } from '../types/auth';
 import type { AuthAdapter } from '../types/auth';
-import { i18n } from '../i18n';
+import { UI } from '../constants/uiStrings';
 import { useGlobalLoading } from '../composables/useGlobalLoading';
 
 export type AuthMode = 'login' | 'register';
@@ -11,7 +11,7 @@ function formatAuthError(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
-  return i18n.global.t('errors.authFailed');
+  return UI.errors.authFailed;
 }
 
 let authAdapter: AuthAdapter | null = null;
@@ -117,13 +117,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function submitByKnob(): Promise<boolean> {
     if (!authAdapter) {
-      errorMessage.value = i18n.global.t('errors.authNotInitialized');
+      errorMessage.value = UI.errors.authNotInitialized;
       return false;
     }
 
     if (!canSubmit.value) {
       if (isRegisterMode.value && confirmPassword.value !== password.value) {
-        errorMessage.value = i18n.global.t('errors.passwordMismatch');
+        errorMessage.value = UI.errors.passwordMismatch;
       }
       return false;
     }

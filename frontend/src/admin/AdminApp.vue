@@ -1,23 +1,20 @@
 <template>
-  <n-config-provider :locale="zhCN">
-    <div class="admin-app">
-      <div v-if="loading" class="admin-loading">{{ $t('admin.loading') }}</div>
-      <div v-else-if="!isAuthenticated" class="admin-login">
-        <h1>{{ $t('admin.title') }}</h1>
-        <LoginForm @logged-in="onLoggedIn" />
-      </div>
-      <div v-else-if="!isAdmin" class="admin-forbidden">
-        <h1>403</h1>
-        <p>{{ $t('admin.forbidden') }}</p>
-      </div>
-      <AdminPanel v-else @logout="onLogout" />
+  <div class="admin-app">
+    <div v-if="loading" class="admin-loading">加载中...</div>
+    <div v-else-if="!isAuthenticated" class="admin-login">
+      <h1>Acacia 内容管理后台</h1>
+      <LoginForm @logged-in="onLoggedIn" />
     </div>
-  </n-config-provider>
+    <div v-else-if="!isAdmin" class="admin-forbidden">
+      <h1>403</h1>
+      <p>当前账号没有管理员权限</p>
+    </div>
+    <AdminPanel v-else @logout="onLogout" />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { NConfigProvider, zhCN } from 'naive-ui';
 import { useAuthStore } from '../stores/authStore';
 import { apiFetch } from '../utils/api';
 import AdminPanel from './AdminPanel.vue';
