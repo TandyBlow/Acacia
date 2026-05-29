@@ -1,7 +1,6 @@
 import { ref, computed, onBeforeUnmount } from 'vue';
 import { useAuthStore } from '../stores/authStore';
 import { useStyleStore } from '../stores/styleStore';
-import { useNodeStore } from '../stores/nodeStore';
 import { useTreeSkeleton } from './useTreeSkeleton';
 import { storeToRefs } from 'pinia';
 
@@ -22,7 +21,6 @@ const SCENES: DemoScene[] = [
 export function useCinematicDemo() {
   const authStore = useAuthStore();
   const styleStore = useStyleStore();
-  const nodeStore = useNodeStore();
   const { initialized, isAuthenticated, user } = storeToRefs(authStore);
 
   const ready = ref(false);
@@ -61,7 +59,7 @@ export function useCinematicDemo() {
 
   async function switchToScene(idx: number) {
     if (cancelled || idx >= SCENES.length) return;
-    const scene = SCENES[idx];
+    const scene = SCENES[idx]!;
     currentSceneIdx.value = idx;
 
     // Switch account if needed
@@ -86,7 +84,7 @@ export function useCinematicDemo() {
     clearAdvanceTimer();
     if (paused.value || cancelled) return;
 
-    const scene = SCENES[currentSceneIdx.value];
+    const scene = SCENES[currentSceneIdx.value]!;
     advanceTimer = setTimeout(async () => {
       if (paused.value || cancelled) return;
       transitioning.value = true;

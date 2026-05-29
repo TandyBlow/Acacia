@@ -23,7 +23,7 @@
       <div class="ctrl-dots">
         <span v-for="(s, i) in phase1Scenes" :key="s.id" class="ctrl-dot" :class="{ active: i === phase1Idx }" @click="jumpToPhase1Scene(i)" />
       </div>
-      <span class="ctrl-label" v-if="phase1Scenes[phase1Idx]">{{ phase1Scenes[phase1Idx].label }}</span>
+      <span class="ctrl-label" v-if="phase1Scenes[phase1Idx]">{{ phase1Scenes[phase1Idx]!.label }}</span>
     </div>
 
     <!-- Blackout transition -->
@@ -48,6 +48,7 @@ import { useStyleStore } from '../../stores/styleStore';
 import { usePageTransition } from '../../composables/usePageTransition';
 import { cinemaTreeCanvas } from '../../composables/useCinemaBridge';
 import { presetSkeleton } from '../../composables/useTreeSkeleton';
+import { LOCAL_SESSION_KEY } from '../../constants/app';
 import * as nodeCache from '../../services/nodeCache';
 import type { AuthUser } from '../../types/auth';
 import type { NodeContext, TreeNode } from '../../types/node';
@@ -181,7 +182,7 @@ async function captureSnapshot(editorNodeId: string): Promise<AccountSnap> {
 
   const [treeData, styleResp, rootContext, editorContext, skeleton] = await Promise.all([
     adapter.getTree(),
-    adapter.fetchStyle?.(uid) ?? Promise.resolve({ style: 'default', distribution: {} }),
+    adapter.fetchStyle?.(uid) ?? Promise.resolve({ style: 'default', distribution: {} } as { style: string; distribution: Record<string, number>; params?: Record<string, unknown>; backgroundUrl?: string | null }),
     adapter.getNodeContext(null),
     adapter.getNodeContext(editorNodeId),
     adapter.fetchTreeSkeleton?.(uid) ?? Promise.resolve(null),
@@ -205,7 +206,7 @@ async function captureSnapshot(editorNodeId: string): Promise<AccountSnap> {
 
 function injectAccount(snap: AccountSnap) {
   authStore.user = snap.user;
-  styleStore.forceStyle(snap.styleName, snap.distribution, snap.styleParams, snap.bgUrl);
+  styleStore.forceStyle(snap.styleName, snap.distribution, snap.styleParams ?? undefined, snap.bgUrl);
   nodeStore.treeNodes = snap.treeData;
   nodeCache.setCache(null, snap.rootContext);
   nodeCache.setCache(snap.editorNodeId, snap.editorContext);
@@ -359,8 +360,8 @@ async function runPhase2() {
     if (targetIdx > currentStyleIdx) {
       currentStyleIdx = targetIdx;
       const dur = Math.max(60, interval * 0.7);
-      canvas.transitionToParamsDirect(styles[currentStyleIdx].params, dur);
-      styleStore.applyThemeFromParams(styles[currentStyleIdx].params);
+      canvas.transitionToParamsDirect(styles[currentStyleIdx]!.params, dur);
+      styleStore.applyThemeFromParams(styles[currentStyleIdx]!.params);
       const tex = textures.get(currentStyleIdx);
       if (tex) canvas.swapBackgroundTexture(tex);
     }
@@ -415,16 +416,16 @@ async function start() {
 
   // Step 1: login as gamedev, let MainLayout fully initialize
   loadingText.value = '正在登录...';
-  await loginAs(ACCOUNTS.gamedev);
+  await loginAs(ACCOUNTS.gamedev!);
   await waitForStyleLoaded();
   await sleep(3000);
-  snapshots.set('gamedev', await captureSnapshot(ACCOUNTS.gamedev.editorNodeId));
+  snapshots.set('gamedev', await captureSnapshot(ACCOUNTS.gamedev!.editorNodeId));
 
   // Step 2: prefetch remaining accounts + load demo styles in parallel
   loadingText.value = '正在预加载...';
   const prefetchTasks = ['fullstack', 'piano', 'japanese'].map(async (key) => {
     if (cancelled) return;
-    const acct = ACCOUNTS[key];
+    const acct = ACCOUNTS[key]!;
     await loginAs(acct);
     await waitForStyleLoaded();
     await sleep(2000);
@@ -449,7 +450,7 @@ async function start() {
   await waitForSettle('display');
 
   // Step 4: build Phase 1 scene list
-  const EDITOR_NODE = ACCOUNTS.gamedev.editorNodeId;
+  const EDITOR_NODE = ACCOUNTS.gamedev!.editorNodeId;
   phase1Scenes.value = [
     { id: 'editor',    label: '知识点详情',   accountKey: 'gamedev',   nodeId: EDITOR_NODE, durationMs: 2800 },
     { id: 'chat',      label: '对话生成',     accountKey: 'gamedev',   nodeId: EDITOR_NODE, durationMs: 2500,
@@ -480,6 +481,10 @@ onBeforeUnmount(() => {
   cancelled = true;
   clearAdvanceTimer();
   if (phase2AnimFrame) cancelAnimationFrame(phase2AnimFrame);
+  // Remove persisted auth so demo accounts don't leak into normal mode
+  localStorage.removeItem(LOCAL_SESSION_KEY);
+  localStorage.removeItem('auth');
+  authStore.logout();
 });
 </script>
 
