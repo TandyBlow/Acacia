@@ -51,15 +51,22 @@
           </button>
         </div>
       </div>
+
+      <!-- Double-click hint (small layout) -->
+      <Transition name="cell">
+        <span v-if="isAuthenticated && isCompactLayout && showDoubleClickHint" class="knob-dblclick-hint">{{ $t('knob.doubleClickHint') }}</span>
+      </Transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, type Ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useKnobDispatch } from '../../composables/useKnobDispatch';
-// import { useKnobHints } from '../../composables/useKnobHints';
+import { useKnobHints } from '../../composables/useKnobHints';
+import { useAuthStore } from '../../stores/authStore';
 import { KNOB_HOLD_MS, KNOB_DOUBLE_CLICK_MS } from '../../constants/app';
 
 // Inject content animation state from MainLayout
@@ -75,7 +82,12 @@ const {
   layoutType,
 } = useKnobDispatch();
 
-// const { recordAction, showClickHint, showHoldHint } = useKnobHints();
+const { recordAction, showClickHint, showHoldHint, showDoubleClickHint } = useKnobHints();
+
+const authStore = useAuthStore();
+const { isAuthenticated } = storeToRefs(authStore);
+
+const isCompactLayout = computed(() => layoutType.value === 'small');
 
 // --- Animation state ---
 const isHolding = ref(false);
@@ -173,7 +185,7 @@ async function onPressEnd(): Promise<void> {
     const now = Date.now();
     if (now - lastClickTime < KNOB_DOUBLE_CLICK_MS && lastClickTime > 0) {
       clearDblClickTimer();
-      // recordAction('click');
+      recordAction('dblclick');
       playClickAnimation();
       await onDoubleClick();
       return;
@@ -268,9 +280,22 @@ onBeforeUnmount(() => {
 */
 
 .knob-stage {
+  position: relative;
   width: 100%;
   display: grid;
   place-items: center;
+}
+
+.knob-dblclick-hint {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--color-primary);
+  opacity: 0.5;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .knob-well {

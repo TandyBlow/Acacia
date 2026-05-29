@@ -38,6 +38,7 @@ export default {
     holdToConfirm: '长按旋钮，确认操作',
     clickToHome: '单击旋钮，回到主页',
     clickToReturn: '单击旋钮，回到主页',
+    doubleClickHint: '双击旋钮试试',
   },
 
   tree: {
@@ -105,8 +106,10 @@ export default {
     noNodes: '暂无节点，点击"+ 新建"创建',
     selectNode: '请从左侧选择一个节点，或点击"+ 新建"',
     nodeTitle: '节点标题',
+    nodeTitleEn: '英文标题 (English Title)',
     preview: '预览',
     markdownPlaceholder: 'Markdown 内容...',
+    markdownPlaceholderEn: '英文内容 (English Content)...',
     save: '保存',
     saving: '保存中...',
     publish: '发布',
@@ -144,6 +147,10 @@ export default {
     thinking: '让我思考一下...',
     getContentFailed: '获取文件内容失败',
     fillContentFailed: '填入内容失败',
+    emptyContentWarning: '文件内容为空，可能是PDF扫描版且OCR未成功提取文字',
+    ocrInProgress: '正在识别文件文字...',
+    ocrPages: '已完成 {done}/{total} 页',
+    ocrFailed: '文字识别失败',
     conceptNamePrompt: '输入概念名称：',
   },
 
@@ -157,6 +164,8 @@ export default {
     sizeLimitExceeded: '文件大小超过限制',
     serverError: '服务器错误 ({code})',
     chars: '{n} 字符',
+    emptyWarning: '未提取到文字内容，PDF可能是扫描版且OCR失败',
+    ocrPending: '正在后台识别文字，可先点击"填入内容"查看进度',
   },
 
   dev: {

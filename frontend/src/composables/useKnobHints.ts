@@ -1,8 +1,9 @@
 import { ref, computed } from 'vue';
 
-type HintAction = 'click' | 'hold';
+type HintAction = 'click' | 'hold' | 'dblclick';
 
 const HINT_SUPPRESS_THRESHOLD = 5;
+const DBLCLICK_HINT_SUPPRESS_THRESHOLD = 3;
 const HINT_RESET_MS = 72 * 60 * 60 * 1000; // 72 hours
 
 interface HintState {
@@ -31,6 +32,7 @@ function saveState(action: HintAction, state: HintState): void {
 const actionCounts = ref<Record<HintAction, HintState>>({
   click: loadState('click'),
   hold: loadState('hold'),
+  dblclick: loadState('dblclick'),
 });
 
 function isStale(state: HintState): boolean {
@@ -58,9 +60,15 @@ export function useKnobHints() {
     return isStale(s) || s.count < HINT_SUPPRESS_THRESHOLD;
   });
 
+  const showDoubleClickHint = computed(() => {
+    const s = actionCounts.value.dblclick;
+    return s.count < DBLCLICK_HINT_SUPPRESS_THRESHOLD;
+  });
+
   return {
     recordAction,
     showClickHint,
     showHoldHint,
+    showDoubleClickHint,
   };
 }

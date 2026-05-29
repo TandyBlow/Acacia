@@ -38,6 +38,7 @@ export default {
     holdToConfirm: 'Hold knob to confirm',
     clickToHome: 'Click knob to return home',
     clickToReturn: 'Click knob to return home',
+    doubleClickHint: 'Try double-clicking the knob',
   },
 
   tree: {
@@ -105,8 +106,10 @@ export default {
     noNodes: 'No nodes yet. Click "+ New" to create one.',
     selectNode: 'Select a node from the left, or click "+ New"',
     nodeTitle: 'Node Title',
+    nodeTitleEn: 'English Title',
     preview: 'Preview',
     markdownPlaceholder: 'Markdown content...',
+    markdownPlaceholderEn: 'English Content...',
     save: 'Save',
     saving: 'Saving...',
     publish: 'Publish',
@@ -144,6 +147,10 @@ export default {
     thinking: 'Let me think...',
     getContentFailed: 'Failed to retrieve file content.',
     fillContentFailed: 'Failed to fill content.',
+    emptyContentWarning: 'File content is empty. The PDF may be scanned and OCR could not extract text.',
+    ocrInProgress: 'Recognizing text from file...',
+    ocrPages: 'Completed {done}/{total} pages',
+    ocrFailed: 'OCR failed',
     conceptNamePrompt: 'Enter concept name:',
   },
 
@@ -157,6 +164,8 @@ export default {
     sizeLimitExceeded: 'File size exceeds the limit.',
     serverError: 'Server error ({code})',
     chars: '{n} characters',
+    emptyWarning: 'No text extracted. The PDF may be scanned and OCR failed.',
+    ocrPending: 'Recognizing text in background. Click "Fill Content" to check progress.',
   },
 
   dev: {
