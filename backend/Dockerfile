@@ -8,6 +8,7 @@ COPY . .
 
 RUN mkdir -p /data
 ENV DB_PATH=/data/acacia.db
+ENV JWT_SECRET_FILE=/data/.jwt_secret
 
 EXPOSE 7860
 

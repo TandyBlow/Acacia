@@ -14,7 +14,7 @@ def _load_jwt_secret() -> str:
     if secret:
         return secret
 
-    secret_file = os.path.join(os.path.dirname(__file__), ".jwt_secret")
+    secret_file = os.getenv("JWT_SECRET_FILE") or os.path.join(os.path.dirname(__file__), ".jwt_secret")
     try:
         with open(secret_file) as f:
             return f.read().strip()

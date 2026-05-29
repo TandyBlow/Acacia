@@ -21,3 +21,4 @@ test_*.py
 *.md
 !README.md
 deploy_to_hf.py
+*.db
