@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { onErrorCaptured, ref } from 'vue';
+import { onErrorCaptured, ref, computed } from 'vue';
+import { NConfigProvider, zhCN } from 'naive-ui';
 import MainLayout from './views/MainLayout.vue';
-import { UI } from './constants/uiStrings';
+import CinematicDemo from './components/demo/CinematicDemo.vue';
 
 const hasError = ref(false);
 const errorMessage = ref('');
+
+const isCinemaMode = computed(() => {
+  return typeof window !== 'undefined' && window.location.search.includes('cinema');
+});
 
 onErrorCaptured((err) => {
   hasError.value = true;
@@ -20,12 +25,17 @@ function retry() {
 </script>
 
 <template>
-  <MainLayout v-if="!hasError" />
-  <div v-else class="error-boundary">
-    <p>{{ UI.app.errorOccurred }}</p>
-    <pre class="error-detail" v-if="errorMessage">{{ errorMessage }}</pre>
-    <button type="button" @click="retry">{{ UI.app.retry }}</button>
-  </div>
+  <n-config-provider :locale="zhCN">
+    <template v-if="!hasError">
+      <MainLayout />
+      <CinematicDemo v-if="isCinemaMode" />
+    </template>
+    <div v-else class="error-boundary">
+      <p>{{ $t('app.errorOccurred') }}</p>
+      <pre class="error-detail" v-if="errorMessage">{{ errorMessage }}</pre>
+      <button type="button" @click="retry">{{ $t('app.retry') }}</button>
+    </div>
+  </n-config-provider>
 </template>
 
 <style scoped>

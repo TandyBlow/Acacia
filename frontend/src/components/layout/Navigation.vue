@@ -36,8 +36,8 @@
             <div class="row-content" :class="{ 'official-content': item.isOfficial }">
               <template v-if="!item.isOfficial && actionNodeId === item.id">
                 <div class="inline-actions">
-                  <button type="button" class="action-half" @click.stop="moveNode(item.nodeData!)">{{ UI.nav.move }}</button>
-                  <button type="button" class="action-half" @click.stop="deleteNode(item.nodeData!)">{{ UI.nav.delete }}</button>
+                  <button type="button" class="action-half" @click.stop="moveNode(item.nodeData!)">{{ $t('nav.move') }}</button>
+                  <button type="button" class="action-half" @click.stop="deleteNode(item.nodeData!)">{{ $t('nav.delete') }}</button>
                 </div>
               </template>
               <template v-else>
@@ -50,7 +50,7 @@
 
       <GlassWrapper v-if="!anchorOfficial" class="add-shell" interactive :pressed="addPressed" @click="onAddClick">
         <button type="button" class="add-button">
-          {{ UI.nav.addNode }}
+          {{ $t('nav.addNode') }}
         </button>
       </GlassWrapper>
       <GlassWrapper v-if="anchorOfficial" class="add-shell anchor-official-shell" :class="{ 'anchor-prep': anchorSlidingDown || otAnchorPrep, 'anchor-sinking': otPhase === 'sinking' || otPhase === 'sliding' || otPhase === 'anchor-sliding' }" :style="otAnchorDeltaY ? { '--anchor-delta-y': otAnchorDeltaY + 'px' } : {}" interactive pressed @click="onAnchorOfficialClick">
@@ -85,7 +85,6 @@ import {
   NAV_SCROLL_MOMENTUM_THRESHOLD,
   NAV_SCROLL_INPUT_WINDOW_MS,
 } from '../../constants/app';
-import { UI } from '../../constants/uiStrings';
 
 const ROW_STEP = NAV_ROW_H + NAV_ROW_GAP;
 

@@ -36,7 +36,7 @@
     <div v-else class="crumb-track">
       <GlassWrapper class="crumb-wrap current-wrap" pressed>
         <div class="current-node">
-          {{ UI.breadcrumbs.welcome }}
+          {{ $t('breadcrumbs.welcome') }}
         </div>
       </GlassWrapper>
     </div>
@@ -45,12 +45,14 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import GlassWrapper from '../ui/GlassWrapper.vue';
 import { useNodeStore } from '../../stores/nodeStore';
 import { useAuthStore } from '../../stores/authStore';
 import type { NodeRecord } from '../../types/node';
-import { UI } from '../../constants/uiStrings';
+
+const { t } = useI18n();
 
 // Animation durations (ms)
 const SINK_MS = 240;
@@ -60,7 +62,7 @@ const RISE_MS = 240;
 // Home placeholder shown when at root level (no active node)
 const HOME_PLACEHOLDER: NodeRecord = {
   id: '__home__',
-  name: UI.breadcrumbs.home,
+  name: t('breadcrumbs.home'),
   content: '',
   parentId: null,
   sortOrder: 0,
@@ -80,7 +82,13 @@ const { isAuthenticated } = storeToRefs(authStore);
 function buildFullPath(): NodeRecord[] {
   const ancestors = pathNodes.value;
   const current = activeNode.value;
-  if (current) return [...ancestors, current];
+  if (current) {
+    // During page transitions, pathNodes may already include the current
+    // node as an ancestor while activeNode hasn't been updated yet.
+    // Deduplicate to avoid the same node appearing twice in the breadcrumb.
+    const filtered = ancestors.filter(a => a.id !== current.id);
+    return [...filtered, current];
+  }
   // At root level — show home placeholder as current node
   if (ancestors.length === 0) return [HOME_PLACEHOLDER];
   return [...ancestors];

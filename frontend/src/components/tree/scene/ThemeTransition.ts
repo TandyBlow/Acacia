@@ -47,11 +47,22 @@ export class ThemeTransition {
     this.target = { ...initial };
   }
 
-  startTransition(newStyle: ThemeStyle, customParams?: TreeStyleParams | null) {
+  startTransition(newStyle: ThemeStyle, customParams?: TreeStyleParams | null, durationMs?: number) {
     this.current = this.getCurrentInterpolated();
     this.target = { ...(THEME_PRESETS[newStyle] || customParams || THEME_DEFAULT) };
     this.t = 0;
     this.startTime = performance.now();
+    this.duration = durationMs ?? 800;
+    this.isTransitioning = true;
+  }
+
+  /** Direct param-to-param transition, bypasses THEME_PRESETS lookup. */
+  transitionTo(targetParams: TreeStyleParams, durationMs: number) {
+    this.current = this.getCurrentInterpolated();
+    this.target = { ...targetParams };
+    this.t = 0;
+    this.startTime = performance.now();
+    this.duration = durationMs;
     this.isTransitioning = true;
   }
 
