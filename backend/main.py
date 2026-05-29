@@ -1,4 +1,5 @@
 from uuid import uuid4
+import logging
 
 from fastapi import FastAPI, HTTPException, status, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 from database import get_db_ctx, init_db
 from auth import hash_password, verify_password, create_token, verify_token
 from tree_repository_sqlite import fetch_user_tree_sqlite
@@ -21,6 +24,7 @@ from style_service_sqlite import compute_style_sqlite
 from style_generator import _cache_key, build_profile_text
 from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
 from file_parser import parse_file, get_file_info
+from pdf_ocr import needs_ocr, ocr_pdf
 # Lazy import for file_knowledge_service to avoid startup failures
 # from file_knowledge_service import (
 #     extract_knowledge_points,
@@ -637,7 +641,7 @@ async def upload_file_endpoint(
 ):
     """
     Upload a file for knowledge point extraction.
-    Supports: .txt, .md, .pdf, .ipynb (max 10MB)
+    Supports: .txt, .md, .pdf, .docx, .ipynb, .py (max 10MB)
     """
     owner_id = user["sub"]
 
@@ -652,10 +656,10 @@ async def upload_file_endpoint(
 
     # Validate file extension
     file_ext = os.path.splitext(file.filename)[1].lower()
-    if file_ext not in ['.txt', '.md', '.pdf', '.ipynb']:
+    if file_ext not in ['.txt', '.md', '.pdf', '.docx', '.ipynb', '.py']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件类型：{file_ext}。支持的类型：.txt, .md, .pdf, .ipynb"
+            detail=f"不支持的文件类型：{file_ext}。支持的类型：.txt, .md, .pdf, .docx, .ipynb, .py"
         )
 
     # Create upload directory
@@ -674,13 +678,32 @@ async def upload_file_endpoint(
         text_content = parse_file(file_path)
         file_info = get_file_info(file_path)
 
+        ocr_applied = False
+
+        # For PDFs, check if OCR is needed (scanned / image-based)
+        if file_ext == '.pdf' and needs_ocr(file_path):
+            try:
+                ocr_text = ocr_pdf(file_path)
+                if len(ocr_text) > len(text_content):
+                    text_content = ocr_text
+                    ocr_applied = True
+            except Exception as e:
+                logger.warning(f"OCR failed for {file_id}: {e}")
+
+        # Cache extracted text to a .txt file so /file-content re-reads are fast
+        # and include OCR results even though the original PDF doesn't change
+        cache_path = os.path.join(upload_dir, f"{file_id}.txt")
+        with open(cache_path, 'w', encoding='utf-8') as cf:
+            cf.write(text_content)
+
         return {
             "file_id": file_id,
             "filename": file.filename,
             "size": file_info["size"],
             "extension": file_info["extension"],
             "text_length": len(text_content),
-            "text_preview": text_content[:200] + "..." if len(text_content) > 200 else text_content
+            "text_preview": text_content[:200] + "..." if len(text_content) > 200 else text_content,
+            "ocr_applied": ocr_applied,
         }
     except Exception as e:
         # Clean up file on error
@@ -701,6 +724,19 @@ def get_file_content_endpoint(
     import glob as glob_mod
     owner_id = user["sub"]
     upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+
+    # Check for cached text first (written during upload, includes OCR results)
+    cache_path = os.path.join(upload_dir, f"{file_id}.txt")
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            full_text = f.read()
+        return {
+            "file_id": file_id,
+            "filename": "",
+            "full_text": full_text,
+            "from_cache": True,
+        }
+
     pattern = os.path.join(upload_dir, f"{file_id}.*")
     matches = glob_mod.glob(pattern)
     if not matches:
@@ -1516,6 +1552,8 @@ def review_stats_endpoint(user: dict = Depends(get_current_user)):
 class OfficialNodeCreate(BaseModel):
     title: str
     content: str = ""
+    title_en: str = ""
+    content_en: str = ""
     sort_order: float = 0
     is_published: bool = False
 
@@ -1523,6 +1561,8 @@ class OfficialNodeCreate(BaseModel):
 class OfficialNodeUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
+    title_en: str | None = None
+    content_en: str | None = None
     sort_order: float | None = None
     is_published: bool | None = None
 

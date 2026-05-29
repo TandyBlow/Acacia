@@ -6,5 +6,7 @@ numpy
 PyJWT
 bcrypt
 httpx
-PyPDF2
+pymupdf
+easyocr
+python-docx
 python-multipart

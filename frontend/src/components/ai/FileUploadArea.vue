@@ -11,7 +11,7 @@
       <input
         ref="fileInput"
         type="file"
-        accept=".txt,.md,.pdf,.ipynb"
+        accept=".txt,.md,.pdf,.docx,.ipynb,.py"
         @change="handleFileSelect"
         style="display: none"
       />
@@ -19,15 +19,15 @@
       <template v-if="!isUploading && !uploadedFile">
         <div class="upload-icon">📄</div>
         <div class="upload-text">
-          <div class="upload-primary">点击或拖拽文件到此处</div>
-          <div class="upload-secondary">支持 .txt, .md, .pdf, .ipynb 文件（最大10MB）</div>
+          <div class="upload-primary">{{ $t('upload.clickOrDrag') }}</div>
+          <div class="upload-secondary">{{ $t('upload.supportedFormats') }}</div>
         </div>
       </template>
 
       <template v-else-if="isUploading">
         <div class="upload-icon">⏳</div>
         <div class="upload-text">
-          <div class="upload-primary">上传中...</div>
+          <div class="upload-primary">{{ $t('upload.uploading') }}</div>
           <div class="upload-secondary">{{ uploadProgress }}%</div>
         </div>
       </template>
@@ -37,7 +37,8 @@
         <div class="upload-text">
           <div class="upload-primary">{{ uploadedFile.filename }}</div>
           <div class="upload-secondary">
-            {{ formatFileSize(uploadedFile.size) }} · {{ uploadedFile.text_length }} 字符
+            {{ formatFileSize(uploadedFile.size) }} · {{ $t('upload.chars', { n: uploadedFile.text_length }) }}
+            <span v-if="uploadedFile.ocr_applied" class="ocr-badge">OCR</span>
           </div>
         </div>
         <button class="remove-btn" @click.stop="removeFile">✕</button>
@@ -50,6 +51,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 interface UploadedFile {
   file_id: string;
@@ -58,12 +60,15 @@ interface UploadedFile {
   extension: string;
   text_length: number;
   text_preview: string;
+  ocr_applied?: boolean;
 }
 
 const emit = defineEmits<{
   uploaded: [file: UploadedFile];
   removed: [];
 }>();
+
+const { t } = useI18n();
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const isDragOver = ref(false);
@@ -100,15 +105,15 @@ async function uploadFile(file: File) {
   // Validate file size
   const MAX_SIZE = 10 * 1024 * 1024; // 10MB
   if (file.size > MAX_SIZE) {
-    errorMessage.value = '文件大小超过10MB限制';
+    errorMessage.value = t('upload.sizeExceeded');
     return;
   }
 
   // Validate file extension
-  const validExtensions = ['.txt', '.md', '.pdf', '.ipynb'];
+  const validExtensions = ['.txt', '.md', '.pdf', '.docx', '.ipynb', '.py'];
   const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
   if (!validExtensions.includes(fileExt)) {
-    errorMessage.value = `不支持的文件类型：${fileExt}`;
+    errorMessage.value = t('upload.unsupportedType', { ext: fileExt });
     return;
   }
 
@@ -141,14 +146,14 @@ async function uploadFile(file: File) {
     uploadProgress.value = 100;
 
     if (!response.ok) {
-      let errorDetail = '上传失败';
+      let errorDetail = t('upload.uploadFailed');
       try {
         const error = await response.json();
-        errorDetail = error.detail || '上传失败';
+        errorDetail = error.detail || t('upload.uploadFailed');
       } catch {
         errorDetail = response.status === 413
-          ? '文件大小超过限制'
-          : `服务器错误 (${response.status})`;
+          ? t('upload.sizeLimitExceeded')
+          : t('upload.serverError', { code: response.status });
       }
       throw new Error(errorDetail);
     }
@@ -157,7 +162,7 @@ async function uploadFile(file: File) {
     uploadedFile.value = result;
     emit('uploaded', result);
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '上传失败';
+    errorMessage.value = error instanceof Error ? error.message : t('upload.uploadFailed');
   } finally {
     isUploading.value = false;
     uploadProgress.value = 0;
@@ -276,5 +281,17 @@ function formatFileSize(bytes: number): string {
   color: #c0392b;
   font-size: 14px;
   text-align: center;
+}
+
+.ocr-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(102, 255, 229, 0.2);
+  color: #66ffe5;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
 }
 </style>
