@@ -5,11 +5,14 @@
 """
 import httpx
 import base64
+import os
 from pathlib import Path
 import time
 
 # API配置
-API_KEY = "REMOVED"
+API_KEY = os.getenv("IMAGE_API_KEY")
+if not API_KEY:
+    raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
 API_URL = "https://ai.centos.hk/v1/images/edits"
 MODEL = "gpt-image-2"
 

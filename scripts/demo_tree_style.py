@@ -26,7 +26,9 @@ DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
-IMAGE_API_KEY = "REMOVED"
+IMAGE_API_KEY = os.environ.get("IMAGE_API_KEY", "")
+if not IMAGE_API_KEY:
+    raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
 IMAGE_API_URL = "https://ai.centos.hk/v1/images/edits"
 IMAGE_MODEL = "gpt-image-2"
 

@@ -4,13 +4,16 @@ Test different scene types to understand what works and what doesn't.
 """
 import httpx
 import base64
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 REFERENCE_IMAGE = PROJECT_ROOT / "background.png"
 OUTPUT_DIR = PROJECT_ROOT / "scripts" / "demo_output"
 
-IMAGE_API_KEY = "REMOVED"
+IMAGE_API_KEY = os.getenv("IMAGE_API_KEY")
+if not IMAGE_API_KEY:
+    raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
 IMAGE_API_URL = "https://ai.centos.hk/v1/images/edits"
 
 TEST_SCENES = [

@@ -21,7 +21,9 @@ if env_path.exists():
         if line.startswith("DEEPSEEK_API_KEY="):
             os.environ["DEEPSEEK_API_KEY"] = line.strip().split("=", 1)[1].strip('"')
 
-IMAGE_API_KEY = "REMOVED"
+IMAGE_API_KEY = os.getenv("IMAGE_API_KEY")
+if not IMAGE_API_KEY:
+    raise RuntimeError("IMAGE_API_KEY 环境变量未设置")
 IMAGE_API_URL = "https://ai.centos.hk/v1/images/edits"
 REFERENCE_IMAGE = PROJECT_ROOT / "background.png"
 OUTPUT_DIR = PROJECT_ROOT / "scripts" / "demo_output"
