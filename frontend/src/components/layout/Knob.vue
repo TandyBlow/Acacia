@@ -82,7 +82,7 @@ const {
   layoutType,
 } = useKnobDispatch();
 
-const { recordAction, showClickHint, showHoldHint, showDoubleClickHint } = useKnobHints();
+const { recordAction, showDoubleClickHint } = useKnobHints();
 
 const authStore = useAuthStore();
 const { isAuthenticated } = storeToRefs(authStore);

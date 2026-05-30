@@ -66,12 +66,17 @@ function unlockHeight(): void {
 // The min-height: 100vh fallback in MainLayout.vue is sufficient.
 const isCinemaMode = window.location.search.includes('cinema');
 
+// Keyboard height locking is only needed on touch devices where a virtual
+// keyboard can resize the viewport. On desktop, the same resize signature
+// (height drop >100px, stable width) occurs during normal window resizing.
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+
 // focusin serves as a confirmation signal — if the resize-based
 // detection missed the keyboard (unusual tablet behavior), this
 // catches it.  Does NOT re-capture preKeyboardHeight; resize handler
 // already set it before the height dropped.
 document.addEventListener('focusin', (e: Event) => {
-  if (isCinemaMode) return;
+  if (isCinemaMode || !isTouchDevice) return;
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
     if (!keyboardActive) {
@@ -99,8 +104,10 @@ document.addEventListener('focusout', () => {
 // Primary keyboard detection: height drops >100px with stable width
 // is the keyboard appearing.  Height recovering to near pre-keyboard
 // level is the keyboard closing.
+// Only active on touch devices; on desktop this pattern occurs during
+// normal window resizing (dragging the bottom edge).
 window.addEventListener('resize', () => {
-  if (isCinemaMode) return;
+  if (isCinemaMode || !isTouchDevice) return;
 
   const h = window.innerHeight;
   const w = window.innerWidth;
@@ -141,7 +148,7 @@ window.addEventListener('resize', () => {
 
 // visualViewport also fires when keyboard appears — same logic
 window.visualViewport?.addEventListener('resize', () => {
-  if (isCinemaMode) return;
+  if (isCinemaMode || !isTouchDevice) return;
   if (keyboardActive) {
     lockHeight();
   }
