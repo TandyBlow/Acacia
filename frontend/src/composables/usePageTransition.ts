@@ -105,9 +105,6 @@ export function usePageTransition() {
     try {
       await executeDataLoading(trigger);
 
-      const nodeStore = useNodeStore();
-      nodeStore.applyPendingSharedData();
-
       const newState = getCurrentPageState();
       applyRegionVisibility(newState);
     } catch (error) {
