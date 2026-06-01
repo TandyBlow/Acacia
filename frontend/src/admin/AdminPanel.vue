@@ -1,19 +1,19 @@
 <template>
   <div class="admin-layout">
     <header class="admin-header">
-      <h1>Acacia 内容管理后台</h1>
-      <button class="btn-logout" @click="$emit('logout')">登出</button>
+      <h1>{{ $t('admin.title') }}</h1>
+      <button class="btn-logout" @click="$emit('logout')">{{ $t('admin.logout') }}</button>
     </header>
 
     <div class="admin-body">
       <!-- Left sidebar: node list -->
       <aside class="admin-sidebar">
         <div class="sidebar-header">
-          <span>官方知识点</span>
-          <button class="btn-new" @click="createNew">+ 新建</button>
+          <span>{{ $t('admin.officialNodes') }}</span>
+          <button class="btn-new" @click="createNew">{{ $t('admin.new') }}</button>
         </div>
-        <div v-if="loadingList" class="sidebar-status">加载中...</div>
-        <div v-else-if="nodes.length === 0" class="sidebar-status">暂无节点，点击"+ 新建"创建</div>
+        <div v-if="loadingList" class="sidebar-status">{{ $t('admin.loading') }}</div>
+        <div v-else-if="nodes.length === 0" class="sidebar-status">{{ $t('admin.noNodes') }}</div>
         <ul v-else class="node-list">
           <li
             v-for="node in nodes"
@@ -32,30 +32,43 @@
 
       <!-- Main editor area -->
       <main class="admin-main">
-        <div v-if="!selectedId" class="empty-editor">
-          请从左侧选择一个节点，或点击"+ 新建"
+        <div v-if="!selectedId && !isCreating" class="empty-editor">
+          {{ $t('admin.selectNode') }}
         </div>
         <template v-else>
           <div class="editor-toolbar">
             <input
               v-model="editTitle"
               class="title-input"
-              placeholder="节点标题"
+              :placeholder="$t('admin.nodeTitle')"
+              @input="markDirty"
+            />
+            <input
+              v-model="editTitleEn"
+              class="title-input title-input-en"
+              :placeholder="$t('admin.nodeTitleEn')"
               @input="markDirty"
             />
             <label class="preview-toggle">
-              <input type="checkbox" v-model="showPreview" /> 预览
+              <input type="checkbox" v-model="showPreview" /> {{ $t('admin.preview') }}
             </label>
           </div>
 
           <div class="editor-body">
-            <textarea
-              v-if="!showPreview"
-              v-model="editContent"
-              class="content-textarea"
-              placeholder="Markdown 内容..."
-              @input="markDirty"
-            ></textarea>
+            <div v-if="!showPreview" class="editor-body-layout">
+              <textarea
+                v-model="editContent"
+                class="content-textarea"
+                :placeholder="$t('admin.markdownPlaceholder')"
+                @input="markDirty"
+              ></textarea>
+              <textarea
+                v-model="editContentEn"
+                class="content-textarea content-textarea-en"
+                :placeholder="$t('admin.markdownPlaceholderEn')"
+                @input="markDirty"
+              ></textarea>
+            </div>
             <div v-else class="content-preview" v-html="renderedPreview"></div>
           </div>
 
@@ -63,7 +76,7 @@
 
           <div class="editor-actions">
             <button class="btn-save" :disabled="saving || !dirty" @click="save">
-              {{ saving ? '保存中...' : '保存' }}
+              {{ saving ? $t('admin.saving') : $t('admin.save') }}
             </button>
             <button
               class="btn-publish"
@@ -71,10 +84,10 @@
               :disabled="saving"
               @click="togglePublish"
             >
-              {{ editPublished ? '取消发布' : '发布' }}
+              {{ editPublished ? $t('admin.unpublish') : $t('admin.publish') }}
             </button>
             <button class="btn-delete" :disabled="saving" @click="confirmDelete">
-              删除
+              {{ $t('admin.delete') }}
             </button>
           </div>
         </template>
@@ -85,6 +98,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { apiFetch } from '../utils/api';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -101,16 +115,21 @@ interface OfficialNode {
 
 defineEmits<{ logout: [] }>();
 
+const { t } = useI18n();
+
 const nodes = ref<OfficialNode[]>([]);
 const selectedId = ref<string | null>(null);
 const editTitle = ref('');
 const editContent = ref('');
+const editTitleEn = ref('');
+const editContentEn = ref('');
 const editPublished = ref(false);
 const showPreview = ref(false);
 const dirty = ref(false);
 const saving = ref(false);
 const saveError = ref('');
 const loadingList = ref(true);
+const isCreating = ref(false);
 
 const renderedPreview = computed(() => {
   return DOMPurify.sanitize(marked.parse(editContent.value, { async: false }) as string);
@@ -120,7 +139,8 @@ async function fetchList() {
   loadingList.value = true;
   try {
     nodes.value = await apiFetch<OfficialNode[]>('/admin/official-nodes');
-  } catch {
+  } catch (e) {
+    console.error('[AdminPanel] fetchList failed:', e);
     nodes.value = [];
   } finally {
     loadingList.value = false;
@@ -131,18 +151,24 @@ function selectNode(node: OfficialNode) {
   selectedId.value = node.id;
   editTitle.value = node.title;
   editContent.value = node.content;
+  editTitleEn.value = (node as any).title_en || '';
+  editContentEn.value = (node as any).content_en || '';
   editPublished.value = !!node.is_published;
   dirty.value = false;
   saveError.value = '';
+  isCreating.value = false;
 }
 
 function createNew() {
   selectedId.value = null;
   editTitle.value = '';
   editContent.value = '';
+  editTitleEn.value = '';
+  editContentEn.value = '';
   editPublished.value = false;
   dirty.value = false;
   saveError.value = '';
+  isCreating.value = true;
 }
 
 function markDirty() {
@@ -151,44 +177,42 @@ function markDirty() {
 
 async function save() {
   if (!editTitle.value.trim()) {
-    saveError.value = '标题不能为空';
+    saveError.value = t('admin.titleRequired');
     return;
   }
   saving.value = true;
   saveError.value = '';
   try {
+    const body = JSON.stringify({
+      title: editTitle.value.trim(),
+      content: editContent.value,
+      title_en: editTitleEn.value,
+      content_en: editContentEn.value,
+      is_published: editPublished.value,
+    });
+
     if (selectedId.value) {
       // Update existing
-      await apiFetch(`/admin/official-nodes/${selectedId.value}`, {
+      const result = await apiFetch<OfficialNode>(`/admin/official-nodes/${selectedId.value}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          title: editTitle.value.trim(),
-          content: editContent.value,
-          is_published: editPublished.value,
-        }),
+        body,
       });
+      // Populate English fields with auto-translated result
+      if ((result as any).title_en) editTitleEn.value = (result as any).title_en;
+      if ((result as any).content_en) editContentEn.value = (result as any).content_en;
     } else {
       // Create new
       const node = await apiFetch<OfficialNode>('/admin/official-nodes', {
         method: 'POST',
-        body: JSON.stringify({
-          title: editTitle.value.trim(),
-          content: editContent.value,
-          is_published: editPublished.value,
-        }),
+        body,
       });
       selectedId.value = node.id;
+      if ((node as any).title_en) editTitleEn.value = (node as any).title_en;
+      if ((node as any).content_en) editContentEn.value = (node as any).content_en;
     }
     dirty.value = false;
-    await fetchList();
-  } catch (e) {
-    saveError.value = e instanceof Error ? e.message : '保存失败';
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function togglePublish() {
+    isCreating.value = false;
+    await fetchList();() {
   const next = !editPublished.value;
   saving.value = true;
   saveError.value = '';
@@ -203,7 +227,7 @@ async function togglePublish() {
     dirty.value = true;
     await fetchList();
   } catch (e) {
-    saveError.value = e instanceof Error ? e.message : '操作失败';
+    saveError.value = e instanceof Error ? e.message : t('admin.operationFailed');
   } finally {
     saving.value = false;
   }
@@ -211,7 +235,7 @@ async function togglePublish() {
 
 async function confirmDelete() {
   if (!selectedId.value) return;
-  if (!window.confirm('确定要删除这个节点吗？此操作不可撤销。')) return;
+  if (!window.confirm(t('admin.confirmDelete'))) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -222,7 +246,7 @@ async function confirmDelete() {
     dirty.value = false;
     await fetchList();
   } catch (e) {
-    saveError.value = e instanceof Error ? e.message : '删除失败';
+    saveError.value = e instanceof Error ? e.message : t('admin.deleteFailed');
   } finally {
     saving.value = false;
   }
@@ -385,10 +409,12 @@ onMounted(fetchList);
   gap: 16px;
   padding: 16px 24px 0;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .title-input {
   flex: 1;
+  min-width: 200px;
   padding: 10px 14px;
   font-size: 18px;
   font-weight: 600;
@@ -396,6 +422,13 @@ onMounted(fetchList);
   border-radius: 6px;
   background: #fff;
   outline: none;
+}
+
+.title-input-en {
+  font-size: 15px;
+  font-weight: 500;
+  border-color: #d0d0e0;
+  background: #fafaff;
 }
 
 .title-input:focus {
@@ -416,11 +449,20 @@ onMounted(fetchList);
   flex: 1;
   padding: 16px 24px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-body-layout {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
 }
 
 .content-textarea {
-  width: 100%;
-  height: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 16px;
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
   font-size: 14px;
@@ -430,6 +472,12 @@ onMounted(fetchList);
   background: #fff;
   resize: none;
   outline: none;
+}
+
+.content-textarea-en {
+  font-size: 13px;
+  border-color: #d0d0e0;
+  background: #fafaff;
 }
 
 .content-textarea:focus {
