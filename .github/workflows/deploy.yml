@@ -42,7 +42,7 @@ jobs:
 
             echo ">>> pip install" | tee -a "$LOG"
             cd /opt/acacia/backend
-            venv/bin/pip install -r requirements.txt --quiet 2>&1 | tee -a "$LOG"
+            venv/bin/pip install -r requirements.lock --quiet 2>&1 | tee -a "$LOG"
 
             echo ">>> npm ci" | tee -a "$LOG"
             cd /opt/acacia/frontend
