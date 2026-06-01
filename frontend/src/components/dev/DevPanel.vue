@@ -2,12 +2,12 @@
   <Teleport to="body">
     <div v-if="isExpanded" class="dev-panel-glass">
       <div class="dev-panel-header">
-        <span class="dev-panel-title">开发者面板</span>
+        <span class="dev-panel-title">{{ $t('dev.title') }}</span>
         <button class="dev-panel-close" @click="isExpanded = false">−</button>
       </div>
       <div class="dev-panel-body">
         <div class="dev-toggle-row">
-          <span class="dev-toggle-label">页面切换动画</span>
+          <span class="dev-toggle-label">{{ $t('dev.pageTransition') }}</span>
           <button
             type="button"
             class="dev-toggle"
@@ -18,7 +18,7 @@
           </button>
         </div>
         <div class="dev-toggle-row">
-          <span class="dev-toggle-label">手动 Scene Ready</span>
+          <span class="dev-toggle-label">{{ $t('dev.manualSceneReady') }}</span>
           <button
             type="button"
             class="dev-toggle"
@@ -29,8 +29,23 @@
           </button>
         </div>
         <div class="dev-toggle-row">
-          <span class="dev-toggle-label">当前风格</span>
+          <span class="dev-toggle-label">{{ $t('dev.currentStyle') }}</span>
           <span class="dev-style-name">{{ currentStyleName }}</span>
+        </div>
+        <div class="dev-toggle-row">
+          <span class="dev-toggle-label">{{ $t('dev.language') }}</span>
+          <div class="dev-lang-btns">
+            <button
+              class="dev-lang-btn"
+              :class="{ active: locale === 'zh-CN' }"
+              @click="switchLocale('zh-CN')"
+            >中文</button>
+            <button
+              class="dev-lang-btn"
+              :class="{ active: locale === 'en-US' }"
+              @click="switchLocale('en-US')"
+            >EN</button>
+          </div>
         </div>
         <button
           type="button"
@@ -38,14 +53,14 @@
           :disabled="styleRegenRunning"
           @click="onStyleRegen"
         >
-          {{ styleRegenRunning ? '生成中...' : '重新生成风格' }}
+          {{ styleRegenRunning ? $t('dev.regenerating') : $t('dev.regenStyle') }}
         </button>
         <button
           type="button"
           class="dev-action-btn dev-reset-style-btn"
           @click="onResetStyle"
         >
-          重置为默认风格
+          {{ $t('dev.resetStyle') }}
         </button>
         <button
           type="button"
@@ -53,7 +68,7 @@
           :disabled="treeFadeRunning"
           @click="onTreeFadeTest"
         >
-          {{ treeFadeRunning ? '动画中...' : '测试树消失动画' }}
+          {{ treeFadeRunning ? $t('dev.animating') : $t('dev.testTreeFade') }}
         </button>
         <button
           type="button"
@@ -61,7 +76,7 @@
           :disabled="resetGrowthRunning"
           @click="onResetGrowth"
         >
-          {{ resetGrowthRunning ? '重置中...' : '重置今日成长状态' }}
+          {{ resetGrowthRunning ? $t('dev.resetting') : $t('dev.resetGrowth') }}
         </button>
         <button
           type="button"
@@ -69,7 +84,7 @@
           :disabled="logoutRunning"
           @click="onLogout"
         >
-          {{ logoutRunning ? '退出中...' : '退出登录' }}
+          {{ logoutRunning ? $t('dev.loggingOut') : $t('dev.logout') }}
         </button>
         <button
           type="button"
@@ -77,9 +92,9 @@
           :disabled="profileLoading"
           @click="onShowProfileText"
         >
-          {{ profileLoading ? '加载中...' : '查看知识画像' }}
+          {{ profileLoading ? $t('dev.loading') : $t('dev.viewProfile') }}
         </button>
-        <div class="dev-section-label">演示账号切换</div>
+        <div class="dev-section-label">{{ $t('dev.demoAccounts') }}</div>
         <button
           v-for="acct in DEMO_ACCOUNTS"
           :key="acct.username"
@@ -88,7 +103,7 @@
           :disabled="demoSwitchRunning === acct.username"
           @click="onSwitchDemoAccount(acct)"
         >
-          {{ demoSwitchRunning === acct.username ? '切换中...' : acct.label }}
+          {{ demoSwitchRunning === acct.username ? $t('dev.switching') : acct.label }}
         </button>
       </div>
     </div>
@@ -97,43 +112,43 @@
       <div v-if="profileVisible" class="dev-profile-overlay" @click.self="profileVisible = false">
         <div class="dev-profile-modal">
           <div class="dev-profile-header">
-            <span class="dev-profile-title">知识画像文本 (Profile Text)</span>
+            <span class="dev-profile-title">{{ $t('dev.profileTitle') }}</span>
             <button class="dev-profile-close" @click="profileVisible = false">×</button>
           </div>
           <div class="dev-profile-body" v-if="profileData">
             <div class="dev-profile-cards">
               <div class="dev-profile-card">
-                <div class="dev-profile-card-label">知识点数</div>
+                <div class="dev-profile-card-label">{{ $t('dev.nodeCount') }}</div>
                 <div class="dev-profile-card-value">{{ profileData.nodeCount }}</div>
               </div>
               <div class="dev-profile-card">
-                <div class="dev-profile-card-label">画像文本长度</div>
-                <div class="dev-profile-card-value">{{ profileData.profileTextLength }} 字符</div>
+                <div class="dev-profile-card-label">{{ $t('dev.profileTextLength') }}</div>
+                <div class="dev-profile-card-value">{{ $t('upload.chars', { n: profileData.profileTextLength }) }}</div>
               </div>
               <div class="dev-profile-card">
-                <div class="dev-profile-card-label">SHA256 哈希</div>
+                <div class="dev-profile-card-label">{{ $t('dev.sha256Hash') }}</div>
                 <div class="dev-profile-card-value dev-profile-hash">{{ profileData.hashShort }}</div>
               </div>
             </div>
             <div class="dev-profile-section">
-              <div class="dev-profile-section-title">完整画像文本 <span class="dev-profile-hint">(按节点名排序后用 "|" 拼接)</span></div>
+              <div class="dev-profile-section-title">{{ $t('dev.fullProfileText') }} <span class="dev-profile-hint">{{ $t('dev.profileHint') }}</span></div>
               <pre class="dev-profile-text">{{ profileData.profileText }}</pre>
             </div>
             <div class="dev-profile-section">
-              <div class="dev-profile-section-title">逐节点分解 <span class="dev-profile-hint">(每个节点: name + ":" + content前200字)</span></div>
+              <div class="dev-profile-section-title">{{ $t('dev.nodeBreakdown') }} <span class="dev-profile-hint">{{ $t('dev.nodeBreakdownHint') }}</span></div>
               <table class="dev-profile-table">
                 <thead>
                   <tr>
                     <th class="dev-profile-th-num">#</th>
-                    <th class="dev-profile-th-name">节点名</th>
-                    <th class="dev-profile-th-content">content 前200字</th>
+                    <th class="dev-profile-th-name">{{ $t('dev.nodeName') }}</th>
+                    <th class="dev-profile-th-content">{{ $t('dev.contentPreview') }}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="(n, i) in profileData.nodes" :key="i" :class="{ 'dev-profile-empty-row': !n.hasContent }">
                     <td class="dev-profile-td-num">{{ i + 1 }}</td>
                     <td class="dev-profile-td-name">{{ n.name }}</td>
-                    <td class="dev-profile-td-content">{{ n.contentPreview || '(空)' }}</td>
+                    <td class="dev-profile-td-content">{{ n.contentPreview || $t('dev.empty') }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -162,6 +177,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, inject } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useDevStore } from '../../stores/devStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNodeStore } from '../../stores/nodeStore';
@@ -187,6 +203,7 @@ const devStore = useDevStore();
 const authStore = useAuthStore();
 const nodeStore = useNodeStore();
 const styleStore = useStyleStore();
+const { t, locale } = useI18n();
 const isExpanded = ref(false);
 const waitingForScene = ref(false);
 const treeFadeRunning = ref(false);
@@ -206,6 +223,11 @@ const profileData = ref<{
 } | null>(null);
 
 const currentStyleName = computed(() => styleStore.style || 'default');
+
+function switchLocale(loc: string) {
+  locale.value = loc;
+  localStorage.setItem('acacia_locale', loc);
+}
 
 async function onLogout() {
   if (logoutRunning.value) return;
@@ -269,7 +291,7 @@ async function onResetGrowth() {
     const res = await fetch(url, { method: 'POST', headers });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error((data as any).detail ?? '重置失败');
+      throw new Error((data as any).detail ?? t('dev.resetFailed'));
     }
     await nodeStore.checkDailyQuizStatus();
   } catch (e: unknown) {
@@ -434,6 +456,36 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--color-primary);
   opacity: 0.75;
+}
+
+.dev-lang-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.dev-lang-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--color-glass-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-primary);
+  opacity: 0.5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: opacity 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.dev-lang-btn.active {
+  opacity: 1;
+  background: rgba(102, 255, 229, 0.18);
+  border-color: rgba(102, 255, 229, 0.4);
+}
+
+.dev-lang-btn:hover:not(.active) {
+  opacity: 0.8;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .dev-style-name {

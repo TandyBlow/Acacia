@@ -16,15 +16,18 @@ export default {
     register: 'Register',
     login: 'Log In',
     loggingIn: 'Logging in...',
-    hint: 'Short-press the right knob to switch login/register, long-press to submit.',
+    hint: 'Short-press the knob to switch login/register, long-press to submit.',
     username: 'Username',
     password: 'Password',
     confirmPassword: 'Confirm Password',
   },
 
   confirm: {
-    addNode: 'Add Node',
-    deleteNode: 'Delete Node',
+    addNode: 'Add Knowledge Point',
+    holdKnobHint: 'Press and hold the knob to confirm',
+    deleteNode: 'Delete Knowledge Point',
+    deleteWithChildren: 'Also delete child knowledge points',
+    deleteHint: 'When checked, all child knowledge points under this node will also be deleted',
     logout: 'Log Out',
     logoutPrompt: 'Currently logged in as {username}. Please confirm logout.',
   },
@@ -56,7 +59,7 @@ export default {
   },
 
   official: {
-    dailyQuiz: 'Daily Growth',
+    dailyQuiz: 'Daily Growth beta',
     welcome: 'Welcome',
     treeOverview: 'Knowledge Tree Overview',
     quizCompleted: 'Daily growth completed! Come back tomorrow!',
@@ -123,8 +126,8 @@ export default {
   },
 
   editor: {
-    chatGenerate: 'Chat Generate',
-    fileImport: 'File Import',
+    chatGenerate: 'Chat Generate beta',
+    fileImport: 'File Import beta',
     regenerate: 'Regenerate',
     markConcept: 'Mark Concept',
     exitChat: 'Exit Chat',
@@ -152,6 +155,7 @@ export default {
     ocrPages: 'Completed {done}/{total} pages',
     ocrFailed: 'OCR failed',
     conceptNamePrompt: 'Enter concept name:',
+    sameNamePathsTitle: 'This knowledge point also exists in the following paths:',
   },
 
   upload: {
@@ -166,6 +170,30 @@ export default {
     chars: '{n} characters',
     emptyWarning: 'No text extracted. The PDF may be scanned and OCR failed.',
     ocrPending: 'Recognizing text in background. Click "Fill Content" to check progress.',
+    processing: 'Processing file...',
+    parsingFile: 'Parsing file...',
+    checkingOcr: 'Checking OCR need...',
+    parseFailed: 'File parsing failed.',
+  },
+
+  pipeline: {
+    starting: 'Preparing...',
+    complete: 'Processing complete',
+    failed: 'Processing failed',
+    pages: '{n} pages',
+    chars: '{n} chars',
+    formulas: '{n} formulas',
+    stage: {
+      extract: 'Extracting Text',
+      ocr: 'Running OCR',
+      spans: 'Extracting Layout',
+      formula: 'Detecting Formulas',
+      metadata: 'Applying Font Styles',
+      segment: 'Splitting Sentences',
+      annotate: 'LLM Annotation',
+      merge: 'Merging Annotations',
+      review: 'Reviewing',
+    },
   },
 
   dev: {
@@ -209,8 +237,8 @@ export default {
     preloadingBg: 'Preloading backgrounds...',
     preparingPlayback: 'Preparing playback...',
     sceneNodeDetail: 'Node Detail',
-    sceneChat: 'Chat',
-    sceneDailyQuiz: 'Daily Quiz',
+    sceneChat: 'Chat beta',
+    sceneDailyQuiz: 'Daily Quiz beta',
     sceneTreeOverview: 'Tree Overview',
     sceneHome: 'Home',
   },

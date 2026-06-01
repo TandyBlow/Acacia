@@ -31,7 +31,8 @@ export const backendAuth: AuthAdapter = {
       const data = await res.json();
       currentUser = { id: data.id, username: data.username };
       return currentUser;
-    } catch {
+    } catch (e) {
+      console.error('[backendAuth] validateToken failed:', e);
       setToken(null);
       return null;
     }

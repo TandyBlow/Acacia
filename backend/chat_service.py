@@ -2,10 +2,9 @@
 Single-topic Socratic chat service for Acacia.
 Each node gets its own conversation — AI helps the user understand ONE topic
 through natural dialogue, referencing the node's title and any provided material.
-
-Reuses DeepSeek API helpers and session persistence from file_knowledge_service.
 """
 import json
+import logging
 import time
 from typing import List, Dict, Any
 from uuid import uuid4
@@ -14,10 +13,13 @@ import httpx
 import os
 
 from database import get_db_ctx
+
+logger = logging.getLogger(__name__)
 from session_store import load_session, save_session
 from intent_classifier import classify_intent
 from doc_position_tracker import split_document, get_current_segment, advance_position, get_progress_context, is_document_done, get_full_document, get_position_marker, get_context_window
 from tone_wrapper import detect_tone
+from file_parser import sanitize_control_chars
 from knowledge_gap_detector import detect_gaps, format_gap_warning, should_check_gaps
 
 
@@ -48,11 +50,7 @@ def call_deepseek(messages: List[Dict[str, str]]) -> str:
     return data["choices"][0]["message"]["content"]
 
 
-# Reuse JSON parsing utilities from file_knowledge_service
 import re
-
-def _sanitize_control_chars(text: str) -> str:
-    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text)
 
 
 def _fix_newlines_in_strings(text: str) -> str:
@@ -108,7 +106,7 @@ def _find_json_boundary(text: str, opener: str, closer: str) -> tuple | None:
 
 
 def parse_json_response(raw: str) -> dict:
-    sanitized = _sanitize_control_chars(raw)
+    sanitized = sanitize_control_chars(raw)
     try:
         return json.loads(sanitized, strict=False)
     except json.JSONDecodeError:
@@ -294,16 +292,20 @@ SINGLE_TOPIC_CHAT_SYSTEM = """你是一个知识导师，帮助用户深入理�
 # Delegated to session_store.py — use load_session() / save_session() directly.
 
 
-LINE_BY_LINE_SYSTEM = """你是一个知识导师，正在陪用户逐段阅读一份文档。
+LINE_BY_LINE_SYSTEM = """你是一个知识导师，正在陪用户逐句阅读一份文档。
+
+铁律：
+- 只解释当前这一句。绝对不要提及后面还没讲到的内容。禁止"随后会介绍""后面会看到""接下来"等向前引用。禁止总结整段或整节。
+- 解释控制在1-3句话。你不是在写综述，只讲当前这一句。
+- 如果当前句涉及的前置知识用户尚未掌握，简要指出缺少什么即可，不要展开讲那个前置知识。
 
 每次回复：
-1. 用 > 引用当前要讲解的段落原文
-2. 解释这段内容，利用上下文中的【知识点结构】理解涉及的概念
+1. 用 > 引用当前句原文，换行后写解释。格式：> 原文\n\n解释内容
+2. 解释这一句。利用上下文中的【知识点结构】理解涉及的概念
 3. 如果用户提问或表示不理解，先判断他是否缺少前置知识。缺前置→建议去学习具体的原子知识点。有前置但不理解→直接换角度解释，不要问"要不要展开"
 4. 数学公式用 $...$ 或 $$...$$ 包裹
-5. 回复控制在2-5句话
 
-返回JSON：{"message": "> 原文\\n\\n解释内容", "reason": "简短标注"}"""
+返回JSON：{"message": "> 原文\\n\\n解释内容", "reason": "简短标注", "knowledge_note": "本轮新学到的知识（1-2句话）。直接陈述知识本身，不要加'我学到了'前缀。如果本轮只是过渡/确认，留空字符串"}"""
 
 
 # ── Public API ───────────────────────────────────────────────────────
@@ -340,27 +342,13 @@ def start_chat(
             adaptive_opening=adaptive_opening
         )
 
-    # Try multi-KP extraction if file is provided
-    knowledge_points = []
-    if file_id:
-        try:
-            from file_knowledge_service import extract_knowledge_points
-            result = extract_knowledge_points(file_id, owner_id)
-            for group in result.get("groups", []):
-                knowledge_points.extend(group.get("knowledge_points", []))
-        except Exception:
-            knowledge_points = []
-
-    if knowledge_points:
-        return _start_multi_kp(session_id, node_id, owner_id, file_id, knowledge_points)
-    else:
-        return _start_single_topic(
-            session_id, node_id, owner_id, node_name, reference_text, file_id,
-            previous_node_id=previous_node_id,
-            transition_type=transition_type,
-            transition_reason=transition_reason,
-            adaptive_opening=adaptive_opening
-        )
+    return _start_single_topic(
+        session_id, node_id, owner_id, node_name, reference_text, file_id,
+        previous_node_id=previous_node_id,
+        transition_type=transition_type,
+        transition_reason=transition_reason,
+        adaptive_opening=adaptive_opening
+    )
 
 
 def _start_single_topic(
@@ -427,7 +415,8 @@ def _start_single_topic(
                 related = get_related_topics(node_name)
                 source_label = summary.get("source_name", "Wikipedia")
                 wiki_context = format_wiki_context(summary, related, source_label=source_label)
-        except Exception:
+        except Exception as e:
+            logger.warning("Wikipedia context fetch failed for '%s': %s", node_name, e)
             wiki_context = ""
 
         user_content = f"节点名称：{node_name}\n\n"
@@ -479,70 +468,6 @@ def _start_single_topic(
     }
 
 
-def _start_multi_kp(
-    session_id: str,
-    node_id: str,
-    owner_id: str,
-    file_id: str,
-    knowledge_points: list
-) -> Dict[str, Any]:
-    """Start a multi-KP conversation by generating the first question."""
-    from file_knowledge_service import generate_question_for_knowledge_point
-
-    session = {
-        "session_id": session_id,
-        "node_id": node_id,
-        "owner_id": owner_id,
-        "file_id": file_id,
-        "knowledge_points": knowledge_points,
-        "current_index": 0,
-        "messages": [],
-        "generated_content": "",
-        "status": "active",
-        "created_at": time.time(),
-        "last_activity_at": time.time(),
-        "follow_up_count": 0,
-        "self_correction_count": 0,
-        "uncertainty_count": 0,
-        "pending_example": None,
-        "example_history": [],
-        "chat_mode": "multi_kp",
-    }
-
-    first_kp = knowledge_points[0]
-    try:
-        question_data = generate_question_for_knowledge_point(first_kp)
-    except Exception as e:
-        raise RuntimeError(f"生成第一个问题失败：{str(e)}")
-
-    session["messages"].append({
-        "role": "ai",
-        "content": question_data["question"],
-        "timestamp": time.time(),
-        "metadata": {
-            "kp_id": first_kp["id"],
-            "hints": question_data.get("hints", []),
-        }
-    })
-
-    save_session(session)
-
-    return {
-        "session_id": session_id,
-        "question": question_data["question"],
-        "hints": question_data.get("hints", []),
-        "action": "question",
-        "sub_topic": first_kp.get("title", ""),
-        "total_kp": len(knowledge_points),
-        "current_kp_index": 0,
-        "kp_title": first_kp.get("title", ""),
-        "kp_type": first_kp.get("type", ""),
-        "kp_data": {
-            "source_content": first_kp.get("source_content", ""),
-            "correct_definition": first_kp.get("correct_definition", ""),
-            "key_example": first_kp.get("key_example", ""),
-        },
-    }
 
 
 def _start_line_by_line(
@@ -557,6 +482,19 @@ def _start_line_by_line(
 ) -> Dict[str, Any]:
     """Start a line-by-line explanation chat for a file, with context chain awareness."""
     full_text = _read_uploaded_file(owner_id, file_id) or ""
+
+    # Prefer formatted text (from /format-content) if available — it's cleaner
+    # markdown with proper LaTeX, which produces better-looking quotes in chat.
+    fmt_cache = os.path.join(f"/tmp/acacia_uploads/{owner_id}", f"{file_id}.formatted.txt")
+    if os.path.exists(fmt_cache):
+        try:
+            with open(fmt_cache, 'r', encoding='utf-8') as f:
+                formatted = f.read()
+            if formatted.strip():
+                full_text = formatted
+        except Exception as e:
+            logger.warning("Failed to read formatted cache for %s: %s", file_id, e)
+
     node_name = _get_node_name(node_id)
 
     # Pre-split document into segments for code-tracked position
@@ -632,10 +570,10 @@ def _start_line_by_line(
                 personalized = format_personalized_context(matches)
                 if personalized:
                     user_lines.append(personalized)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.warning("Knowledge retrieval failed for owner %s: %s", owner_id, e)
+    except Exception as e:
+        logger.warning("Concept extraction failed for segment: %s", e)
 
     if transition_ctx:
         user_lines.append(f"【用户跳转背景】{transition_ctx}")
@@ -656,14 +594,18 @@ def _start_line_by_line(
         raise RuntimeError(f"启动逐句讲解失败：{str(e)}")
 
     ai_message = result.get("message", "")
+    # Hard-enforce line-by-line rules at code level (anti-spoiler, length, markdown)
+    from handler_router import _sanitize_line_by_line_response
+    ai_message = _sanitize_line_by_line_response(ai_message, first_segment)
     action = result.get("action", "explain")
     reason = result.get("reason", "")
+    knowledge_note = _filter_meta_commentary(result.get("knowledge_note", ""))
 
     session["messages"].append({
         "role": "ai",
         "content": ai_message,
         "timestamp": time.time(),
-        "metadata": {"action": action, "reason": reason, "is_opening": bool(adaptive_opening)}
+        "metadata": {"action": action, "reason": reason, "is_opening": bool(adaptive_opening), "knowledge_note": knowledge_note}
     })
 
     save_session(session)
@@ -676,6 +618,7 @@ def _start_line_by_line(
         "total_kp": 1,
         "current_kp_index": 0,
         "opening_message": "",  # LINE_BY_LINE_SYSTEM handles the first message
+        "knowledge_note": knowledge_note,
     }
 
 
@@ -721,8 +664,8 @@ def process_chat_turn(
     # Concept extraction + knowledge retrieval — all modes
     try:
         enrich_chat_context(session, intent)
-    except Exception:
-        pass  # enrichment failure should not block the turn
+    except Exception as e:
+        logger.warning("enrich_chat_context failed for session %s: %s", session.get("session_id"), e)
 
     if chat_mode == "line_by_line":
         from handler_router import route_and_handle
@@ -731,8 +674,6 @@ def process_chat_turn(
             return _process_line_by_line_turn(session, user_answer, skip, intent)
         save_session(session)
         return result
-    elif chat_mode == "multi_kp":
-        return _process_multi_kp_turn(session, user_answer, skip, intent, tone, gap_warning)
     else:
         return _process_single_topic_turn(session, user_answer, skip, intent, tone, gap_warning)
 
@@ -883,11 +824,14 @@ def _process_single_topic_turn(
                 reference_text=ref_text,
                 existing_content=existing_content_tail,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Knowledge consolidation failed for session %s: %s", session_id, e)
 
+    save_session(session)
+
+    if action in ("end_conversation", "summarize_and_move_on"):
         return {
-            "action": "end_conversation",
+            "action": action,
             "ai_message": ai_message,
             "generated_content": generated_content,
             "knowledge_note": knowledge_note,
@@ -899,8 +843,6 @@ def _process_single_topic_turn(
             "consolidated_content": consolidated,
             "mentioned_concepts": _extract_mentioned_concepts(session),
         }
-
-    save_session(session)
 
     return {
         "action": action,
@@ -976,7 +918,7 @@ def enrich_chat_context(session: dict, intent: str) -> None:
                     existing_names.append(self_row["name"])
                 print(f"[ENRICH] existing children: {existing_names}", file=sys.stderr)
         except Exception as _e:
-            print(f"[ENRICH] failed to fetch existing children: {_e}", file=sys.stderr)
+            logger.warning("[ENRICH] failed to fetch existing children: %s", _e)
     elif nid:
         # Fallback: get current node name from knowledge_points in session
         kps = session.get("knowledge_points", [])
@@ -1022,7 +964,7 @@ def enrich_chat_context(session: dict, intent: str) -> None:
                 print(f"[ENRICH]   - {m['kp_name']} (score={m['score']:.2f})", file=sys.stderr)
             personalized = format_personalized_context(matches)
         except Exception as e:
-            print(f"[ENRICH] knowledge retrieval failed: {e}", file=sys.stderr)
+            logger.warning("[ENRICH] knowledge retrieval failed: %s", e)
             personalized = ""
 
     # 3. Expansion context
@@ -1032,7 +974,7 @@ def enrich_chat_context(session: dict, intent: str) -> None:
             expansion = generate_expansion_context(concepts, text)
             print(f"[ENRICH] expansion context: {len(expansion)} chars", file=sys.stderr)
         except Exception as e:
-            print(f"[ENRICH] expansion generation failed: {e}", file=sys.stderr)
+            logger.warning("[ENRICH] expansion generation failed: %s", e)
             expansion = ""
 
     # 4. Store in session
@@ -1057,8 +999,8 @@ def enrich_chat_context(session: dict, intent: str) -> None:
             )
             if def_chain:
                 session["_enriched_context"]["definition_chain"] = def_chain
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[ENRICH] definition chain generation failed: %s", e)
 
 
 # Patterns that indicate the AI is describing conversation process rather than knowledge
@@ -1165,7 +1107,8 @@ def _verify_concepts_via_wikipedia(concepts: list, log_prefix: str = "[WIKI]", s
                     print(f"{log_prefix} ✗ {name} (no Wikipedia, substantive def but only {mentions} mention(s))", file=sys.stderr)
                 else:
                     print(f"{log_prefix} ✗ {name} (no Wikipedia, only {mentions} mention(s), short def)", file=sys.stderr)
-        except Exception:
+        except Exception as e:
+            logger.warning("%s wikipedia verify failed for '%s': %s", log_prefix, c.get("name", "?"), e)
             c["verified"] = False
             c["wiki_summary"] = ""
             c["wiki_description"] = ""
@@ -1352,8 +1295,8 @@ def _refresh_response_concepts(session: dict) -> None:
                 ).fetchone()
                 if self_row and self_row["name"]:
                     existing_names.append(self_row["name"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[ENRICH] failed to fetch existing children for dedup: %s", e)
     elif nid:
         kps = session.get("knowledge_points", [])
         if kps:
@@ -1373,7 +1316,7 @@ def _refresh_response_concepts(session: dict) -> None:
             for c in concepts:
                 print(f"[ENRICH]   - {c.get('name', '?')} [{c.get('category', '?')}]", file=sys.stderr)
     except Exception as e:
-        print(f"[ENRICH] post-response extraction failed: {e}", file=sys.stderr)
+        logger.error("[ENRICH] post-response extraction failed: %s", e)
 
 
 def _hash_text(text: str) -> str:
@@ -1389,231 +1332,6 @@ def _last_user_message(session: dict) -> str:
         if msg.get("role") == "user":
             return msg.get("content", "")
     return ""
-
-
-def _process_multi_kp_turn(
-    session: dict,
-    user_answer: str,
-    skip: bool,
-    intent: str = "content_question",
-    tone: dict = None,
-    gap_warning: str = ""
-) -> Dict[str, Any]:
-    """Process one turn of a multi-KP conversation."""
-    from file_knowledge_service import (
-        evaluate_user_answer,
-        generate_content_from_answer,
-        generate_question_for_knowledge_point,
-    )
-
-    knowledge_points = session["knowledge_points"]
-    current_index = session["current_index"]
-    current_kp = knowledge_points[current_index]
-
-    # Handle skip
-    if skip:
-        session["current_index"] += 1
-        session["follow_up_count"] = 0
-
-        if session["current_index"] >= len(knowledge_points):
-            session["status"] = "completed"
-            save_session(session)
-            return _make_multi_kp_response(session, "completed", "所有知识点已完成！",
-                                           generated_content=session["generated_content"],
-                                           completed=True)
-
-        next_kp = knowledge_points[session["current_index"]]
-        question_data = generate_question_for_knowledge_point(next_kp)
-        session["messages"].append({
-            "role": "ai",
-            "content": question_data["question"],
-            "timestamp": time.time(),
-            "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
-        })
-        save_session(session)
-        return _make_multi_kp_response(session, "next_question", question_data["question"],
-                                       hints=question_data.get("hints", []))
-
-    # Find the last question for this KP
-    last_question = None
-    for msg in reversed(session["messages"]):
-        if msg["role"] == "ai" and msg.get("metadata", {}).get("kp_id") == current_kp["id"]:
-            last_question = msg["content"]
-            break
-
-    # ── Handle off-topic content questions ──────────────────────────
-    # When user asks a content question instead of answering the KP question,
-    # answer it briefly using enriched context, then return to KP flow.
-    if intent in ("content_question", "knowledge_question") and not skip:
-        enriched = session.get("_enriched_context", {}) or {}
-        concept_ctx = enriched.get("concept_context", "")
-        personalized = enriched.get("personalized_context", "")
-        def_chain = enriched.get("definition_chain", "")
-        profile = build_knowledge_profile(session["owner_id"], session["node_id"])
-
-        answer_msg = f"""用户没有直接回答当前知识点的问题，而是提出了一个内容问题。
-
-当前知识点：{current_kp.get('title', '')}
-当前问题：{last_question or '(无)'}
-用户问：{user_answer}
-
-请先简短回答用户的问题（2-4句话），然后自然地引导回当前知识点的讨论。
-如果用户的问题和当前知识点完全无关，可以简单回答后说"这个话题挺有意思的，不过我们先回到..."。
-如果用户的问题和当前知识点有关联，就顺着关联引导回来。
-
-可用上下文：
-- 【知识点结构】帮你理解用户问题涉及的概念
-- 【个性化知识关联】用户已有的相关知识
-- 你的回复要自然对话风格，不要用模板化开头"""
-
-        user_lines = [answer_msg]
-        if concept_ctx:
-            user_lines.append(f"\n{concept_ctx}")
-        if personalized:
-            user_lines.append(f"\n{personalized}")
-        if def_chain:
-            user_lines.append(f"\n{def_chain}")
-        if gap_warning:
-            user_lines.append(f"\n{gap_warning}")
-        if tone and tone.get("instruction"):
-            user_lines.append(f"\n{tone['instruction']}")
-        if profile:
-            user_lines.append(f"\n{profile[:2000]}")  # truncated profile for context
-
-        try:
-            raw = call_deepseek([
-                {"role": "system", "content": SINGLE_TOPIC_CHAT_SYSTEM},
-                {"role": "user", "content": "\n".join(user_lines)},
-            ])
-            result = parse_json_response(raw)
-            ai_message = result.get("message", "")
-        except Exception:
-            ai_message = f"好问题。不过我们先回到刚才的话题：{last_question}"
-
-        session["messages"].append({
-            "role": "ai",
-            "content": ai_message,
-            "timestamp": time.time(),
-            "metadata": {"action": "follow_up", "reason": "off_topic_answer"}
-        })
-        save_session(session)
-        return _make_multi_kp_response(session, "follow_up", ai_message)
-
-    # Evaluate user's answer
-    evaluation = evaluate_user_answer(
-        current_kp,
-        last_question or "",
-        user_answer,
-        session["follow_up_count"]
-    )
-
-    action = evaluation["action"]
-    ai_message = evaluation["next_message"]
-
-    session["messages"].append({
-        "role": "ai",
-        "content": ai_message,
-        "timestamp": time.time(),
-        "metadata": {"action": action, "reason": evaluation.get("reason", "")}
-    })
-
-    # Actions that move to the next KP
-    if action in ("accept", "summarize_and_move_on"):
-        # Generate content for this KP
-        kp_messages = _get_kp_messages(session, current_kp["id"])
-        generated_content = generate_content_from_answer(
-            current_kp,
-            last_question or "",
-            user_answer,
-            kp_messages
-        )
-
-        # Append to accumulated content
-        if session["generated_content"]:
-            session["generated_content"] += "\n\n---\n\n"
-        session["generated_content"] += f"## {current_kp['title']}\n\n{generated_content}"
-
-        # Enrich acceptance message with key example
-        if action == "accept" and current_kp.get('key_example') and current_kp['key_example'] not in ai_message:
-            ai_message += f"\n\n举个具体例子：{current_kp['key_example']}"
-            session["messages"][-1]["content"] = ai_message
-
-        # Move to next KP
-        session["current_index"] += 1
-        session["follow_up_count"] = 0
-
-        if session["current_index"] >= len(knowledge_points):
-            session["status"] = "completed"
-            save_session(session)
-            return _make_multi_kp_response(session, "completed", ai_message,
-                                           generated_content=generated_content,
-                                           total_content=session["generated_content"],
-                                           completed=True)
-
-        next_kp = knowledge_points[session["current_index"]]
-        question_data = generate_question_for_knowledge_point(next_kp)
-        session["messages"].append({
-            "role": "ai",
-            "content": question_data["question"],
-            "timestamp": time.time(),
-            "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
-        })
-
-        save_session(session)
-        return _make_multi_kp_response(session, "accept_and_next", ai_message,
-                                       generated_content=generated_content,
-                                       next_question=question_data["question"],
-                                       hints=question_data.get("hints", []))
-
-    elif action in ("follow_up", "progressive_hint"):
-        session["follow_up_count"] += 1
-        save_session(session)
-        return _make_multi_kp_response(session, "follow_up", ai_message)
-
-    elif action == "hint":
-        save_session(session)
-        return _make_multi_kp_response(session, "hint", ai_message)
-
-    elif action == "show_source":
-        save_session(session)
-        return _make_multi_kp_response(session, "show_source", ai_message)
-
-    elif action == "correct_self":
-        session["self_correction_count"] += 1
-        if session["self_correction_count"] > 2:
-            # Force move to next KP
-            session["current_index"] += 1
-            session["follow_up_count"] = 0
-            session["self_correction_count"] = 0
-            if session["current_index"] >= len(knowledge_points):
-                session["status"] = "completed"
-                save_session(session)
-                return _make_multi_kp_response(session, "completed",
-                                               ai_message + "\n\n（已自动跳过，让我们继续下一个知识点。）",
-                                               completed=True)
-            next_kp = knowledge_points[session["current_index"]]
-            question_data = generate_question_for_knowledge_point(next_kp)
-            session["messages"].append({
-                "role": "ai",
-                "content": question_data["question"],
-                "timestamp": time.time(),
-                "metadata": {"kp_id": next_kp["id"], "hints": question_data.get("hints", [])}
-            })
-            save_session(session)
-            return _make_multi_kp_response(session, "accept_and_next", ai_message,
-                                           next_question=question_data["question"],
-                                           hints=question_data.get("hints", []))
-        save_session(session)
-        return _make_multi_kp_response(session, "correct_self", ai_message)
-
-    elif action == "admit_uncertainty":
-        session["uncertainty_count"] += 1
-        save_session(session)
-        return _make_multi_kp_response(session, "admit_uncertainty", ai_message,
-                                       can_skip=session["uncertainty_count"] >= 1)
-
-    save_session(session)
-    return _make_multi_kp_response(session, "unknown", ai_message)
 
 
 MAX_LINE_BY_LINE_TURNS = 30
@@ -1692,13 +1410,16 @@ def _process_line_by_line_turn(
             raise RuntimeError(f"讲解处理失败：{str(e)}")
 
         ai_message = result.get("message", "")
+        from handler_router import _sanitize_line_by_line_response
+        ai_message = _sanitize_line_by_line_response(ai_message, current_segment)
         action = result.get("action", "explain")
+        knowledge_note = _filter_meta_commentary(result.get("knowledge_note", ""))
 
         session["messages"].append({
             "role": "ai",
             "content": ai_message,
             "timestamp": time.time(),
-            "metadata": {"action": action, "reason": result.get("reason", "")}
+            "metadata": {"action": action, "reason": result.get("reason", ""), "knowledge_note": knowledge_note}
         })
 
         save_session(session)
@@ -1707,7 +1428,7 @@ def _process_line_by_line_turn(
             "ai_message": ai_message,
             "sub_topic": result.get("reason", ""),
             "generated_content": "",
-            "knowledge_note": "",
+            "knowledge_note": knowledge_note,
             "total_kp": 1,
             "current_kp_index": 0,
             "completed": action == "end_explanation",
@@ -1783,13 +1504,16 @@ def _process_line_by_line_turn(
         raise RuntimeError(f"讲解处理失败：{str(e)}")
 
     ai_message = result.get("message", "")
+    from handler_router import _sanitize_line_by_line_response
+    ai_message = _sanitize_line_by_line_response(ai_message, current_segment)
     action = result.get("action", "explain")
+    knowledge_note = _filter_meta_commentary(result.get("knowledge_note", ""))
 
     session["messages"].append({
         "role": "ai",
         "content": ai_message,
         "timestamp": time.time(),
-        "metadata": {"action": action, "reason": result.get("reason", "")}
+        "metadata": {"action": action, "reason": result.get("reason", ""), "knowledge_note": knowledge_note}
     })
 
     # Advance position after AI explains
@@ -1803,7 +1527,7 @@ def _process_line_by_line_turn(
         "ai_message": ai_message,
         "sub_topic": result.get("reason", ""),
         "generated_content": "",
-        "knowledge_note": "",
+        "knowledge_note": knowledge_note,
         "total_kp": 1,
         "current_kp_index": 0,
         "completed": action == "end_explanation",
@@ -1843,67 +1567,9 @@ def _get_node_name(node_id: str) -> str:
                 (node_id,),
             ).fetchone()
         return row["name"] if row else ""
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to get node name for %s: %s", node_id, e)
         return ""
-
-
-def _get_kp_messages(session: dict, kp_id: str) -> list:
-    """Get conversation messages relevant to a specific knowledge point."""
-    kp_messages = []
-    for msg in session["messages"]:
-        if msg.get("metadata", {}).get("kp_id") == kp_id:
-            kp_messages.append(msg)
-        elif msg["role"] == "user":
-            # Include user messages that come after the KP's AI messages
-            if kp_messages:
-                kp_messages.append(msg)
-    return kp_messages
-
-
-def _make_multi_kp_response(
-    session: dict,
-    action: str,
-    ai_message: str,
-    generated_content: str = "",
-    total_content: str = "",
-    next_question: str = "",
-    hints: list | None = None,
-    completed: bool = False,
-    can_skip: bool = False,
-    knowledge_note: str = ""
-) -> Dict[str, Any]:
-    """Build a response dict for multi-KP mode with progress info."""
-    knowledge_points = session["knowledge_points"]
-    current_index = session["current_index"]
-    current_kp = knowledge_points[current_index] if current_index < len(knowledge_points) else {}
-
-    result: Dict[str, Any] = {
-        "action": action,
-        "ai_message": ai_message,
-        "generated_content": generated_content,
-        "knowledge_note": knowledge_note,
-        "total_kp": len(knowledge_points),
-        "current_kp_index": current_index,
-        "kp_title": current_kp.get("title", ""),
-        "kp_type": current_kp.get("type", ""),
-        "kp_data": {
-            "source_content": current_kp.get("source_content", ""),
-            "correct_definition": current_kp.get("correct_definition", ""),
-            "key_example": current_kp.get("key_example", ""),
-        } if current_kp else None,
-        "mentioned_concepts": _extract_mentioned_concepts(session),
-    }
-    if total_content:
-        result["total_content"] = total_content
-    if next_question:
-        result["next_question"] = next_question
-    if hints:
-        result["hints"] = hints
-    if completed:
-        result["completed"] = True
-    if can_skip:
-        result["can_skip"] = can_skip
-    return result
 
 
 def regenerate_with_tree_context(
@@ -2049,8 +1715,8 @@ def mark_concept_node(
                 reason=f"在学习「{parent_name}」时标记了概念「{concept_name}」",
                 session_id=session_id
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Transition recording failed in mark_concept_node: %s", e)
 
     result: Dict[str, Any] = {
         "node_id": child_id,
@@ -2160,10 +1826,8 @@ def end_chat(session_id: str) -> Dict[str, Any]:
                 mastery_changes=summary.get("mastery_changes", []),
                 knowledge_notes=summary.get("knowledge_notes", ""),
             )
-        except Exception:
-            pass
-
-    total_kp = len(session.get("knowledge_points", [1]))
+        except Exception as e:
+            logger.warning("Learning snapshot recording failed for session %s: %s", session_id, e)
 
     # Consolidate knowledge notes into a clean, deduplicated document
     # Run consolidation even if already completed, in case previous attempt was empty
@@ -2188,12 +1852,12 @@ def end_chat(session_id: str) -> Dict[str, Any]:
                 reference_text=reference_text,
                 existing_content=existing,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Knowledge consolidation failed for session %s: %s", session_id, e)
+
+    save_session(session)
 
     return {
-        "action": "end_conversation",
-        "ai_message": session["messages"][-1]["content"],
         "completed": True,
         "total_content": session["generated_content"],
         "total_kp": total_kp,
@@ -2327,8 +1991,8 @@ def _extract_mentioned_concepts(session: dict) -> list:
         session["_response_extraction_attempted"] = True
         try:
             _refresh_response_concepts(session)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("_refresh_response_concepts failed for session %s: %s", session.get("session_id"), e)
 
     enriched = session.get("_enriched_context", {}) or {}
     # Prefer post-response concepts (extracted from AI's actual reply) over
@@ -2357,8 +2021,8 @@ def _extract_mentioned_concepts(session: dict) -> list:
                 ).fetchone()
                 if self_row and self_row["name"]:
                     existing_names.add(self_row["name"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to fetch existing names for dedup: %s", e)
     elif nid:
         kps = session.get("knowledge_points", [])
         if kps:
@@ -2385,18 +2049,35 @@ def _extract_mentioned_concepts(session: dict) -> list:
 
 
 def _read_uploaded_file(owner_id: str, file_id: str) -> str | None:
-    """Read the full text content of an uploaded file from disk."""
+    """Read the full text content of an uploaded file from disk.
+
+    Checks .txt cache first (may contain OCR results from background processing),
+    then falls back to re-parsing the original file.
+    """
     import glob as glob_mod
     from file_parser import parse_file
     upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+
+    # 1. Prefer cached .txt file (written during upload, updated by background OCR)
+    cache_path = os.path.join(upload_dir, f"{file_id}.txt")
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        if text.strip():
+            return text
+
+    # 2. Fall back to re-parsing the original file
     pattern = os.path.join(upload_dir, f"{file_id}.*")
     matches = glob_mod.glob(pattern)
-    if not matches:
-        return None
-    try:
-        return parse_file(matches[0])
-    except Exception:
-        return None
+    for match in matches:
+        if match == cache_path:
+            continue
+        try:
+            return parse_file(match)
+        except Exception as e:
+            logger.warning("Failed to parse cached file %s: %s", match, e)
+            continue
+    return None
 
 
 def _collect_previous_knowledge_notes(session: dict) -> list[str]:
@@ -2496,10 +2177,8 @@ def _build_conversation_context(session: dict, owner_id: str = "", current_node_
                 lines.append("\n【自上次访问后的新学习内容】")
                 for nl in new_learnings:
                     lines.append(f"  - 在「{nl.get('node_name', '未知')}」中学习了：{nl.get('learned_concepts', '')}")
-        except Exception:
-            pass
-
-    # Inject compressed memories from previous chat sessions on this node
+        except Exception as e:
+            logger.warning("Failed to fetch new learnings for node %s: %s", nid, e)
     if oid and nid:
         try:
             memories = get_node_chat_memories(oid, nid, limit=5)
@@ -2507,10 +2186,8 @@ def _build_conversation_context(session: dict, owner_id: str = "", current_node_
                 lines.append("\n【本知识点历史对话摘要】以下是之前关于此知识点的对话压缩记录，请参考其中的讨论内容和学习进度，避免重复已讨论过的话题：")
                 for i, mem in enumerate(memories):
                     lines.append(f"  [历史对话{i+1}] {mem['compressed_summary']}")
-        except Exception:
-            pass
-
-    # Include existing note content tail for dedup and style matching
+        except Exception as e:
+            logger.warning("Failed to fetch chat memories for node %s: %s", nid, e)
     if existing_content_tail.strip():
         lines.append(f"\n【已有笔记内容（尾部）】请检查以下内容，避免重复记录已存在的知识点，并匹配其记叙方式和排版格式：\n{existing_content_tail}")
 
@@ -2730,7 +2407,8 @@ def compress_chat_session(session_id: str) -> Dict[str, Any]:
             {"role": "user", "content": user_prompt},
         ])
         result = json.loads(raw)
-    except Exception:
+    except Exception as e:
+        logger.warning("Chat compression via DeepSeek failed, using fallback: %s", e)
         # Fallback: build a simple summary from message metadata
         result = _fallback_compress(messages, node_name)
 

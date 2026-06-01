@@ -46,6 +46,10 @@ export function useKnobDispatch() {
       authStore.toggleMode();
       return;
     }
+    // In small layout, single-click always returns to the tree (content mode)
+    if (isCompactLayout.value) {
+      compactMode.value = 'content';
+    }
     await nodeStore.onKnobClick();
   }
 

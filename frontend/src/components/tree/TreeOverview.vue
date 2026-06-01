@@ -2,14 +2,14 @@
   <div ref="treeRef" class="tree-shell">
     <div class="tree-header">
       <h2>{{ $t('tree.treeOverview') }}</h2>
-      <p class="tree-hint">拖拽知识点到目标父节点下即可移动，拖到顶部方框可移至根节点</p>
+      <p class="tree-hint">{{ $t('tree.dragHint') }}</p>
     </div>
 
     <div ref="rootZoneRef" class="root-zone" data-sortable data-parent-id="">
-      <span class="root-zone-hint">拖拽至此，移至根节点</span>
+      <span class="root-zone-hint">{{ $t('tree.dragToRoot') }}</span>
     </div>
 
-    <div class="tree-scroll">
+    <div ref="scrollRef" class="tree-scroll">
       <ul ref="rootListRef" class="tree-root" data-sortable data-parent-id="">
         <TreeNodeItem
           v-for="node in treeNodes"
@@ -34,6 +34,7 @@ import Sortable from 'sortablejs';
 import TreeNodeItem from './TreeNodeItem.vue';
 import { useNodeStore, getDataAdapter } from '../../stores/nodeStore';
 import { usePageTransition } from '../../composables/usePageTransition';
+import { useTextAutoContrast } from '../../composables/useTextAutoContrast';
 import type { TreeNode } from '../../types/node';
 
 const store = useNodeStore();
@@ -42,6 +43,8 @@ const { registerRegion, unregisterRegion } = usePageTransition();
 const treeRef = ref<HTMLElement | null>(null);
 const rootZoneRef = ref<HTMLElement | null>(null);
 const rootListRef = ref<HTMLElement | null>(null);
+const scrollRef = ref<HTMLElement | null>(null);
+useTextAutoContrast(scrollRef, '.node-btn, .expand-btn');
 const expandedIds = ref<string[]>([]);
 const wasDragging = ref(false);
 
@@ -121,7 +124,8 @@ function initSortables(): void {
       const adapter = getDataAdapter();
       await adapter.moveNode(nodeId, newParentId || null);
       await store.refreshTree();
-    } catch {
+    } catch (e) {
+      console.error('[TreeOverview] moveNode failed:', e);
       await store.refreshTree();
     }
   };

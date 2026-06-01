@@ -575,6 +575,7 @@ async function animateContentTransition() {
   if (contentAnimating.value) {
     contentAnimToken.value++;
     contentPhase.value = 'idle';
+    compactAnimPhase.value = 'idle';
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
@@ -634,6 +635,19 @@ async function animateContentTransition() {
     playInitialAnimation();
     return;
   }
+
+  // Login transition: AuthPanel → user content.
+  // Use a coordinated entrance animation (like knob-to-home) so all areas
+  // slide in together, with style loaded before reveal.
+  if (isAuthenticated.value && displayedNonTreeContent.value === AuthPanel) {
+    await handleLoginTransition();
+    return;
+  }
+
+  // Safety: reset entrancePhase in case a pre-flush watcher set it to 'prep'
+  // for a login that didn't route through handleLoginTransition (e.g. if the
+  // detection above was bypassed by a race with the contentKey watcher).
+  entrancePhase.value = 'idle';
 
   // When entering or leaving a CONTENT_DIRECT_STATES view,
   // the wrapper element changes between content-glass and content-direct.
@@ -988,6 +1002,56 @@ async function animateContentTransition() {
   contentAnimating.value = false;
 }
 
+// Shared entrance animation: sliding + rising for all areas.
+// Prerequisites: contentPhase='slide-in-prep' and entrancePhase='prep' must already be set.
+// display refs must already point to the target content. Returns false if cancelled.
+async function playEntranceAnimation(token: number): Promise<boolean> {
+  const willShowTree = showTree.value;
+
+  if (willShowTree) {
+    treeOverlayActive.value = true;
+    const maskEl = treeMaskRef.value;
+    if (maskEl) maskEl.style.transition = 'none';
+    treeMaskVisible.value = true;
+
+    await nextTick();
+    if (token !== contentAnimToken.value) return false;
+    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+    void reflowEl?.offsetHeight;
+    if (maskEl) maskEl.style.transition = '';
+
+    contentPhase.value = 'tree-mask';
+    entrancePhase.value = 'sliding';
+
+    await nextTick();
+    await waitForSceneReady(token);
+    if (token !== contentAnimToken.value) return false;
+    treeMaskVisible.value = false;
+    await sleep(TREE_MASK_FADE_MS);
+    if (token !== contentAnimToken.value) return false;
+  } else {
+    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
+    void reflowEl?.offsetHeight;
+    contentPhase.value = 'slide-in';
+    entrancePhase.value = 'sliding';
+    await sleep(CONTENT_SLIDE_MS);
+    if (token !== contentAnimToken.value) return false;
+  }
+
+  if (!displayedSkipContentGlass.value) {
+    contentPhase.value = 'rising';
+    entrancePhase.value = 'rising';
+    await nextTick();
+    if (token !== contentAnimToken.value) return false;
+    await sleep(CONTENT_RISE_MS);
+    if (token !== contentAnimToken.value) return false;
+  }
+
+  contentPhase.value = 'idle';
+  entrancePhase.value = 'idle';
+  return true;
+}
+
 // Trigger the "enter main page" animation from the initial sunken state.
 // All areas slide in together: content from right, nav/breadcrumbs from left, knob fades in.
 async function playInitialAnimation(): Promise<void> {
@@ -1007,53 +1071,84 @@ async function playInitialAnimation(): Promise<void> {
   await nextTick();
   if (token !== contentAnimToken.value) return;
 
-  const willShowTree = showTree.value;
+  await playEntranceAnimation(token);
+  contentAnimating.value = false;
+}
 
-  if (willShowTree) {
-    // Tree enter with mask
-    treeOverlayActive.value = true;
-    const maskEl = treeMaskRef.value;
-    if (maskEl) maskEl.style.transition = 'none';
-    treeMaskVisible.value = true;
+// ================================================================
+// Login transition: AuthPanel → user content
+// Sinks + slides out AuthPanel, waits for data + style,
+// then plays coordinated entrance animation for all areas.
+// ================================================================
+async function handleLoginTransition(): Promise<void> {
+  contentAnimating.value = true;
+  const token = ++contentAnimToken.value;
 
-    await nextTick();
-    if (token !== contentAnimToken.value) return;
-    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
-    void reflowEl?.offsetHeight;
-    if (maskEl) maskEl.style.transition = '';
+  // Phase 1: Sink AuthPanel
+  contentPhase.value = 'sinking';
+  await nextTick();
+  if (token !== contentAnimToken.value) { contentAnimating.value = false; return; }
+  await sleep(CONTENT_SINK_MS);
+  if (token !== contentAnimToken.value) { contentAnimating.value = false; return; }
 
-    contentPhase.value = 'tree-mask';
-    // Nav/breadcrumbs/knob slide in while tree mask is up
-    entrancePhase.value = 'sliding';
+  // Phase 2: Slide out AuthPanel
+  contentPhase.value = 'slide-out';
+  await sleep(CONTENT_SLIDE_MS);
+  if (token !== contentAnimToken.value) { contentAnimating.value = false; return; }
 
-    await nextTick();
-    await waitForSceneReady(token);
-    if (token !== contentAnimToken.value) return;
+  // Wait for data loading to complete
+  if (isTransitioning.value) {
+    await new Promise<void>(resolve => {
+      const stop = watch(isTransitioning, (v) => {
+        if (!v) { stop(); resolve(); }
+      });
+    });
+    if (token !== contentAnimToken.value) { contentAnimating.value = false; return; }
+  }
+
+  // Hide nav/breadcrumbs/knob BEFORE Vue renders the new account data.
+  // entrance-prep CSS positions them off-screen so the data swap is invisible.
+  entrancePhase.value = 'prep';
+
+  // Apply pending data — nav/breadcrumbs update behind entrance-prep hiding
+  nodeStore.applyPendingData();
+
+  // Empty account: skip entrance, show background
+  if (showEmptyBackground.value) {
+    displayedKey.value = contentKey.value;
+    displayedShowTree.value = false;
+    displayedNonTreeContent.value = nonTreeContent.value;
+    displayedSkipContentGlass.value = skipContentGlass.value;
     treeMaskVisible.value = false;
-    await sleep(TREE_MASK_FADE_MS);
-    if (token !== contentAnimToken.value) return;
-  } else {
-    // Phase 1: Reflow, then trigger slide-in for content AND nav/breadcrumbs/knob.
-    const reflowEl = contentGlassRef.value || document.querySelector('.content-direct');
-    void reflowEl?.offsetHeight;
-    contentPhase.value = 'slide-in';
-    entrancePhase.value = 'sliding';
-    await sleep(CONTENT_SLIDE_MS);
-    if (token !== contentAnimToken.value) return;
+    treeOverlayActive.value = false;
+    entrancePhase.value = 'idle';
+    contentPhase.value = 'idle';
+    contentAnimating.value = false;
+    return;
   }
 
-  // Phase 2: Rise — glass items regain shadow
-  if (!displayedSkipContentGlass.value) {
-    contentPhase.value = 'rising';
-    entrancePhase.value = 'rising';
-    await nextTick();
-    if (token !== contentAnimToken.value) return;
-    await sleep(CONTENT_RISE_MS);
-    if (token !== contentAnimToken.value) return;
+  // Wait for user style to load so content reveals with correct colors
+  if (!styleStore.loaded && authStore.isAuthenticated) {
+    await new Promise<void>(resolve => {
+      const stop = watch(() => styleStore.loaded, (v) => {
+        if (v) { stop(); resolve(); }
+      });
+    });
+    if (token !== contentAnimToken.value) { contentAnimating.value = false; return; }
   }
 
-  contentPhase.value = 'idle';
-  entrancePhase.value = 'idle';
+  // Swap DOM to new content at prep position (off-screen right)
+  displayedSkipContentGlass.value = skipContentGlass.value;
+  displayedKey.value = contentKey.value;
+  displayedShowTree.value = showTree.value;
+  displayedNonTreeContent.value = nonTreeContent.value;
+  treeOverlayActive.value = showTree.value;
+  contentPhase.value = 'slide-in-prep';
+
+  await nextTick();
+  if (token !== contentAnimToken.value) { contentAnimating.value = false; return; }
+
+  await playEntranceAnimation(token);
   contentAnimating.value = false;
 }
 
@@ -1371,7 +1466,6 @@ async function triggerTreeFadeTest() {
   }
 
   if (!displayedShowTree.value) {
-    console.log('[Dev] triggerTreeFadeTest: tree is not currently showing');
     return;
   }
 
@@ -1405,7 +1499,6 @@ async function triggerTreeFadeTest() {
 
   contentPhase.value = 'idle';
   contentAnimating.value = false;
-  console.log('[Dev] triggerTreeFadeTest: complete');
 }
 provide('triggerTreeFadeTest', triggerTreeFadeTest);
 
@@ -1441,6 +1534,13 @@ watch(isTransitioning, (transitioning) => {
 watch(contentKey, (_newKey, oldKey) => {
   if (oldKey === 'loading') return;
   if (!contentAnimating.value && contentPhase.value === 'idle') {
+    // When transitioning from unauthenticated→authenticated (login),
+    // don't reactively overwrite display refs. The login animation
+    // orchestrates the DOM swap; overwriting here would cause
+    // displayedNonTreeContent to no longer be AuthPanel, breaking
+    // the login detection in animateContentTransition().
+    if (isAuthenticated.value && oldKey.startsWith('auth:')) return;
+
     displayedKey.value = contentKey.value;
     displayedShowTree.value = showTree.value;
     displayedNonTreeContent.value = nonTreeContent.value;
@@ -1475,6 +1575,16 @@ watch(() => nodeStore.viewState, (newState, oldState) => {
 // animate the transition from skeleton to AuthPanel. The authenticated
 // path is handled by the isTransitioning watcher (via useAppInit ->
 // nodeStore.initialize -> startTransition).
+// When login completes (isAuthenticated false→true), hide nav/breadcrumbs/knob
+// BEFORE Vue re-renders with the new account data. Vue watchers fire pre-flush,
+// so entrancePhase is set before the DOM updates — preventing a flash of
+// user nav/breadcrumbs with no animation.
+watch(() => authStore.isAuthenticated, (now, prev) => {
+  if (now && !prev && !initialRender.value) {
+    entrancePhase.value = 'prep';
+  }
+});
+
 watch(initialized, (nowInitialized, prevInitialized) => {
   if (nowInitialized && !prevInitialized && !isAuthenticated.value && !contentAnimating.value) {
     animateContentTransition();
@@ -1595,6 +1705,7 @@ watch(
     inset 9px 9px 18px var(--shadow-inset-a),
     inset -9px -9px 18px var(--shadow-inset-b);
   overflow: hidden;
+  transition: border-color 0.6s ease, box-shadow 0.6s ease;
 }
 
 .navigation-shell {
@@ -1639,6 +1750,7 @@ watch(
     inset 0 -9px 18px var(--shadow-inset-b),
     inset -9px 0 18px var(--shadow-inset-b);
   pointer-events: none;
+  transition: border-color 0.6s ease, box-shadow 0.6s ease;
 }
 
 /* When tree is displayed, inner shadow overlays on top of tree content */

@@ -1,18 +1,25 @@
 from uuid import uuid4
+import json
 import logging
-
-from fastapi import FastAPI, HTTPException, status, Depends, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-
+import warnings
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Suppress noisy ONNX/CUDA warnings from OCR dependencies ───────────
+warnings.filterwarnings("ignore", message=".*CUDAExecutionProvider.*")
+warnings.filterwarnings("ignore", message=".*Specified provider.*not in available.*")
+for _name in ("rapidocr", "rapidocr_onnxruntime", "cnocr", "cnstd"):
+    logging.getLogger(_name).setLevel(logging.ERROR)
+
 logger = logging.getLogger(__name__)
+
+from fastapi import FastAPI, HTTPException, status, Depends, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 
 from database import get_db_ctx, init_db
 from auth import hash_password, verify_password, create_token, verify_token
@@ -22,15 +29,8 @@ from tree_skeleton import generate_tree_skeleton as generate_sc_skeleton
 from tag_service_sqlite import tag_all_nodes_sqlite
 from style_service_sqlite import compute_style_sqlite
 from style_generator import _cache_key, build_profile_text
-from ai_generate_service_sqlite import ai_generate_nodes_sqlite, analyze_node_content_sqlite
-from file_parser import parse_file, get_file_info
-from pdf_ocr import needs_ocr, ocr_pdf
-# Lazy import for file_knowledge_service to avoid startup failures
-# from file_knowledge_service import (
-#     extract_knowledge_points,
-#     start_conversation,
-#     process_conversation_turn,
-# )
+from file_parser import parse_file, get_file_info, extract_pdf_images
+from parse_task_manager import enqueue_parse, get_parse_progress, should_preserve_verbatim
 from quiz_service_sqlite import (
     compute_adaptive_difficulty,
     generate_batch_questions_sqlite,
@@ -602,38 +602,6 @@ def debug_profile_text(user: dict = Depends(get_current_user)):
     }
 
 
-# --- AI node generation ---
-
-class AiGenerateRequest(BaseModel):
-    input: str
-
-
-@app.post("/ai-generate-nodes")
-def ai_generate_endpoint(payload: AiGenerateRequest, user: dict = Depends(get_current_user)):
-    owner_id = user["sub"]
-    if not payload.input.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Input text is required")
-    with get_db_ctx() as conn:
-        try:
-            return ai_generate_nodes_sqlite(payload.input.strip(), owner_id, conn)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-@app.post("/analyze-node/{node_id}")
-def analyze_node_endpoint(node_id: str, user: dict = Depends(get_current_user)):
-    owner_id = user["sub"]
-    with get_db_ctx() as conn:
-        try:
-            return analyze_node_content_sqlite(node_id, owner_id, conn)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-        except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
 @app.post("/upload-file")
 async def upload_file_endpoint(
     file: UploadFile = File(...),
@@ -642,6 +610,10 @@ async def upload_file_endpoint(
     """
     Upload a file for knowledge point extraction.
     Supports: .txt, .md, .pdf, .docx, .ipynb, .py (max 10MB)
+
+    File is saved to disk immediately, then parsed in a background thread.
+    Returns immediately with status: "processing". Frontend polls
+    GET /upload-status/{file_id} for parse completion.
     """
     owner_id = user["sub"]
 
@@ -673,46 +645,81 @@ async def upload_file_endpoint(
     with open(file_path, 'wb') as f:
         f.write(file_content)
 
-    # Parse file to extract text content
-    try:
-        text_content = parse_file(file_path)
-        file_info = get_file_info(file_path)
+    # Extract embedded images from PDFs for use in formatted markdown
+    images_extracted = 0
+    if file_ext == '.pdf':
+        try:
+            img_dir = os.path.join("/tmp/acacia_uploads/images", file_id)
+            img_list = extract_pdf_images(file_path, img_dir)
+            images_extracted = len(img_list)
+        except Exception as e:
+            logger.warning("PDF image extraction failed for %s: %s", file_id, e)
 
-        ocr_applied = False
+    # Enqueue background parsing — returns immediately
+    enqueue_parse(file_id, file_path, owner_id, file_ext, file.filename)
 
-        # For PDFs, check if OCR is needed (scanned / image-based)
-        if file_ext == '.pdf' and needs_ocr(file_path):
-            try:
-                ocr_text = ocr_pdf(file_path)
-                if len(ocr_text) > len(text_content):
-                    text_content = ocr_text
-                    ocr_applied = True
-            except Exception as e:
-                logger.warning(f"OCR failed for {file_id}: {e}")
+    return {
+        "file_id": file_id,
+        "filename": file.filename,
+        "size": len(file_content),
+        "extension": file_ext,
+        "status": "processing",
+    }
 
-        # Cache extracted text to a .txt file so /file-content re-reads are fast
-        # and include OCR results even though the original PDF doesn't change
-        cache_path = os.path.join(upload_dir, f"{file_id}.txt")
-        with open(cache_path, 'w', encoding='utf-8') as cf:
-            cf.write(text_content)
 
-        return {
-            "file_id": file_id,
-            "filename": file.filename,
-            "size": file_info["size"],
-            "extension": file_info["extension"],
-            "text_length": len(text_content),
-            "text_preview": text_content[:200] + "..." if len(text_content) > 200 else text_content,
-            "ocr_applied": ocr_applied,
-        }
-    except Exception as e:
-        # Clean up file on error
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"文件解析失败：{str(e)}"
-        )
+@app.get("/upload-status/{file_id}")
+def get_upload_status_endpoint(
+    file_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Poll file parse progress. Returns status + result when ready.
+
+    Used by the frontend to show parsing progress after upload.
+    Poll interval: 500ms.
+    """
+    owner_id = user["sub"]
+
+    progress = get_parse_progress(file_id)
+    if progress is not None:
+        return progress
+
+    # No in-memory task — check if cache exists (parse may have completed
+    # before the progress state was garbage-collected, or server restarted)
+    cache_path = os.path.join(
+        f"/tmp/acacia_uploads/{owner_id}", f"{file_id}.txt"
+    )
+    if os.path.exists(cache_path):
+        # Reconstruct the file info from disk
+        import glob as glob_mod
+        pattern = os.path.join(f"/tmp/acacia_uploads/{owner_id}", f"{file_id}.*")
+        matches = [m for m in glob_mod.glob(pattern) if not m.endswith('.txt')]
+        if matches:
+            file_path = matches[0]
+            file_info = get_file_info(file_path)
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+            return {
+                "status": "ready",
+                "stage": "ready",
+                "error": "",
+                "result": {
+                    "file_id": file_id,
+                    "filename": os.path.basename(file_path),
+                    "size": file_info["size"],
+                    "extension": file_info["extension"],
+                    "text_length": len(text),
+                    "text_preview": text[:200] + "..." if len(text) > 200 else text,
+                    "ocr_applied": False,
+                    "ocr_reason": None,
+                    "ocr_status": "not_needed",
+                    "total_pages": 0,
+                },
+            }
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="No parse task found for this file"
+    )
 
 
 @app.get("/file-content/{file_id}")
@@ -725,8 +732,38 @@ def get_file_content_endpoint(
     owner_id = user["sub"]
     upload_dir = f"/tmp/acacia_uploads/{owner_id}"
 
-    # Check for cached text first (written during upload, includes OCR results)
+    pattern = os.path.join(upload_dir, f"{file_id}.*")
+    matches = [
+        m for m in glob_mod.glob(pattern)
+        if not m.endswith('.txt') and not m.endswith('.formatted.txt')
+    ]
+    raw_ext = os.path.splitext(matches[0])[1].lower() if matches else ""
+
+    # Markdown is already a source format; always prefer the raw parsed cache
+    # over any stale formatted cache so formulas and tables are preserved.
     cache_path = os.path.join(upload_dir, f"{file_id}.txt")
+    if should_preserve_verbatim(raw_ext) and os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            full_text = f.read()
+        return {
+            "file_id": file_id,
+            "filename": os.path.basename(matches[0]) if matches else "",
+            "full_text": full_text,
+            "from_cache": True,
+        }
+
+    # Check for formatted text first (pipeline result), then raw text
+    fmt_path = os.path.join(upload_dir, f"{file_id}.formatted.txt")
+    if os.path.exists(fmt_path):
+        with open(fmt_path, 'r', encoding='utf-8') as f:
+            full_text = f.read()
+        return {
+            "file_id": file_id,
+            "filename": "",
+            "full_text": full_text,
+            "from_cache": True,
+        }
+
     if os.path.exists(cache_path):
         with open(cache_path, 'r', encoding='utf-8') as f:
             full_text = f.read()
@@ -737,8 +774,6 @@ def get_file_content_endpoint(
             "from_cache": True,
         }
 
-    pattern = os.path.join(upload_dir, f"{file_id}.*")
-    matches = glob_mod.glob(pattern)
     if not matches:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -759,59 +794,247 @@ def get_file_content_endpoint(
         )
 
 
-class ExtractKnowledgeRequest(BaseModel):
-    file_id: str
+@app.get("/file-images/{file_id}/{filename}")
+def serve_file_image(file_id: str, filename: str):
+    """Serve an extracted PDF image (public, file_id is unguessable UUID)."""
+    img_path = os.path.join("/tmp/acacia_uploads/images", file_id, filename)
+    if not os.path.exists(img_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(img_path)
 
 
-@app.post("/extract-knowledge-points")
-def extract_knowledge_points_endpoint(
-    request: ExtractKnowledgeRequest,
+@app.get("/file-images/{file_id}")
+def list_file_images(file_id: str):
+    """List extracted images for a file (public)."""
+    img_dir = os.path.join("/tmp/acacia_uploads/images", file_id)
+    if not os.path.exists(img_dir):
+        return {"images": []}
+    files = sorted(os.listdir(img_dir))
+    return {"images": [{"filename": f} for f in files]}
+
+
+@app.get("/ocr-progress/{file_id}")
+def get_ocr_progress_endpoint(
+    file_id: str,
     user: dict = Depends(get_current_user)
 ):
-    """
-    Extract knowledge points from uploaded file.
-    Returns structured knowledge points grouped by topic.
-    """
-    from file_knowledge_service import extract_knowledge_points
+    """Poll OCR progress for a file. Returns status + page counts.
 
+    Used by the frontend to show a progress bar while background OCR runs.
+    Poll interval: 2 seconds.
+    """
+    from ocr_task_manager import get_ocr_progress
     owner_id = user["sub"]
 
-    try:
-        result = extract_knowledge_points(request.file_id, owner_id)
-        return result
-    except FileNotFoundError as e:
+    progress = get_ocr_progress(file_id)
+    if progress is not None:
+        return progress
+
+    # No in-memory task — check if cache exists (OCR may have completed
+    # before the progress state was garbage-collected, or server restarted)
+    cache_path = os.path.join(
+        f"/tmp/acacia_uploads/{owner_id}", f"{file_id}.txt"
+    )
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        return {
+            "status": "done",
+            "total_pages": -1,
+            "completed_pages": -1,
+            "has_text": bool(text.strip()),
+        }
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="No OCR task found for this file"
+    )
+
+
+@app.get("/extract-stream/{file_id}")
+async def extract_stream_endpoint(
+    file_id: str,
+    max_pages: int = 0,
+    user: dict = Depends(get_current_user)
+):
+    """SSE streaming endpoint: run markdown pipeline on an uploaded file.
+
+    For PDFs: uses FullPipeline (spans -> formulas -> metadata -> LLM annotation -> merge -> review).
+    For other files: uses format_document_text() with chunked LLM formatting.
+
+    Emits SSE events: pipeline_start, stage_progress, sentence_result,
+    pipeline_complete, pipeline_error.
+
+    Caches the final markdown as {file_id}.formatted.txt so subsequent
+    Fill Content / Start Explain operations read it directly.
+    """
+    import glob as glob_mod
+    import json as _json
+
+    owner_id = user["sub"]
+    upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+
+    # Find the uploaded file on disk
+    pattern = os.path.join(upload_dir, f"{file_id}.*")
+    matches = [m for m in glob_mod.glob(pattern) if not m.endswith('.txt') and not m.endswith('.formatted.txt')]
+    if not matches:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            detail="File not found. Upload first via POST /upload-file."
         )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"知识点提取失败：{str(e)}"
-        )
+    file_path = matches[0]
+    is_pdf = file_path.lower().endswith('.pdf')
+
+    async def event_generator():
+        if is_pdf:
+            # PDF: FullPipeline (spans → formulas → metadata → LLM annotation → merge → review)
+            from pdf_markdown.pipeline import FullPipeline
+            from pdf_markdown.streaming import format_sse
+
+            pipe = FullPipeline(file_path, max_pages=max_pages)
+            final_markdown = ""
+
+            async for event in pipe.run_streaming():
+                if event.event == "pipeline_complete":
+                    final_markdown = event.data.get("final_markdown", "")
+                yield format_sse(event)
+
+            # Cache the result
+            if final_markdown:
+                fmt_cache_path = os.path.join(upload_dir, f"{file_id}.formatted.txt")
+                try:
+                    with open(fmt_cache_path, 'w', encoding='utf-8') as f:
+                        f.write(final_markdown)
+                except Exception as e:
+                    logger.warning("Failed to write formatted cache for %s: %s", file_id, e)
+        else:
+            # Non-PDF: use the existing format_document_text with simple SSE progress
+            import time as _time
+            from parse_task_manager import format_document_text
+
+            t_start = _time.time()
+            file_name = os.path.basename(file_path)
+
+            # Read cached text
+            cache_path = os.path.join(upload_dir, f"{file_id}.txt")
+            if os.path.exists(cache_path):
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    text_content = f.read()
+            else:
+                from file_parser import parse_file as _parse_file
+                text_content = _parse_file(file_path)
+
+            total_chars = len(text_content)
+            yield f"event: pipeline_start\ndata: {_json.dumps({'file_name': file_name, 'page_count': 0, 'total_chars': total_chars})}\n\n"
+
+            if not text_content.strip():
+                yield f"event: pipeline_error\ndata: {_json.dumps({'stage': 'extract', 'message': 'Empty file content', 'recoverable': False})}\n\n"
+                return
+
+            file_ext = os.path.splitext(file_path)[1].lower()
+            if should_preserve_verbatim(file_ext):
+                yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'merge', 'detail': 'Preserving Markdown source...', 'percent': 90, 'stageMs': 0, 'totalMs': int((_time.time() - t_start) * 1000)})}\n\n"
+                formatted = text_content
+            else:
+                # Stage: formatting
+                yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'annotate', 'detail': 'Formatting with LLM...', 'percent': 30, 'stageMs': 0, 'totalMs': int((_time.time() - t_start) * 1000)})}\n\n"
+
+                try:
+                    formatted = format_document_text(text_content)
+                except Exception as e:
+                    yield f"event: pipeline_error\ndata: {_json.dumps({'stage': 'annotate', 'message': str(e), 'recoverable': False})}\n\n"
+                    return
+
+            total_ms = int((_time.time() - t_start) * 1000)
+            yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'merge', 'detail': 'Formatting complete', 'percent': 90, 'stageMs': total_ms, 'totalMs': total_ms})}\n\n"
+
+            yield f"event: pipeline_complete\ndata: {_json.dumps({'total_markdown_length': len(formatted), 'issues_found': 0, 'issues_resolved': 0, 'unresolved': 0, 'final_markdown': formatted})}\n\n"
+
+        # Cache the result — pipeline_complete.final_markdown was already yielded,
+        # but we also persist it for subsequent reads
+        fmt_cache_path = os.path.join(upload_dir, f"{file_id}.formatted.txt")
+        # The final_markdown was yielded in pipeline_complete; for PDFs the
+        # pipeline handles its own caching. For non-PDFs we cache here.
+        if not is_pdf:
+            try:
+                with open(fmt_cache_path, 'w', encoding='utf-8') as f:
+                    f.write(formatted)
+            except Exception as e:
+                logger.warning("Failed to write formatted cache for %s: %s", file_id, e)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
-class StartConversationRequest(BaseModel):
-    node_id: str
+class FormatContentRequest(BaseModel):
     file_id: str
-    knowledge_points: list[dict]
 
 
-class ConversationTurnRequest(BaseModel):
-    session_id: str
-    user_answer: str
-    skip: bool = False
+@app.post("/format-content")
+def format_content_endpoint(
+    request: FormatContentRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Format extracted PDF text as clean Markdown with LaTeX math via AI.
 
+    Long texts are split into chunks and formatted separately to avoid
+    hitting token limits. Extracted PDF images are referenced in the output.
+    """
+    import glob as glob_mod
+    import httpx
 
-class ExampleFeedbackRequest(BaseModel):
-    session_id: str
-    action: str  # "accept" | "regenerate" | "skip"
-    feedback: str | None = None
+    owner_id = user["sub"]
+    upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+
+    # Read cached text (already cleaned by parse_pdf → _clean_pdf_text)
+    cache_path = os.path.join(upload_dir, f"{request.file_id}.txt")
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            text_content = f.read()
+    else:
+        pattern = os.path.join(upload_dir, f"{request.file_id}.*")
+        matches = glob_mod.glob(pattern)
+        if not matches:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+        text_content = parse_file(matches[0])
+
+    if not text_content.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="文件内容为空")
+
+    # Check for extracted images
+    img_dir = os.path.join("/tmp/acacia_uploads/images", request.file_id)
+    image_urls: list[str] = []
+    if os.path.exists(img_dir):
+        image_urls = sorted(
+            f"/file-images/{request.file_id}/{f}"
+            for f in os.listdir(img_dir)
+        )
+
+    from parse_task_manager import format_document_text
+
+    try:
+        formatted = format_document_text(text_content, image_urls)
+
+        # Cache formatted text so line-by-line chat can use it too
+        fmt_cache_path = os.path.join(upload_dir, f"{request.file_id}.formatted.txt")
+        try:
+            with open(fmt_cache_path, 'w', encoding='utf-8') as f:
+                f.write(formatted)
+        except Exception as e:
+            logger.warning("Failed to write formatted cache for %s: %s", request.file_id, e)
+
+        return {"formatted_text": formatted}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"AI API error: {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"格式化失败：{str(e)}")
 
 
 # --- Chat (single-topic Socratic dialogue) ---
@@ -870,136 +1093,6 @@ class GenerateOpeningRequest(BaseModel):
     transition_reason: str = ""
     reference_text: str = ""
 
-
-@app.post("/start-conversation")
-def start_conversation_endpoint(
-    request: StartConversationRequest,
-    user: dict = Depends(get_current_user)
-):
-    """
-    Start a new conversation session for knowledge point learning.
-    Returns session_id and first question.
-    """
-    from file_knowledge_service import start_conversation
-
-    owner_id = user["sub"]
-
-    try:
-        result = start_conversation(
-            request.node_id,
-            owner_id,
-            request.file_id,
-            request.knowledge_points
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"启动对话失败：{str(e)}"
-        )
-
-
-@app.post("/conversation-turn")
-def conversation_turn_endpoint(
-    request: ConversationTurnRequest,
-    user: dict = Depends(get_current_user)
-):
-    """
-    Process one conversation turn: user answer -> AI evaluation -> next action.
-    Returns AI response, generated content (if any), and progress info.
-    """
-    from file_knowledge_service import process_conversation_turn
-
-    try:
-        result = process_conversation_turn(
-            request.session_id,
-            request.user_answer,
-            request.skip
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"对话处理失败：{str(e)}"
-        )
-
-
-@app.post("/example-feedback")
-def example_feedback_endpoint(
-    request: ExampleFeedbackRequest,
-    user: dict = Depends(get_current_user)
-):
-    """
-    Process user feedback on generated example.
-    Returns next action: next_question, example_preview, or completed.
-    """
-    from file_knowledge_service import process_example_feedback
-
-    # Validate action
-    if request.action not in ["accept", "regenerate", "skip"]:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid action: {request.action}"
-        )
-
-    # Validate feedback for regenerate
-    if request.action == "regenerate" and not request.feedback:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Feedback is required for regenerate action"
-        )
-
-    try:
-        result = process_example_feedback(
-            request.session_id,
-            request.action,
-            request.feedback
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"例题反馈处理失败：{str(e)}"
-        )
-
-
-@app.get("/conversation-sessions/{session_id}")
-def get_conversation_session_for_resume(
-    session_id: str,
-    user: dict = Depends(get_current_user)
-):
-    """Get full conversation session state for resume."""
-    from file_knowledge_service import get_session_for_resume
-    try:
-        return get_session_for_resume(session_id, user["sub"])
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="会话不存在或已过期"
-        )
-    except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e)
-        )
-
-
-# --- Chat (single-topic Socratic dialogue) ---
 
 @app.post("/chat/start")
 def chat_start_endpoint(
@@ -1174,8 +1267,8 @@ def chat_contextual_start_endpoint(
             transition_type=request.transition_type,
             reason=request.transition_reason,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to record transition for owner %s: %s", owner_id, e)
 
     # 2. Generate adaptive opening
     try:
@@ -1188,7 +1281,8 @@ def chat_contextual_start_endpoint(
             transition_reason=request.transition_reason,
             reference_text=request.reference_text,
         )
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to generate adaptive opening for node %s: %s", request.node_id, e)
         opening = {"opening_message": "", "opening_sub_topic": "", "opening_action": "question"}
 
     # 3. Start chat with context
@@ -1549,6 +1643,27 @@ def review_stats_endpoint(user: dict = Depends(get_current_user)):
 
 # --- Official Nodes (admin management) ---
 
+def _translate_official_node(title: str, content: str) -> tuple[str, str]:
+    """Call DeepSeek to translate official node content from Chinese to English.
+    Returns (title_en, content_en)."""
+    from chat_service import call_deepseek
+
+    prompt = json.dumps({
+        "instruction": (
+            "Translate the following Chinese knowledge point into fluent, idiomatic English. "
+            "The content is Markdown — preserve ALL Markdown formatting, code blocks, links, "
+            "and structure exactly. Produce natural, educational-quality English. "
+            "Return a JSON object with keys 'title_en' and 'content_en'."
+        ),
+        "title": title,
+        "content": content,
+    }, ensure_ascii=False)
+
+    raw = call_deepseek([{"role": "user", "content": prompt}])
+    parsed = json.loads(raw)
+    return parsed.get("title_en", ""), parsed.get("content_en", "")
+
+
 class OfficialNodeCreate(BaseModel):
     title: str
     content: str = ""
@@ -1580,7 +1695,7 @@ def admin_check(user: dict = Depends(get_current_user)):
 def admin_list_official_nodes(user: dict = Depends(require_admin)):
     with get_db_ctx() as conn:
         rows = conn.execute(
-            "SELECT id, title, content, sort_order, is_published, created_at, updated_at "
+            "SELECT id, title, content, title_en, content_en, sort_order, is_published, created_at, updated_at "
             "FROM official_nodes ORDER BY sort_order ASC"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -1589,14 +1704,25 @@ def admin_list_official_nodes(user: dict = Depends(require_admin)):
 @app.post("/admin/official-nodes")
 def admin_create_official_node(payload: OfficialNodeCreate, user: dict = Depends(require_admin)):
     node_id = str(uuid4())
+    title_en = payload.title_en
+    content_en = payload.content_en
+
+    # Auto-translate if content provided but no English version
+    if payload.content.strip() and not content_en.strip():
+        try:
+            title_en, content_en = _translate_official_node(payload.title.strip(), payload.content)
+        except Exception as e:
+            logger.warning(f"Auto-translate failed for new node {node_id}: {e}")
+
     with get_db_ctx() as conn:
         conn.execute(
-            "INSERT INTO official_nodes (id, title, content, sort_order, is_published) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (node_id, payload.title.strip(), payload.content, payload.sort_order, int(payload.is_published)),
+            "INSERT INTO official_nodes (id, title, content, title_en, content_en, sort_order, is_published) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (node_id, payload.title.strip(), payload.content, title_en, content_en,
+             payload.sort_order, int(payload.is_published)),
         )
         row = conn.execute(
-            "SELECT id, title, content, sort_order, is_published, created_at, updated_at "
+            "SELECT id, title, content, title_en, content_en, sort_order, is_published, created_at, updated_at "
             "FROM official_nodes WHERE id = ?", (node_id,)
         ).fetchone()
     return dict(row)
@@ -1606,14 +1732,14 @@ def admin_create_official_node(payload: OfficialNodeCreate, user: dict = Depends
 def admin_update_official_node(node_id: str, payload: OfficialNodeUpdate, user: dict = Depends(require_admin)):
     with get_db_ctx() as conn:
         existing = conn.execute(
-            "SELECT id FROM official_nodes WHERE id = ?", (node_id,)
+            "SELECT id, title, content, title_en, content_en FROM official_nodes WHERE id = ?", (node_id,)
         ).fetchone()
         if not existing:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official node not found")
 
         updates = []
         values = []
-        for field in ("title", "content", "sort_order", "is_published"):
+        for field in ("title", "content", "title_en", "content_en", "sort_order", "is_published"):
             val = getattr(payload, field)
             if val is not None:
                 if field == "is_published":
@@ -1628,7 +1754,30 @@ def admin_update_official_node(node_id: str, payload: OfficialNodeUpdate, user: 
                 f"UPDATE official_nodes SET {', '.join(updates)}, updated_at = datetime('now') WHERE id = ?",
                 values,
             )
-    return {"ok": True}
+
+        # Auto-translate: if content was changed and no English translation exists
+        new_content = payload.content if payload.content is not None else existing["content"]
+        new_title = payload.title.strip() if payload.title is not None else existing["title"]
+        new_content_en = payload.content_en if payload.content_en is not None else existing["content_en"]
+        new_title_en = payload.title_en if payload.title_en is not None else existing["title_en"]
+
+        if new_content.strip() and not new_content_en.strip():
+            try:
+                title_en, content_en = _translate_official_node(new_title, new_content)
+                conn.execute(
+                    "UPDATE official_nodes SET title_en = ?, content_en = ?, updated_at = datetime('now') WHERE id = ?",
+                    (title_en, content_en, node_id),
+                )
+                new_title_en = title_en
+                new_content_en = content_en
+            except Exception as e:
+                logger.warning(f"Auto-translate failed for node {node_id}: {e}")
+
+        row = conn.execute(
+            "SELECT id, title, content, title_en, content_en, sort_order, is_published, created_at, updated_at "
+            "FROM official_nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+    return dict(row)
 
 
 @app.delete("/admin/official-nodes/{node_id}")
@@ -1646,20 +1795,26 @@ def admin_delete_official_node(node_id: str, user: dict = Depends(require_admin)
 # --- Official Nodes (public) ---
 
 @app.get("/official-nodes")
-def list_official_nodes():
+def list_official_nodes(locale: str = "zh-CN"):
     with get_db_ctx() as conn:
         rows = conn.execute(
-            "SELECT id, title, sort_order FROM official_nodes "
+            "SELECT id, title, title_en, sort_order FROM official_nodes "
             "WHERE is_published = 1 ORDER BY sort_order ASC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            item = {"id": r["id"], "title": r["title"], "sort_order": r["sort_order"]}
+            if locale == "en-US" and r["title_en"]:
+                item["title"] = r["title_en"]
+            results.append(item)
+        return results
 
 
 @app.get("/official-nodes/{node_id}")
-def get_official_node(node_id: str, user: dict = Depends(get_current_user)):
+def get_official_node(node_id: str, locale: str = "zh-CN", user: dict = Depends(get_current_user)):
     with get_db_ctx() as conn:
         row = conn.execute(
-            "SELECT id, title, content, sort_order, is_published, created_at, updated_at "
+            "SELECT id, title, content, title_en, content_en, sort_order, is_published, created_at, updated_at "
             "FROM official_nodes WHERE id = ?", (node_id,)
         ).fetchone()
         if not row:
@@ -1670,4 +1825,10 @@ def get_official_node(node_id: str, user: dict = Depends(get_current_user)):
                 require_admin(user)
             except HTTPException:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official node not found")
+
+        # Apply locale-aware translation
+        if locale == "en-US" and record.get("title_en"):
+            record["title"] = record["title_en"]
+            record["content"] = record.get("content_en") or record["content"]
+
         return record

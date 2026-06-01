@@ -71,7 +71,7 @@ export function useCinematicDemo() {
       if (uid) await styleStore.fetchStyle(uid);
       // Preload tree skeleton
       if (uid) {
-        try { await useTreeSkeleton().fetchSkeleton(); } catch { /* TreeCanvas will retry */ }
+        try { await useTreeSkeleton().fetchSkeleton(); } catch (e) { console.error('[useCinematicDemo] fetchSkeleton failed:', e); }
       }
     }
 

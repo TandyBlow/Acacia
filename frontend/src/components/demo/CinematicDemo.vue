@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import * as THREE from 'three';
 import { useAuthStore } from '../../stores/authStore';
@@ -57,6 +58,7 @@ import type { SkeletonData } from '../../types/tree';
 const authStore = useAuthStore();
 const nodeStore = useNodeStore();
 const styleStore = useStyleStore();
+const { t } = useI18n();
 const { isTransitioning } = usePageTransition();
 const { initialized, isAuthenticated } = storeToRefs(authStore);
 
@@ -65,7 +67,7 @@ const { initialized, isAuthenticated } = storeToRefs(authStore);
 type DemoPhase = 'loading' | 'phase1' | 'blackout' | 'phase2' | 'done';
 const demoPhase = ref<DemoPhase>('loading');
 const ready = ref(false);
-const loadingText = ref('正在准备演示...');
+const loadingText = ref(t('demo.preparing'));
 const busy = ref(false);
 const paused = ref(false);
 
@@ -117,7 +119,6 @@ async function loadDemoStyles() {
     }
     const data = await resp.json();
     demoStyles.value = data;
-    console.log(`[CinemaDemo] loaded ${data.length} styles from demo_styles.json`);
   } catch (e) {
     console.warn('[CinemaDemo] failed to load demo_styles.json:', e);
   }
@@ -132,7 +133,7 @@ function preloadBackgroundTextures() {
       (texture) => {
         preloadedTextures.set(style.index, texture);
         if (preloadedTextures.size === demoStyles.value.length) {
-          console.log('[CinemaDemo] all background textures preloaded');
+          // all background textures preloaded
         }
       },
       undefined,
@@ -413,21 +414,21 @@ async function transitionToPhase2() {
 async function start() {
   cancelled = false;
 
-  loadingText.value = '正在初始化...';
+  loadingText.value = t('demo.initializing');
   while (!initialized.value) {
     if (cancelled) return;
     await sleep(100);
   }
 
   // Step 1: login as gamedev, let MainLayout fully initialize
-  loadingText.value = '正在登录...';
+  loadingText.value = t('demo.loggingIn');
   await loginAs(ACCOUNTS.gamedev!);
   await waitForStyleLoaded();
   await sleep(3000);
   snapshots.set('gamedev', await captureSnapshot(ACCOUNTS.gamedev!.editorNodeId));
 
   // Step 2: prefetch remaining accounts + load demo styles in parallel
-  loadingText.value = '正在预加载...';
+  loadingText.value = t('demo.preloading');
   const prefetchTasks = ['fullstack', 'piano', 'japanese'].map(async (key) => {
     if (cancelled) return;
     const acct = ACCOUNTS[key]!;
@@ -441,14 +442,14 @@ async function start() {
 
   // Preload background textures after styles are loaded
   if (demoStyles.value.length > 0) {
-    loadingText.value = '正在预加载背景...';
+    loadingText.value = t('demo.preloadingBg');
     preloadBackgroundTextures();
     // Give textures a moment to start loading
     await sleep(500);
   }
 
   // Step 3: inject gamedev back so demo starts with gamedev tree
-  loadingText.value = '正在准备播放...';
+  loadingText.value = t('demo.preparingPlayback');
   const gamedevSnap = snapshots.get('gamedev')!;
   injectAccount(gamedevSnap);
   nodeStore.loadNode(null);
@@ -457,12 +458,12 @@ async function start() {
   // Step 4: build Phase 1 scene list
   const EDITOR_NODE = ACCOUNTS.gamedev!.editorNodeId;
   phase1Scenes.value = [
-    { id: 'editor',    label: '知识点详情',   accountKey: 'gamedev',   nodeId: EDITOR_NODE, durationMs: 2800 },
-    { id: 'chat',      label: '对话生成',     accountKey: 'gamedev',   nodeId: EDITOR_NODE, durationMs: 2500,
+    { id: 'editor',    label: t('demo.sceneNodeDetail'),   accountKey: 'gamedev',   nodeId: EDITOR_NODE, durationMs: 2800 },
+    { id: 'chat',      label: t('demo.sceneChat'),     accountKey: 'gamedev',   nodeId: EDITOR_NODE, durationMs: 2500,
       onEnter: () => window.dispatchEvent(new CustomEvent('cinema:chat-mode')) },
-    { id: 'dailyquiz', label: '今日成长',     accountKey: 'gamedev',   viewState: 'daily_quiz', durationMs: 2500 },
-    { id: 'overview',  label: '知识点概览',   accountKey: 'gamedev',   viewState: 'tree_overview', durationMs: 2500 },
-    { id: 'tree',      label: '回到主页',     accountKey: 'gamedev',   nodeId: null, durationMs: 2000 },
+    { id: 'dailyquiz', label: t('demo.sceneDailyQuiz'),     accountKey: 'gamedev',   viewState: 'daily_quiz', durationMs: 2500 },
+    { id: 'overview',  label: t('demo.sceneTreeOverview'),   accountKey: 'gamedev',   viewState: 'tree_overview', durationMs: 2500 },
+    { id: 'tree',      label: t('demo.sceneHome'),     accountKey: 'gamedev',   nodeId: null, durationMs: 2000 },
   ];
 
   // Step 5: start Phase 1

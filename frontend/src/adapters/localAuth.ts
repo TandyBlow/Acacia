@@ -30,7 +30,8 @@ function readStoredUsers(): StoredUser[] {
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
+  } catch (e) {
+    console.error('[localAuth] parse stored users failed:', e);
     return [];
   }
 }
@@ -49,8 +50,8 @@ function readSession(): AuthUser | null {
     if (parsed && typeof parsed.id === 'string' && typeof parsed.username === 'string') {
       return parsed as AuthUser;
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    console.error('[localAuth] parse session failed:', e);
   }
   return null;
 }

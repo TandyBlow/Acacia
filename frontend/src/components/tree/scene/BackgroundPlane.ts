@@ -37,7 +37,6 @@ export class BackgroundPlane {
       this.material.color.setHex(0xffffff);
       this.material.needsUpdate = true;
       this.updateSize();
-      console.log('[BackgroundPlane] 使用预生成纹理');
     } else {
       this.loadTexture(texturePath);
     }
@@ -59,7 +58,6 @@ export class BackgroundPlane {
           this.material.color.setHex(0xffffff);
           this.material.needsUpdate = true;
           this.updateSize();
-          console.log('[BackgroundPlane] 背景纹理加载成功:', path);
         },
         undefined,
         (error) => {
@@ -104,27 +102,42 @@ export class BackgroundPlane {
 
     // 重置scale
     this.mesh.scale.set(1, 1, 1);
-
-    console.log('[BackgroundPlane] 尺寸更新:', {
-      cameraSize: `${cameraWidth.toFixed(1)} x ${cameraHeight.toFixed(1)}`,
-      cameraPosition: `(${this.camera.position.x.toFixed(1)}, ${this.camera.position.y.toFixed(1)}, ${this.camera.position.z.toFixed(1)})`,
-      planeSize: `${planeWidth.toFixed(1)} x ${planeHeight.toFixed(1)}`,
-      planePosition: `(${this.mesh.position.x.toFixed(1)}, ${this.mesh.position.y.toFixed(1)}, ${this.mesh.position.z})`,
-      textureSize: `${(this.texture.image as HTMLImageElement).width} x ${(this.texture.image as HTMLImageElement).height}`
-    });
   }
 
   /**
-   * 切换背景图
+   * 切换背景图 — 先加载新纹理，加载成功后再释放旧纹理，避免黑屏间隙
    */
   updateTexture(texturePath: string): void {
-    // 释放旧纹理
-    if (this.texture) {
-      this.texture.dispose();
-    }
+    const loader = new THREE.TextureLoader();
+    const fallbackPath = '/backgrounds/default.png';
 
-    // 加载新纹理
-    this.loadTexture(texturePath);
+    const tryLoad = (path: string) => {
+      loader.load(
+        path,
+        (newTexture) => {
+          // 新纹理加载成功后，才释放旧纹理并切换
+          if (this.texture && this.texture !== newTexture) {
+            this.texture.dispose();
+          }
+          this.texture = newTexture;
+          this.material.map = newTexture;
+          this.material.color.setHex(0xffffff);
+          this.material.needsUpdate = true;
+          this.updateSize();
+        },
+        undefined,
+        (error) => {
+          if (path !== fallbackPath) {
+            console.warn('[BackgroundPlane] 背景纹理加载失败，回退到默认:', path);
+            tryLoad(fallbackPath);
+          } else {
+            console.warn('[BackgroundPlane] 默认背景纹理也加载失败:', error);
+          }
+        }
+      );
+    };
+
+    tryLoad(texturePath);
   }
 
   /**

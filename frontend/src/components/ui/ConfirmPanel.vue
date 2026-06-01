@@ -4,7 +4,7 @@
       <div class="activity-glass-host">
         <GlassWrapper>
           <div class="activity-scroll">
-            <section v-if="viewState === ViewStates.ADD" class="block">
+            <section v-if="viewState === ViewStates.ADD" class="block add-block">
               <h2>{{ $t('confirm.addNode') }}</h2>
               <input
                 v-model="pendingNodeName"
@@ -12,9 +12,10 @@
                 type="text"
                 maxlength="80"
               />
+              <p class="confirm-hint">{{ $t('confirm.holdKnobHint') }}</p>
             </section>
 
-            <section v-else-if="viewState === ViewStates.DELETE" class="block">
+            <section v-else-if="viewState === ViewStates.DELETE" class="block delete-block">
               <h2>{{ $t('confirm.deleteNode') }}</h2>
               <div class="target-name">{{ operationNode?.name ?? '' }}</div>
 
@@ -32,7 +33,9 @@
                 >
                   <span class="delete-toggle-mark">{{ deleteWithChildren ? '√' : '' }}</span>
                 </GlassWrapper>
+                <span class="delete-option-label">{{ $t('confirm.deleteWithChildren') }}</span>
               </button>
+              <p v-if="operationHasChildren" class="delete-hint">{{ $t('confirm.deleteHint') }}</p>
             </section>
           </div>
         </GlassWrapper>
@@ -90,6 +93,30 @@ onBeforeUnmount(() => {
   align-items: stretch;
 }
 
+.add-block {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.add-block h2 {
+  align-self: end;
+}
+
+.add-block .name-input {
+  align-self: center;
+}
+
+.confirm-hint {
+  margin: 0;
+  align-self: start;
+  font-size: 13px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--color-primary) 58%, var(--color-hint) 42%);
+}
+
 h2 {
   margin: 0;
   font-size: 28px;
@@ -135,15 +162,34 @@ h2 {
   color: var(--color-primary);
 }
 
+.delete-block {
+  justify-content: center;
+  min-height: 100%;
+}
+
 .delete-option {
   width: fit-content;
   display: inline-flex;
   align-items: center;
+  gap: 10px;
   padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+.delete-option-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+.delete-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-hint);
+  line-height: 1.5;
 }
 
 .delete-toggle {

@@ -131,8 +131,8 @@ export function useDailyQuiz() {
       if (isCorrect) {
         sessionCorrect.value++;
       }
-    } catch {
-      // Submit failure is non-blocking
+    } catch (e) {
+      console.error('[useDailyQuiz] submitAnswer failed:', e);
     }
   }
 
@@ -166,8 +166,8 @@ export function useDailyQuiz() {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       });
-    } catch {
-      // Non-blocking
+    } catch (e) {
+      console.error('[useDailyQuiz] markCompleted failed:', e);
     }
   }
 

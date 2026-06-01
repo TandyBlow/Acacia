@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../../stores/nodeStore';
 import GlassWrapper from '../ui/GlassWrapper.vue';
@@ -43,6 +43,10 @@ const node = computed(() => officialNodeContent.value);
 const renderedContent = computed(() => {
   if (!node.value?.content) return '';
   return DOMPurify.sanitize(marked.parse(node.value.content, { async: false }) as string);
+});
+
+watch(officialNodeContent, () => {
+  loading.value = false;
 });
 
 onMounted(() => {

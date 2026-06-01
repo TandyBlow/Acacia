@@ -47,7 +47,8 @@ async function checkAdmin() {
   try {
     const result = await apiFetch<{ is_admin: boolean }>('/admin/check');
     isAdmin.value = result.is_admin;
-  } catch {
+  } catch (e) {
+    console.error('[AdminApp] checkAdmin failed:', e);
     isAdmin.value = false;
   }
 }

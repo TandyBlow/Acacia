@@ -11,7 +11,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, provide, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/authStore';
-import { useStyleStore } from '../../stores/styleStore';
+import { useStyleStore, type ThemeStyle } from '../../stores/styleStore';
 import { useTreeSkeleton, invalidateSkeleton } from '../../composables/useTreeSkeleton';
 import { useStats } from '../../composables/useStats';
 import { usePageTransition } from '../../composables/usePageTransition';
@@ -42,7 +42,6 @@ let treeLoaded = false;
 let loadGeneration = 0;
 
 async function loadTree() {
-  console.log('[TreeCanvas] loadTree called', { hasContainer: !!containerRef.value, treeLoaded, cw: containerRef.value?.clientWidth, ch: containerRef.value?.clientHeight });
   if (!containerRef.value || treeLoaded) return;
 
   const gen = ++loadGeneration;
@@ -66,8 +65,6 @@ async function loadTree() {
             })
         : Promise.resolve(),
     ]);
-    console.log('[TreeCanvas] fetchSkeleton returned', { branches: skeleton.branches?.length, hasTrunk: !!skeleton.trunk, statsOk, statsNodes: statsNodes.value.length });
-
     if (gen !== loadGeneration) return;
 
     if (!containerRef.value) {
@@ -86,14 +83,26 @@ async function loadTree() {
     }
     lastSkeleton = skeleton;
 
-    const customParams = styleStore.styleParams as unknown as import('../../constants/theme').TreeStyleParams | null;
-    manager = new SceneManager(containerRef.value, styleStore.style, {
+    // If a pending style is ready, use it from the start so the tree
+    // renders with the correct visuals instead of default → transition.
+    let initStyle: ThemeStyle = styleStore.style;
+    let initParams: import('../../constants/theme').TreeStyleParams | null =
+      styleStore.styleParams as unknown as import('../../constants/theme').TreeStyleParams | null;
+    let initBgUrl: string | null = styleStore.backgroundUrl ?? null;
+
+    if (styleStore.isPendingReady && styleStore.pendingParams) {
+      initStyle = styleStore.pendingStyle as ThemeStyle;
+      initParams = styleStore.pendingParams as unknown as import('../../constants/theme').TreeStyleParams;
+      initBgUrl = styleStore.pendingBackgroundUrl ?? null;
+    }
+
+    manager = new SceneManager(containerRef.value, initStyle, {
       onResizeStart: () => { isResizing.value = true; },
       onResizeEnd: () => { isResizing.value = false; },
-      onBranchClick: (nodeId: string) => {
-        console.log('Clicked branch, node_id:', nodeId);
+      onBranchClick: (_nodeId: string) => {
+        // branch click handled by parent
       },
-    }, customParams, styleStore.backgroundUrl);
+    }, initParams, initBgUrl);
 
     // Always preload user overrides when userId is available, even if stats
     // are empty. Using nodeCount=0 maps to tier-0 (seedling) params, which
@@ -105,12 +114,8 @@ async function loadTree() {
         ? statsNodes.value.reduce((m, n) => Math.max(m, n.depth), 0)
         : 0;
       manager.preloadUserOverrides(nodeCount, maxDepth, userId, skeleton.growth);
-      console.log('[TreeCanvas] user overrides preloaded,', { nodeCount, maxDepth, statsOk });
     }
-    console.log('[TreeCanvas] SceneManager created, building scene...');
-
     manager.buildScene(skeleton);
-    console.log('[TreeCanvas] buildScene completed');
 
     if (gen !== loadGeneration) return;
 
@@ -127,6 +132,12 @@ async function loadTree() {
     // generated with user-appropriate params from frame 1.
 
     treeLoaded = true;
+
+    // If we built the tree with pending style data, commit it now so the
+    // isPendingReady watcher doesn't trigger a redundant transition.
+    if (styleStore.isPendingReady && styleStore.pendingParams) {
+      styleStore.applyPendingStyle();
+    }
 
     // Register with cinema bridge so CinematicDemo can control the tree
     cinemaTreeCanvas.value = {
@@ -150,7 +161,8 @@ async function applyUserData() {
   manager.setUserId(userId);
   try {
     await fetchStats();
-  } catch {
+  } catch (e) {
+    console.error('[TreeCanvas] fetchStats failed:', e);
     // Stats endpoint may be unavailable; proceed with default tree
     return;
   }

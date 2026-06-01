@@ -197,6 +197,7 @@ export const useNodeStore = defineStore('node', () => {
 
   function applyPendingSharedData(): void {
     if (pendingNodeContext.value) {
+      activeNode.value = pendingNodeContext.value.nodeInfo;
       pathNodes.value = pendingNodeContext.value.pathNodes;
       childNodes.value = pendingNodeContext.value.children;
       hasAnyNodes.value = !!(
@@ -219,8 +220,23 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   async function initialize(): Promise<void> {
-    fetchOfficialNodes();
+    await fetchOfficialNodes();
     await loadNode(null);
+    setupVisibilityRefresh();
+  }
+
+  let visibilityBound = false;
+  function setupVisibilityRefresh(): void {
+    if (visibilityBound) return;
+    visibilityBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        fetchOfficialNodes();
+        if (officialNodeContent.value) {
+          loadOfficialNodeContent(officialNodeContent.value.id);
+        }
+      }
+    });
   }
 
   function setViewState(state: string): void {
@@ -308,10 +324,15 @@ export const useNodeStore = defineStore('node', () => {
     });
   }
 
+  function getLocale(): string {
+    return localStorage.getItem('acacia_locale') || 'zh-CN';
+  }
+
   async function fetchOfficialNodes(): Promise<void> {
     try {
-      officialNodeSummaries.value = await apiFetch<OfficialNodeSummary[]>('/official-nodes');
-    } catch {
+      officialNodeSummaries.value = await apiFetch<OfficialNodeSummary[]>(`/official-nodes?locale=${getLocale()}`);
+    } catch (e) {
+      console.error('[nodeStore] fetchOfficialNodes failed:', e);
       officialNodeSummaries.value = [];
     }
   }
@@ -324,7 +345,7 @@ export const useNodeStore = defineStore('node', () => {
       type: 'viewState',
       newState: 'official_content',
       setup: async () => {
-        await loadOfficialNodeContent(nodeId);
+        await Promise.all([loadOfficialNodeContent(nodeId), fetchOfficialNodes()]);
       },
     });
   }
@@ -333,8 +354,9 @@ export const useNodeStore = defineStore('node', () => {
 
   async function loadOfficialNodeContent(nodeId: string): Promise<void> {
     try {
-      officialNodeContent.value = await apiFetch<{ id: string; title: string; content: string }>(`/official-nodes/${nodeId}`);
-    } catch {
+      officialNodeContent.value = await apiFetch<{ id: string; title: string; content: string }>(`/official-nodes/${nodeId}?locale=${getLocale()}`);
+    } catch (e) {
+      console.error('[nodeStore] loadOfficialNodeContent failed:', e);
       officialNodeContent.value = null;
     }
   }
@@ -355,7 +377,8 @@ export const useNodeStore = defineStore('node', () => {
         const data = await res.json();
         dailyQuizDueCount.value = data.due_count ?? 0;
       }
-    } catch {
+    } catch (e) {
+      console.error('[nodeStore] checkDailyQuizStatus failed:', e);
       dailyQuizDueCount.value = 0;
     }
   }
@@ -396,7 +419,10 @@ export const useNodeStore = defineStore('node', () => {
       return;
     }
     if (viewState.value === ViewStates.DISPLAY || viewState.value === ViewStates.ADD) {
-      if (viewState.value === ViewStates.ADD) clearTransientState();
+      if (viewState.value === ViewStates.ADD) {
+        clearTransientState();
+        await loadNode(null, { skipTransition: true });
+      }
       await loadNode(null);
       return;
     }

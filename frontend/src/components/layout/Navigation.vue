@@ -97,7 +97,7 @@ const store = useNodeStore();
 const authStore = useAuthStore();
 const { childNodes, officialNodes, activeNode, viewState } = storeToRefs(store);
 const { isAuthenticated } = storeToRefs(authStore);
-const { layoutType } = useKnobDispatch();
+const { compactMode, layoutType } = useKnobDispatch();
 const {
   phase: otPhase,
   animating: otAnimating,
@@ -129,13 +129,18 @@ const pressedOfficialId = computed<string | null>(() => {
 // Official section visibility, synchronized with page nav animation
 const showOfficialNodes = ref(visibleOfficialNodes.value.length > 0 && !activeNode.value);
 
-// Keep showOfficialNodes and displayItems in sync when not mid-animation
-// Covers: dailyQuizVisible async update, viewState transitions in non-compact layout
-watch([visibleOfficialNodes, activeNode], () => {
+// Keep showOfficialNodes and displayItems in sync when not mid-animation.
+// Covers: dailyQuizVisible async update, viewState transitions in non-compact layout.
+// When activeNode changes, childNodes always changes in the same tick, so the
+// childNodes watcher (line 295) handles displayItems — we must NOT update
+// displayItems here or the new children will flash before the animation runs.
+watch([visibleOfficialNodes, activeNode], (newVals, oldVals) => {
   if (navAnimating.value || isAnimating.value) return;
   const next = visibleOfficialNodes.value.length > 0 && !activeNode.value;
   showOfficialNodes.value = next;
-  displayItems.value = scrollSource.value.slice(scrollOffset.value, scrollOffset.value + maxVisible.value);
+  if (newVals[1] === oldVals[1]) {
+    displayItems.value = scrollSource.value.slice(scrollOffset.value, scrollOffset.value + maxVisible.value);
+  }
 });
 
 interface NavItem {
@@ -310,6 +315,11 @@ watch(childNodes, () => {
     pressedNodeId.value = null;
     displayItems.value = scrollSource.value.slice(0, maxVisible.value);
     transitionName.value = 'none';
+    // If data is already present, there is no async "first data" still
+    // loading — the next childNodes change is a user navigation and must animate.
+    if (childNodes.value.length > 0 || visibleOfficialNodes.value.length > 0) {
+      pendingFirstData = false;
+    }
     nextTick(() => { transitionName.value = 'cell'; });
   } else if (pendingFirstData) {
     // Initial data load
@@ -517,11 +527,17 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick, true));
 
 async function moveNode(node: NodeRecord): Promise<void> {
   actionNodeId.value = null;
+  if (layoutType.value === 'small') {
+    compactMode.value = 'content';
+  }
   await store.startMove(node);
 }
 
 async function deleteNode(node: NodeRecord): Promise<void> {
   actionNodeId.value = null;
+  if (layoutType.value === 'small') {
+    compactMode.value = 'content';
+  }
   await store.startDelete(node);
 }
 
@@ -824,6 +840,7 @@ onUnmounted(() => ro?.disconnect());
   font-weight: 700;
   transition: filter 160ms ease, text-shadow 160ms ease;
 }
+
 .empty {
   min-height: 54px;
 }

@@ -63,7 +63,7 @@ export async function preloadSkeleton(): Promise<void> {
   try {
     const { fetchSkeleton } = useTreeSkeleton();
     await fetchSkeleton();
-  } catch {
-    // silent — TreeCanvas onMounted will retry
+  } catch (e) {
+    console.error('[useTreeSkeleton] preloadSkeleton failed, TreeCanvas onMounted will retry:', e);
   }
 }

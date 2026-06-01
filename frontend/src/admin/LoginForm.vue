@@ -1,16 +1,16 @@
 <template>
   <form class="login-form" @submit.prevent="handleLogin">
     <div class="form-field">
-      <label for="username">用户名</label>
+      <label for="username">{{ $t('auth.username') }}</label>
       <input id="username" v-model="authStore.username" type="text" required autocomplete="username" />
     </div>
     <div class="form-field">
-      <label for="password">密码</label>
+      <label for="password">{{ $t('auth.password') }}</label>
       <input id="password" v-model="authStore.password" type="password" required autocomplete="current-password" />
     </div>
     <div v-if="authStore.errorMessage" class="form-error">{{ authStore.errorMessage }}</div>
     <button type="submit" :disabled="authStore.isBusy" class="btn-login">
-      {{ authStore.isBusy ? '登录中...' : '登录' }}
+      {{ authStore.isBusy ? $t('auth.loggingIn') : $t('auth.login') }}
     </button>
   </form>
 </template>

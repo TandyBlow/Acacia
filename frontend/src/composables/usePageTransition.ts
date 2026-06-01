@@ -102,38 +102,18 @@ export function usePageTransition() {
     // completes and sets it back to false.
     await nextTick();
 
-    let deferredCompactSwitch = false;
-
     try {
       await executeDataLoading(trigger);
 
       const nodeStore = useNodeStore();
       nodeStore.applyPendingSharedData();
 
-      // Defer compact mode auto-switch to after the transition completes
-      // so animateCompactToggle can run properly (not blocked by isTransitioning)
-      if (trigger.type === 'navigate') {
-        const { compactMode, layoutType } = useKnobDispatch();
-        if (layoutType.value === 'small' && compactMode.value === 'nav') {
-          deferredCompactSwitch = true;
-        }
-      }
-
       const newState = getCurrentPageState();
-
-      const skipIds = deferredCompactSwitch ? new Set(['navigation', 'content']) : undefined;
-      applyRegionVisibility(newState, skipIds);
+      applyRegionVisibility(newState);
     } catch (error) {
       console.error('Page transition failed:', error);
     } finally {
       isTransitioning.value = false;
-    }
-
-    // Apply deferred compact mode switch after transition completes
-    // (isTransitioning is now false, so compactMode watcher can run)
-    if (deferredCompactSwitch) {
-      const { compactMode } = useKnobDispatch();
-      compactMode.value = 'content';
     }
   }
 

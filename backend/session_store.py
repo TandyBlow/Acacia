@@ -1,6 +1,6 @@
 """
 Unified session persistence layer for Acacia chat.
-Single canonical _load_session / _save_session shared by chat_service and file_knowledge_service.
+Single canonical _load_session / _save_session for chat_service.
 
 Reads/writes all 22 columns of conversation_sessions including context chain and document tracking fields.
 """

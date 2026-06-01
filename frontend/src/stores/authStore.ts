@@ -59,7 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function assignUser(next: AuthUser | null): void {
     if (next && next.username) {
-      try { localStorage.setItem(`acacia_uname_${next.id}`, next.username); } catch { /* ignore */ }
+      try { localStorage.setItem(`acacia_uname_${next.id}`, next.username); } catch (e) { console.error('[authStore] localStorage.setItem failed:', e); }
     }
     if (next && !next.username && next.id) {
       try {
@@ -67,7 +67,9 @@ export const useAuthStore = defineStore('auth', () => {
         if (cached) {
           next = { ...next, username: cached };
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error('[authStore] localStorage.getItem failed:', e);
+      }
     }
     if (next && !next.username && user.value?.username && user.value.id === next.id) {
       next = { ...next, username: user.value.username };
@@ -164,13 +166,14 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await authAdapter.signOut();
       if (userId) {
-        try { localStorage.removeItem(`acacia_uname_${userId}`); } catch { /* ignore */ }
+        try { localStorage.removeItem(`acacia_uname_${userId}`); } catch (e) { console.error('[authStore] localStorage.removeItem failed:', e); }
       }
       assignUser(null);
       clearAuthFormState();
       errorMessage.value = null;
       return true;
-    } catch {
+    } catch (e) {
+      console.error('[authStore] logout failed:', e);
       return false;
     } finally {
       isBusy.value = false;

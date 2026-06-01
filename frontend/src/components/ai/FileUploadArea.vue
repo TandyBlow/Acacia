@@ -16,7 +16,7 @@
         style="display: none"
       />
 
-      <template v-if="!isUploading && !uploadedFile">
+      <template v-if="!isUploading && !isProcessing && !uploadedFile">
         <div class="upload-icon">📄</div>
         <div class="upload-text">
           <div class="upload-primary">{{ $t('upload.clickOrDrag') }}</div>
@@ -30,6 +30,18 @@
           <div class="upload-primary">{{ $t('upload.uploading') }}</div>
           <div class="upload-secondary">{{ uploadProgress }}%</div>
         </div>
+        <div class="progress-track">
+          <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+        </div>
+      </template>
+
+      <template v-else-if="isProcessing">
+        <StreamingExtractPanel
+          :file-id="processingFileId"
+          @complete="onPipelineComplete"
+          @error="onPipelineError"
+          @cancel="onPipelineCancel"
+        />
       </template>
 
       <template v-else-if="uploadedFile">
@@ -38,7 +50,14 @@
           <div class="upload-primary">{{ uploadedFile.filename }}</div>
           <div class="upload-secondary">
             {{ formatFileSize(uploadedFile.size) }} · {{ $t('upload.chars', { n: uploadedFile.text_length }) }}
-            <span v-if="uploadedFile.ocr_applied" class="ocr-badge">OCR</span>
+            <span v-if="uploadedFile.ocr_status === 'pending'" class="ocr-badge ocr-badge-pending">OCR...</span>
+            <span v-else-if="uploadedFile.ocr_applied" class="ocr-badge">OCR</span>
+          </div>
+          <div v-if="uploadedFile.text_length === 0 && uploadedFile.ocr_status === 'pending'" class="upload-warning">
+            {{ $t('upload.ocrPending') }}
+          </div>
+          <div v-else-if="uploadedFile.text_length === 0" class="upload-warning">
+            {{ $t('upload.emptyWarning') }}
           </div>
         </div>
         <button class="remove-btn" @click.stop="removeFile">✕</button>
@@ -52,6 +71,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import StreamingExtractPanel from './StreamingExtractPanel.vue';
 
 interface UploadedFile {
   file_id: string;
@@ -60,7 +80,11 @@ interface UploadedFile {
   extension: string;
   text_length: number;
   text_preview: string;
+  formatted_text?: string;
   ocr_applied?: boolean;
+  ocr_reason?: string | null;
+  ocr_status?: string;
+  total_pages?: number;
 }
 
 const emit = defineEmits<{
@@ -73,12 +97,40 @@ const { t } = useI18n();
 const fileInput = ref<HTMLInputElement | null>(null);
 const isDragOver = ref(false);
 const isUploading = ref(false);
+const isProcessing = ref(false);
 const uploadProgress = ref(0);
 const uploadedFile = ref<UploadedFile | null>(null);
 const errorMessage = ref('');
+const processingFileId = ref('');
+const pipelineMarkdown = ref('');
+const pendingFileMeta = ref<{ filename: string; size: number; extension: string } | null>(null);
+
+function shouldPreserveSource(extension: string): boolean {
+  return ['.md', '.markdown'].includes(extension.toLowerCase());
+}
+
+async function fetchUploadedContent(fileId: string): Promise<string> {
+  const token = localStorage.getItem('acacia_backend_token');
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const resp = await fetch(`${backendUrl}/file-content/${fileId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return typeof data.full_text === 'string' ? data.full_text : '';
+    }
+    if (attempt < 19) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  throw new Error(t('upload.parseFailed'));
+}
 
 function triggerFileInput() {
-  if (!isUploading.value && !uploadedFile.value) {
+  if (!isUploading.value && !isProcessing.value && !uploadedFile.value) {
     fileInput.value?.click();
   }
 }
@@ -120,57 +172,119 @@ async function uploadFile(file: File) {
   isUploading.value = true;
   uploadProgress.value = 0;
 
+  // Save file metadata for pipeline completion
+  pendingFileMeta.value = {
+    filename: file.name,
+    size: file.size,
+    extension: fileExt,
+  };
+
+  const token = localStorage.getItem('acacia_backend_token');
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+
+  // Phase 1: upload with real progress via XHR
+  let initialResponse: any;
   try {
-    const formData = new FormData();
-    formData.append('file', file);
+    initialResponse = await new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append('file', file);
 
-    const token = localStorage.getItem('acacia_backend_token');
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+      xhr.upload.onprogress = (e: ProgressEvent) => {
+        if (e.lengthComputable && e.total > 0) {
+          uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+        }
+      };
 
-    // Simulate progress (since we can't track real upload progress easily)
-    const progressInterval = setInterval(() => {
-      if (uploadProgress.value < 90) {
-        uploadProgress.value += 10;
-      }
-    }, 100);
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error(t('upload.uploadFailed')));
+          }
+        } else {
+          let detail = t('upload.uploadFailed');
+          try {
+            const err = JSON.parse(xhr.responseText);
+            detail = err.detail || t('upload.uploadFailed');
+          } catch {
+            console.error('[FileUploadArea] failed to parse error response');
+          }
+          if (xhr.status === 413) detail = t('upload.sizeLimitExceeded');
+          reject(new Error(detail));
+        }
+      };
 
-    const response = await fetch(`${backendUrl}/upload-file`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
+      xhr.onerror = () => reject(new Error(t('upload.uploadFailed')));
+
+      xhr.open('POST', `${backendUrl}/upload-file`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(formData);
     });
-
-    clearInterval(progressInterval);
-    uploadProgress.value = 100;
-
-    if (!response.ok) {
-      let errorDetail = t('upload.uploadFailed');
-      try {
-        const error = await response.json();
-        errorDetail = error.detail || t('upload.uploadFailed');
-      } catch {
-        errorDetail = response.status === 413
-          ? t('upload.sizeLimitExceeded')
-          : t('upload.serverError', { code: response.status });
-      }
-      throw new Error(errorDetail);
-    }
-
-    const result = await response.json();
-    uploadedFile.value = result;
-    emit('uploaded', result);
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('upload.uploadFailed');
-  } finally {
+  } catch (err) {
     isUploading.value = false;
-    uploadProgress.value = 0;
+    errorMessage.value = err instanceof Error ? err.message : t('upload.uploadFailed');
+    return;
+  }
+
+  isUploading.value = false;
+  uploadProgress.value = 0;
+
+  if (shouldPreserveSource(fileExt)) {
+    try {
+      const markdown = await fetchUploadedContent(initialResponse.file_id);
+      onPipelineComplete(markdown);
+    } catch (err) {
+      errorMessage.value = err instanceof Error ? err.message : t('upload.parseFailed');
+    }
+    return;
+  }
+
+  // Phase 2: start streaming markdown pipeline
+  isProcessing.value = true;
+  processingFileId.value = initialResponse.file_id;
+  pipelineMarkdown.value = '';
+
+  // Pipeline result is handled by onPipelineComplete/onPipelineError/onPipelineCancel
+}
+
+function onPipelineComplete(markdown: string) {
+  pipelineMarkdown.value = markdown;
+  isProcessing.value = false;
+
+  const meta = pendingFileMeta.value;
+  const result: UploadedFile = {
+    file_id: processingFileId.value,
+    filename: meta?.filename || '',
+    size: meta?.size || 0,
+    extension: meta?.extension || '',
+    text_length: markdown.length,
+    text_preview: markdown.slice(0, 200) + (markdown.length > 200 ? '...' : ''),
+    formatted_text: markdown,
+  };
+  pendingFileMeta.value = null;
+  uploadedFile.value = result;
+  emit('uploaded', result);
+}
+
+function onPipelineError(message: string) {
+  isProcessing.value = false;
+  errorMessage.value = message;
+}
+
+function onPipelineCancel() {
+  isProcessing.value = false;
+  // Reset to pre-upload state
+  if (fileInput.value) {
+    fileInput.value.value = '';
   }
 }
 
 function removeFile() {
   uploadedFile.value = null;
+  pendingFileMeta.value = null;
+  pipelineMarkdown.value = '';
   errorMessage.value = '';
   if (fileInput.value) {
     fileInput.value.value = '';
@@ -222,7 +336,7 @@ function formatFileSize(bytes: number): string {
 }
 
 .upload-zone.uploading {
-  cursor: not-allowed;
+  cursor: default;
   opacity: 0.7;
 }
 
@@ -293,5 +407,51 @@ function formatFileSize(bytes: number): string {
   font-size: 11px;
   font-weight: 600;
   vertical-align: middle;
+}
+
+.ocr-badge-pending {
+  background: rgba(255, 180, 50, 0.2);
+  color: #e6a23c;
+  animation: ocr-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ocr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.upload-warning {
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 180, 50, 0.15);
+  color: #e6a23c;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.progress-track {
+  width: 80%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary, #66ffe5);
+  border-radius: 2px;
+  transition: width 0.15s linear;
+}
+
+.progress-indeterminate {
+  width: 30%;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(433%); }
 }
 </style>

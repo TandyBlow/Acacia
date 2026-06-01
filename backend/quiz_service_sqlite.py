@@ -12,6 +12,7 @@ import httpx
 import sqlite3
 
 from review_service_sqlite import _update_fsrs_params, _calculate_retrievability
+from file_parser import sanitize_control_chars
 
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 if not LLM_API_KEY:
@@ -79,11 +80,6 @@ def call_llm(user_input: str, system_prompt: str, temperature: float = 0.8) -> s
     return data["choices"][0]["message"]["content"]
 
 
-def _sanitize_control_chars(text: str) -> str:
-    """Replace JSON-invalid control characters (except whitespace: \\t, \\n, \\r)."""
-    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text)
-
-
 def _find_json_boundary(text: str, opener: str, closer: str) -> tuple | None:
     """Find outermost JSON object/array boundary, skipping string contents."""
     start = text.find(opener)
@@ -122,7 +118,7 @@ def _find_json_boundary(text: str, opener: str, closer: str) -> tuple | None:
 
 def extract_json(raw: str) -> dict:
     """Extract JSON from LLM response, handling markdown fences and malformed responses."""
-    sanitized = _sanitize_control_chars(raw)
+    sanitized = sanitize_control_chars(raw)
 
     try:
         return json.loads(sanitized, strict=False)

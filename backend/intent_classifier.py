@@ -7,8 +7,11 @@ Returns one of:
   content_question, meta_question, correction, confirmation,
   skip_request, end_request, chitchat, knowledge_question
 """
+import logging
 import re
 from typing import Tuple
+
+logger = logging.getLogger(__name__)
 
 # ── Pattern tables (priority order) ────────────────────────────────────
 
@@ -166,7 +169,8 @@ def classify_intent_llm(user_input: str) -> str:
             "chitchat", "knowledge_question",
         }
         return intent if intent in valid else "content_question"
-    except Exception:
+    except Exception as e:
+        logger.error("LLM intent classification failed, falling back to content_question: %s", e)
         return "content_question"
 
 

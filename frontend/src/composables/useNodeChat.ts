@@ -41,7 +41,7 @@ export interface MentionedConcept {
   wiki_description: string;
 }
 
-export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'file_uploaded' | 'conversing';
+export type ChatMode = 'idle' | 'text_input' | 'file_upload' | 'file_uploaded' | 'conversing' | 'ocr_progress';
 
 interface ChatCheckpoint {
   sessionId: string;
@@ -116,14 +116,19 @@ function saveCheckpoint() {
     } else {
       localStorage.setItem(CHECKPOINT_MAP_KEY, JSON.stringify(map));
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.error('[useNodeChat] saveCheckpointMap failed:', e);
+  }
 }
 
 function loadCheckpointMap(): CheckpointMap {
   try {
     const raw = localStorage.getItem(CHECKPOINT_MAP_KEY);
     return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  } catch {
+    console.error('[useNodeChat] loadCheckpointMap failed');
+    return {};
+  }
 }
 
 function loadCheckpointForNode(nodeId: string): ChatCheckpoint | null {
@@ -165,11 +170,14 @@ export function useNodeChat() {
         const { doc } = editorRef.state;
         editorRef.commands.insertContentAt(doc.content.size, content);
       }
-    } catch {
+    } catch (e) {
+      console.error('[useNodeChat] insertContent fallback failed:', e);
       // If all else fails, insert as plain text
       try {
         editorRef.commands.insertContent(content);
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error('[useNodeChat] insertContent plain text fallback failed:', e);
+      }
     }
   }
 
@@ -195,54 +203,6 @@ export function useNodeChat() {
       currentNodeId.value = nodeId;
       referenceText.value = text;
       referenceFileName.value = null;
-      messages.value = [{
-        role: 'ai',
-        content: data.question,
-        metadata: { action: data.action, sub_topic: data.sub_topic },
-      }];
-      currentSubTopic.value = data.sub_topic || '';
-      totalKp.value = data.total_kp || 1;
-      currentKpIndex.value = data.current_kp_index || 0;
-      currentKpData.value = data.kp_data || null;
-      mode.value = 'conversing';
-      saveCheckpoint();
-      _updateConcepts(data);
-      return { question: data.question, action: data.action, sub_topic: data.sub_topic, knowledge_note: data.knowledge_note || '' };
-    } catch (e: unknown) {
-      errorMessage.value = e instanceof Error ? e.message : '启动对话失败';
-      throw e;
-    } finally {
-      isBusy.value = false;
-      setGlobalLoading('nodeChat', false);
-    }
-  }
-
-  async function startFileChat(nodeId: string, nodeName: string, fileId: string, fileName: string, fileText?: string) {
-    isBusy.value = true;
-    errorMessage.value = '';
-    setGlobalLoading('nodeChat', true);
-
-    try {
-      const resp = await fetchWithTimeout(`${backendUrl}/chat/start`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          node_id: nodeId,
-          node_name: nodeName,
-          file_id: fileId,
-          reference_text: fileText || '',
-        }),
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: '启动对话失败' }));
-        throw new Error(err.detail || '启动对话失败');
-      }
-
-      const data = await resp.json();
-      sessionId.value = data.session_id;
-      currentNodeId.value = nodeId;
-      referenceFileName.value = fileName;
       messages.value = [{
         role: 'ai',
         content: data.question,
@@ -407,7 +367,9 @@ export function useNodeChat() {
         contextChain.value = data.chain || [];
         newLearnings.value = data.new_learnings_since_last_visit || [];
       }
-    } catch { /* non-critical, ignore */ }
+    } catch (e) {
+      console.error('[useNodeChat] fetchContextChain failed:', e);
+    }
   }
 
   async function recordNavigationTransition(
@@ -426,7 +388,9 @@ export function useNodeChat() {
           reason,
         }),
       });
-    } catch { /* fire-and-forget, ignore errors */ }
+    } catch (e) {
+      console.error('[useNodeChat] recordNavigationTransition failed:', e);
+    }
   }
 
   async function sendMessage(answer: string, options?: { skipInsertContent?: boolean }) {
@@ -706,7 +670,8 @@ export function useNodeChat() {
       currentKpData.value = data.kp_data || null;
       mode.value = 'conversing';
       return true;
-    } catch {
+    } catch (e) {
+      console.error('[useNodeChat] resumeChat failed:', e);
       clearCheckpointForNode(nodeId);
       return false;
     } finally {
@@ -727,7 +692,9 @@ export function useNodeChat() {
         const map = loadCheckpointMap();
         map[currentNodeId.value] = checkpoint;
         localStorage.setItem(CHECKPOINT_MAP_KEY, JSON.stringify(map));
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error('[useNodeChat] saveCheckpoint (checkpoint) failed:', e);
+      }
     }
     mode.value = 'idle';
   }
@@ -754,7 +721,9 @@ export function useNodeChat() {
             if (success) return true;
           }
         }
-      } catch { /* fall through to new chat */ }
+      } catch (e) {
+        console.error('[useNodeChat] resumeOrStartChat session lookup failed:', e);
+      }
     }
 
     return false;
@@ -821,7 +790,8 @@ export function useNodeChat() {
       const data = await resp.json();
       clearChat();
       return data.summary || '';
-    } catch {
+    } catch (e) {
+      console.error('[useNodeChat] compressAndClear failed:', e);
       // On any error, fallback to plain clear
       clearChat();
       return '';
@@ -922,7 +892,6 @@ export function useNodeChat() {
     setNodeId,
     insertGeneratedContent,
     startTextChat,
-    startFileChat,
     startLineByLineChat,
     startContextualChat,
     sendMessage,

@@ -8,6 +8,7 @@ Pattern follows concept_extractor.py.
 import base64
 import hashlib
 import json as _json
+import logging
 import os
 import re
 import time
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # ── Cache ────────────────────────────────────────────────────────────────
 
@@ -57,7 +60,8 @@ def _is_generating(owner_id: str) -> bool:
                 pass
             return False
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("Corrupted generation lock file for %s, cleaning up: %s", owner_id, e)
         try:
             lock_file.unlink()
         except FileNotFoundError:
@@ -675,7 +679,7 @@ def generate_style(owner_id: str, nodes: list[dict], force: bool = False) -> dic
             result = _parse_json(raw)
             print(f"[style] DeepSeek returned style: {result.get('styleName', 'unknown')}")
         except Exception as e:
-            print(f"[style] DeepSeek call failed: {e}")
+            logger.error("[style] DeepSeek call failed: %s", e)
             # Fallback to default
             return {
                 "style": "default",

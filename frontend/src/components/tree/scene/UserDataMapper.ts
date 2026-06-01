@@ -248,17 +248,6 @@ export function mapUserDataToEzTreeParams(
   const maxLeafCount = Math.floor(64900 / (terminals * 12)) - 1;
   const leafCount = Math.min(desiredLeafCount, Math.max(3, maxLeafCount));
 
-  // Debug log
-  const leafTotal = terminals * (1 + leafCount);
-  const leafIndices = leafTotal * 12;
-  console.log(
-    `[TreeDebug] nodeCount=${nodeCount} gm=${gm.toFixed(2)} tier=lv${branchLevels} ` +
-    `children=${JSON.stringify(children)} ` +
-    `perLevel=${JSON.stringify(perLevel)} ` +
-    `terminals=${terminals} ` +
-    `leafCount=${leafCount}(max=${maxLeafCount}) leafTotal=${leafTotal} leafIndices=${leafIndices} ` +
-    `(limit=65535 ${leafIndices > 65535 ? 'OVERFLOW' : 'OK'})`,
-  );
   const baseLeafSize = lerp(2.0, 3.5, widthDepthRatio);
   const leafSize = Math.max(1.0, baseLeafSize * gm);
 

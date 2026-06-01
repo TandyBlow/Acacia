@@ -2,8 +2,11 @@
 Style service using SQLite + AI generation.
 """
 import json
+import logging
 import time
 from database import get_db_ctx
+
+logger = logging.getLogger(__name__)
 from style_generator import (
     generate_style, DEFAULT_PARAMS,
     build_profile_text, _cache_key,
@@ -46,8 +49,8 @@ def _maybe_fix_persisted_url(owner_id: str, bg_url):
         try:
             with get_db_ctx() as conn:
                 conn.execute("UPDATE user_styles SET background_url = ? WHERE owner_id = ?", (fixed, owner_id))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to fix background URL for %s: %s", owner_id, e)
         return fixed
     return bg_url
 

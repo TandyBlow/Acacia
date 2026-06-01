@@ -16,15 +16,18 @@ export default {
     register: '注册',
     login: '登录',
     loggingIn: '登录中...',
-    hint: '短按右侧旋钮切换登录/注册，长按旋钮提交。',
+    hint: '短按旋钮切换登录/注册，长按旋钮提交。',
     username: '账号',
     password: '密码',
     confirmPassword: '确认密码',
   },
 
   confirm: {
-    addNode: '添加节点',
-    deleteNode: '删除节点',
+    addNode: '添加知识点',
+    holdKnobHint: '长按旋钮确认',
+    deleteNode: '删除知识点',
+    deleteWithChildren: '同时删除子知识点',
+    deleteHint: '勾选后将同时删除该知识点下的所有子知识点',
     logout: '退出登录',
     logoutPrompt: '当前账号为{username}，请确认退出操作。',
   },
@@ -56,7 +59,7 @@ export default {
   },
 
   official: {
-    dailyQuiz: '今日成长',
+    dailyQuiz: '今日成长 beta',
     welcome: '欢迎',
     treeOverview: '知识树概览',
     quizCompleted: '今日成长已完成，明天再来吧！',
@@ -123,8 +126,8 @@ export default {
   },
 
   editor: {
-    chatGenerate: '对话生成',
-    fileImport: '文件导入',
+    chatGenerate: '对话生成 beta',
+    fileImport: '文件导入 beta',
     regenerate: '重新生成',
     markConcept: '标记概念',
     exitChat: '退出对话',
@@ -152,6 +155,7 @@ export default {
     ocrPages: '已完成 {done}/{total} 页',
     ocrFailed: '文字识别失败',
     conceptNamePrompt: '输入概念名称：',
+    sameNamePathsTitle: '当前知识点还存在于以下路径：',
   },
 
   upload: {
@@ -166,6 +170,30 @@ export default {
     chars: '{n} 字符',
     emptyWarning: '未提取到文字内容，PDF可能是扫描版且OCR失败',
     ocrPending: '正在后台识别文字，可先点击"填入内容"查看进度',
+    processing: '处理文件中...',
+    parsingFile: '解析文件中...',
+    checkingOcr: '检测是否需要OCR...',
+    parseFailed: '文件解析失败',
+  },
+
+  pipeline: {
+    starting: '准备中...',
+    complete: '处理完成',
+    failed: '处理失败',
+    pages: '{n} 页',
+    chars: '{n} 字符',
+    formulas: '{n} 个公式',
+    stage: {
+      extract: '提取文本',
+      ocr: '文字识别',
+      spans: '提取排版信息',
+      formula: '检测公式',
+      metadata: '应用字体样式',
+      segment: '分割句子',
+      annotate: 'LLM 结构标注',
+      merge: '合并标注',
+      review: '审查修正',
+    },
   },
 
   dev: {
@@ -209,8 +237,8 @@ export default {
     preloadingBg: '正在预加载背景...',
     preparingPlayback: '正在准备播放...',
     sceneNodeDetail: '知识点详情',
-    sceneChat: '对话生成',
-    sceneDailyQuiz: '今日成长',
+    sceneChat: '对话生成 beta',
+    sceneDailyQuiz: '今日成长 beta',
     sceneTreeOverview: '知识点概览',
     sceneHome: '回到主页',
   },

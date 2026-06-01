@@ -132,7 +132,8 @@ function readLocalNodes(): NodeRecord[] {
           sortOrder: Number.isFinite(item.sortOrder) ? Number(item.sortOrder) : index,
         }));
     }
-  } catch {
+  } catch (e) {
+    console.error('[localAdapter] parse local nodes failed, using seed data:', e);
     // fallback to seed below
   }
 

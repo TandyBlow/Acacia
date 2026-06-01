@@ -202,6 +202,13 @@ def init_db():
         if "current_position" not in sess_cols:
             conn.execute("ALTER TABLE conversation_sessions ADD COLUMN current_position INTEGER NOT NULL DEFAULT 0")
 
+        # Migration 006: translation columns for official_nodes
+        off_cols = [row[1] for row in conn.execute("PRAGMA table_info(official_nodes)").fetchall()]
+        if "title_en" not in off_cols:
+            conn.execute("ALTER TABLE official_nodes ADD COLUMN title_en TEXT NOT NULL DEFAULT ''")
+        if "content_en" not in off_cols:
+            conn.execute("ALTER TABLE official_nodes ADD COLUMN content_en TEXT NOT NULL DEFAULT ''")
+
         # WAL mode for concurrent reads on low-memory VPS
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")

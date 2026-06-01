@@ -53,8 +53,13 @@
  * when the master page-transition toggle is off.
  * ==================================== */
 
+:root[data-no-transition],
 :root[data-no-transition] .glass,
 :root[data-no-transition] .glass-content,
 :root[data-no-transition] .tree-mask {
+  transition: none !important;
+}
+
+:root[data-no-transition] body {
   transition: none !important;
 }

@@ -249,7 +249,8 @@ async function openQuestion(q: QuizQuestionListItem | QuizQuestion): Promise<voi
     quizSelectedOption.value = null;
     quizShowResult.value = false;
     quizShortAnswer.value = '';
-  } catch {
+  } catch (e) {
+    console.error('[QuizHistoryPanel] fetchQuestionDetail failed:', e);
     // If fetch fails, try to use what we have
   }
 }

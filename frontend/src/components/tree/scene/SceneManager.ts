@@ -183,7 +183,6 @@ export class SceneManager {
     if (this.backgroundPlane) {
       if (this.backgroundUrl) {
         this.backgroundPlane.updateTexture(this.backgroundUrl);
-        console.log('[SceneManager] 切换AI背景图:', this.backgroundUrl);
       } else {
         if (newStyle !== 'default') {
           console.error('[SceneManager] AI背景图不可用，回退到默认背景');
@@ -193,8 +192,10 @@ export class SceneManager {
     }
   }
 
-  /** Update the AI-generated background image URL and reload the background. */
+  /** Update the AI-generated background image URL and reload the background.
+   *  Skips the update if the URL hasn't changed (avoids redundant texture disposal). */
   updateBackgroundUrl(url: string | null) {
+    if (url === this.backgroundUrl) return;
     this.backgroundUrl = url;
     if (this.backgroundPlane && url) {
       this.backgroundPlane.updateTexture(url);
@@ -461,25 +462,6 @@ export class SceneManager {
     const size = new THREE.Vector3();
     this.treeBounds.getSize(size);
 
-    // Debug: log raw ez-tree mesh bounds
-    if (this.ezTree) {
-      const branchBox = new THREE.Box3().setFromObject(this.ezTree.branchesMesh);
-      const leafBox = new THREE.Box3().setFromObject(this.ezTree.leavesMesh);
-      const combinedBox = new THREE.Box3().copy(branchBox).union(leafBox);
-      console.log('[SceneManager] buildTreeMeshes bounds', {
-        branchMinY: branchBox.min.y.toFixed(3),
-        branchMaxY: branchBox.max.y.toFixed(3),
-        leafMinY: leafBox.min.y.toFixed(3),
-        leafMaxY: leafBox.max.y.toFixed(3),
-        combinedMinY: combinedBox.min.y.toFixed(2),
-        combinedMaxY: combinedBox.max.y.toFixed(2),
-        combinedHeight: (combinedBox.max.y - combinedBox.min.y).toFixed(2),
-        treeGroupMinY: this.treeBounds.min.y.toFixed(2),
-        treeGroupMaxY: this.treeBounds.max.y.toFixed(2),
-        treeGroupHeight: size.y.toFixed(2),
-      });
-    }
-
     // Build outline meshes (inverted-hull, default hidden)
     this.buildOutlineMeshes();
 
@@ -633,19 +615,6 @@ export class SceneManager {
     );
     this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
 
-    console.log('[SceneManager] refitCamera', {
-      treeBoundsMinY: this.treeBounds.min.y.toFixed(2),
-      treeBoundsMaxY: this.treeBounds.max.y.toFixed(2),
-      treeCenterY: this.treeCenter.y.toFixed(2),
-      treeHeight: (this.treeBounds.max.y - this.treeBounds.min.y).toFixed(2),
-      frustumHalfH: halfH.toFixed(2),
-      camY: camY.toFixed(2),
-      frustumBottom: (camY - halfH).toFixed(2),
-      frustumTop: (camY + halfH).toFixed(2),
-      containerW: w,
-      containerH: h,
-    });
-
     // 更新背景位置以跟随相机
     if (this.backgroundPlane) {
       this.backgroundPlane.updateSize();
@@ -690,7 +659,6 @@ export class SceneManager {
 
     this.backgroundPlane = new BackgroundPlane(backgroundPath, this.camera);
     this.scene.add(this.backgroundPlane.getMesh());
-    console.log('[SceneManager] 使用2D背景图:', this.currentStyle, backgroundPath);
   }
 
   // --- Private: Ground (disabled) ---
@@ -1040,18 +1008,6 @@ export class SceneManager {
         this.treeCenter.z + 10,
       );
       this.camera.lookAt(this.treeCenter.x, camY, this.treeCenter.z);
-
-      console.log('[SceneManager] onResizeDebounced refitCamera', {
-        treeBoundsMinY: this.treeBounds.min.y.toFixed(2),
-        treeBoundsMaxY: this.treeBounds.max.y.toFixed(2),
-        treeCenterY: this.treeCenter.y.toFixed(2),
-        treeHeight: (this.treeBounds.max.y - this.treeBounds.min.y).toFixed(2),
-        frustumHalfH: halfH.toFixed(2),
-        camY: camY.toFixed(2),
-        frustumBottom: (camY - halfH).toFixed(2),
-        frustumTop: (camY + halfH).toFixed(2),
-        w, h,
-      });
     }
 
     // this.updateGroundLineY();

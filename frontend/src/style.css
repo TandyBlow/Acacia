@@ -5,6 +5,49 @@
   mix-blend-mode: difference;
 }
 
+/* Register color-type custom properties so CSS transitions can interpolate them.
+   Without @property, the browser treats custom properties as discrete (flip at 50%). */
+@property --color-primary {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #6680ff;
+}
+@property --color-hint {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c7940a;
+}
+@property --color-primary-on-light {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #6680ff;
+}
+@property --color-hint-on-light {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #9e7608;
+}
+@property --color-primary-on-dark {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #99adff;
+}
+@property --color-hint-on-dark {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #daa520;
+}
+@property --color-glass-border {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(109, 138, 255, 0.28);
+}
+@property --color-glass-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.12);
+}
+
 :root {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --color-primary: #6680ff;
@@ -26,6 +69,18 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Smooth theme transitions — color custom properties + text color + background */
+  transition:
+    --color-primary 0.6s ease,
+    --color-hint 0.6s ease,
+    --color-primary-on-light 0.6s ease,
+    --color-hint-on-light 0.6s ease,
+    --color-primary-on-dark 0.6s ease,
+    --color-hint-on-dark 0.6s ease,
+    --color-glass-border 0.6s ease,
+    --color-glass-bg 0.6s ease,
+    color 0.6s ease;
 }
 
 * {
@@ -79,6 +134,7 @@ body {
   padding-bottom: var(--safe-bottom, 0px);
   min-width: 320px;
   /* background is set via styleStore.applyTheme() to avoid flash of default blue gradient */
+  transition: background 0.6s ease;
 }
 
 button,

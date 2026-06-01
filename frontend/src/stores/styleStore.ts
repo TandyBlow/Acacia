@@ -183,9 +183,9 @@ export const useStyleStore = defineStore('style', () => {
     el.style.setProperty('--shadow-raised-b', 'rgba(255,255,255,0.28)');
     el.style.setProperty(
       '--bg-gradient',
-      `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`,
+      `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottom.map((v) => Math.round(255 - (255 - v * 255) * 0.36)).join(',')}) 20%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`,
     );
-    document.body.style.background = `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`;
+    document.body.style.background = `linear-gradient(180deg, #ffffff 0%, rgb(${skyBottom.map((v) => Math.round(255 - (255 - v * 255) * 0.36)).join(',')}) 20%, rgb(${skyBottomRgb.join(',')}) 55%, rgb(${skyBottomRgb.join(',')}) 100%)`;
 
     // WCAG contrast correction
     const primaryOnLight = _ensureContrastAgainstWhite(textPrimary);
@@ -215,8 +215,6 @@ export const useStyleStore = defineStore('style', () => {
     const gen = ++pollGeneration;
     const deadline = Date.now() + POLL_MAX_MS;
 
-    console.log('[styleStore] 开始轮询等待风格生成完成 (最长6分钟, 每3秒一次)...');
-
     let pollCount = 0;
     while (Date.now() < deadline) {
       await new Promise<void>(r => {
@@ -231,11 +229,9 @@ export const useStyleStore = defineStore('style', () => {
         const adapter = getDataAdapter();
         const data = await adapter.fetchStyle?.(userId);
         if (data && !data.generating) {
-          console.log(`[styleStore] 轮询 #${pollCount} — 生成完成! style="${data.style}", backgroundUrl="${data.backgroundUrl}", bgError="${data.bgError || 'none'}"`);
           generating.value = false;
           return data;
         }
-        console.log(`[styleStore] 轮询 #${pollCount} — 仍在生成中...`);
       } catch (e) {
         console.warn(`[styleStore] 轮询 #${pollCount} — 网络错误, 继续等待:`, e);
       }
@@ -256,13 +252,6 @@ export const useStyleStore = defineStore('style', () => {
         return;
       }
 
-      console.log(`[styleStore] fetchStyle 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}, _debug="${(resp as any)._debug || 'N/A'}"`);
-
-      // If generation is in progress, poll until it completes
-      if (resp.generating) {
-        console.log('[styleStore] 后台正在生成风格，等待完成...');
-      }
-
       // If generation is in progress, poll until it completes
       const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
       if (!data) return;
@@ -270,9 +259,9 @@ export const useStyleStore = defineStore('style', () => {
       const bgUrl = data.backgroundUrl ?? null;
       const newStyle = data.style ?? 'default';
 
-      // Non-default styles require a background image; try disk fallback if missing
       if (newStyle !== 'default') {
-        console.log(`[styleStore] 初始加载: AI风格 "${newStyle}", 检查背景图...`);
+        // Non-default styles go through the pending mechanism so the tree
+        // transitions smoothly (no abrupt texture swap / CSS gradient change).
         const resolvedBgUrl = bgUrl ?? await _tryRecoverBgUrl(userId);
         if (!resolvedBgUrl) {
           console.warn(`[styleStore] 初始加载: 无背景图URL, 保持default风格. bgUrl=${bgUrl}, bgError="${data.bgError || 'none'}", 磁盘恢复也失败`);
@@ -281,15 +270,15 @@ export const useStyleStore = defineStore('style', () => {
           if (!ok) {
             console.warn(`[styleStore] 初始加载: 背景图预加载失败 url=${resolvedBgUrl}, 保持default风格`);
           } else {
-            console.log(`[styleStore] 初始加载: 背景图就绪, 应用AI风格 "${newStyle}"`);
-            backgroundUrl.value = resolvedBgUrl;
-            styleParams.value = (data.params as Record<string, unknown>) ?? null;
+            pendingParams.value = (data.params as Record<string, unknown>) ?? null;
+            pendingStyle.value = newStyle;
+            pendingBackgroundUrl.value = resolvedBgUrl;
             distribution.value = data.distribution ?? {};
-            style.value = newStyle;
+            isPendingReady.value = true;
           }
         }
       } else {
-        console.log(`[styleStore] 初始加载: default风格`);
+        // Default style can be applied directly — no background to preload.
         backgroundUrl.value = bgUrl;
         styleParams.value = (data.params as Record<string, unknown>) ?? null;
         distribution.value = data.distribution ?? {};
@@ -299,7 +288,14 @@ export const useStyleStore = defineStore('style', () => {
       console.warn('[styleStore] fetchStyle 异常:', e);
     } finally {
       loaded.value = true;
-      applyTheme();
+      // Only apply DOM theme if the style was set directly (default or
+      // already-committed pending). Pending styles will apply theme via
+      // applyPendingStyle() when the tree transition completes.
+      if (style.value !== 'default' && styleParams.value) {
+        applyTheme();
+      } else {
+        _resetParamsToDOM();
+      }
     }
   }
 
@@ -344,20 +340,16 @@ export const useStyleStore = defineStore('style', () => {
       const resp = await adapter.fetchStyle?.(userId);
       if (!resp) return;
 
-      console.log(`[styleStore] checkAndFetch 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}", hasParams=${!!resp.params}, _debug="${(resp as any)._debug || 'N/A'}"`);
-
       // If generation is in progress, poll until it completes
       const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
       if (!data) return;
 
       // Skip if same as current
       if (data.style === style.value && _paramsEqual(data.params as Record<string, unknown> | null, styleParams.value)) {
-        console.log(`[styleStore] checkAndFetch: 风格未变, 跳过 ("${data.style}")`);
         return;
       }
 
       const newStyle = data.style ?? 'default';
-      console.log(`[styleStore] checkAndFetch: 新风格 "${newStyle}" (当前 "${style.value}")`);
 
       const bgUrl = data.backgroundUrl ?? null;
       let resolvedBgUrl = bgUrl;
@@ -376,7 +368,6 @@ export const useStyleStore = defineStore('style', () => {
         }
       }
 
-      console.log(`[styleStore] checkAndFetch: 背景图就绪, 准备过渡到 "${newStyle}"`);
       pendingParams.value = (data.params as Record<string, unknown>) ?? null;
       pendingStyle.value = newStyle;
       pendingBackgroundUrl.value = resolvedBgUrl;
@@ -387,7 +378,6 @@ export const useStyleStore = defineStore('style', () => {
   }
 
   function applyPendingStyle(): void {
-    const prevStyle = style.value;
     style.value = pendingStyle.value;
     styleParams.value = pendingParams.value;
     backgroundUrl.value = pendingBackgroundUrl.value;
@@ -400,18 +390,14 @@ export const useStyleStore = defineStore('style', () => {
 
     loaded.value = true;
     applyTheme();
-    console.log(`[styleStore] 风格切换完成: "${prevStyle}" → "${style.value}"`);
   }
 
   async function forceRegenerateStyle(userId: string): Promise<void> {
     try {
-      console.log('[styleStore] forceRegenerate: 开始强制重新生成...');
       const adapter = getDataAdapter();
       await adapter.tagNodes?.(userId);
       const resp = await adapter.fetchStyle?.(userId, true);
       if (!resp) return;
-
-      console.log(`[styleStore] forceRegenerate 响应: generating=${resp.generating}, style="${resp.style}", backgroundUrl="${resp.backgroundUrl}", bgError="${resp.bgError || 'none'}"`);
 
       // If another generation is already in progress, wait for it
       const data = resp.generating ? await _waitForStyleGeneration(userId) : resp;
@@ -435,7 +421,6 @@ export const useStyleStore = defineStore('style', () => {
         }
       }
 
-      console.log(`[styleStore] forceRegenerate: 背景图就绪, 准备过渡到 "${newStyle}"`);
       pendingParams.value = (data.params as Record<string, unknown>) ?? null;
       pendingStyle.value = newStyle;
       pendingBackgroundUrl.value = resolvedBgUrl;

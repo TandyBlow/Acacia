@@ -4,6 +4,7 @@ Tracks user navigation across knowledge points and builds contextual
 awareness for AI-generated adaptive openings.
 """
 import json
+import logging
 import time
 from typing import Dict, Any, List
 from uuid import uuid4
@@ -12,6 +13,8 @@ import httpx
 import os
 
 from database import get_db_ctx
+
+logger = logging.getLogger(__name__)
 
 # DeepSeek API configuration (shared with chat_service)
 LLM_API_KEY = os.getenv("LLM_API_KEY")
@@ -319,7 +322,8 @@ def generate_adaptive_opening(
     try:
         raw = _call_deepseek_raw(messages, temperature=0.8)
         result = parse_json_response(raw)
-    except Exception:
+    except Exception as e:
+        logger.error("Adaptive opening generation failed, using fallback: %s", e)
         # Fallback: generate a simple but contextual opening without AI
         return _fallback_opening(
             node_name, previous_node_id, transition_type, transition_reason, owner_id
@@ -405,7 +409,8 @@ def generate_learning_summary(messages: List[Dict[str, Any]], node_name: str) ->
     try:
         raw = _call_deepseek_raw(messages_payload, temperature=0.5)
         return parse_json_response(raw)
-    except Exception:
+    except Exception as e:
+        logger.error("Learning summary generation failed, using fallback: %s", e)
         return {
             "learned_concepts": f"围绕「{node_name}」进行了对话学习",
             "mastery_changes": [],

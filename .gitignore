@@ -91,6 +91,11 @@ docs/superpowers/
 # Demo output files (large generated files with embedded base64 images)
 scripts/demo_output/
 
+# Demo scripts and data
+scripts/demo_*.py
+scripts/demo_data.txt
+backend/demo_pdf_extract.py
+
 # Demo HTML files
 frontend/demos/
 **/*_demo.html

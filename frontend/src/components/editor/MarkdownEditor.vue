@@ -5,6 +5,19 @@
       <div class="activity-glass-host">
         <GlassWrapper>
           <div class="activity-scroll">
+            <div v-if="activeNode && sameNameNodePaths.length > 1" class="same-name-paths" aria-live="polite">
+              <div class="same-name-paths-title">{{ t('editor.sameNamePathsTitle') }}</div>
+              <div class="same-name-paths-list">
+                <div
+                  v-for="(path, index) in sameNameNodePaths"
+                  :key="`${path}-${index}`"
+                  class="same-name-path"
+                >
+                  {{ path }}
+                </div>
+              </div>
+            </div>
+
             <!-- text_input mode: inline chat prompt in editor -->
             <template v-if="chatMode === 'text_input'">
               <EditorContent
@@ -26,7 +39,7 @@
                 <span class="choice-file-name">{{ pendingFile.filename }}</span>
                 <span class="choice-file-size">{{ formatFileSize(pendingFile.size) }}</span>
               </div>
-              <div class="choice-prompt">文件上传完成，请选择操作：</div>
+              <div class="choice-prompt">{{ $t('editor.fileUploadDone') }}</div>
               <div v-if="errorMessage" class="choice-error">{{ errorMessage }}</div>
               <div class="choice-actions">
                 <div class="action-glass-host choice-glass">
@@ -35,8 +48,8 @@
                     @click="fillContentFromFile()"
                   >
                     <div class="choice-inner">
-                      <span class="choice-label">填入内容</span>
-                      <span class="choice-desc">将文件原文一字不差地填入知识点</span>
+                      <span class="choice-label">{{ $t('editor.fillContent') }}</span>
+                      <span class="choice-desc">{{ $t('editor.fillContentDesc') }}</span>
                     </div>
                   </GlassWrapper>
                 </div>
@@ -46,13 +59,13 @@
                     @click="startLineByLineChat()"
                   >
                     <div class="choice-inner">
-                      <span class="choice-label">开始讲解</span>
-                      <span class="choice-desc">AI逐句逐词讲解文件内容</span>
+                      <span class="choice-label">{{ $t('editor.startExplain') }}</span>
+                      <span class="choice-desc">{{ $t('editor.startExplainDesc') }}</span>
                     </div>
                   </GlassWrapper>
                 </div>
               </div>
-              <button class="choice-cancel" @click="cancelFileUpload()">取消</button>
+              <button class="choice-cancel" @click="cancelFileUpload()">{{ $t('editor.cancel') }}</button>
             </div>
 
             <!-- idle or conversing: editor + optional conversation controls -->
@@ -70,10 +83,10 @@
                 <div class="conv-progress">
                   <span class="conv-progress-label">
                     <template v-if="totalKp <= 1">
-                      {{ isCompleted ? '对话已结束' : '对话进行中' }}
+                      {{ isCompleted ? $t('editor.chatEnded') : $t('editor.chatting') }}
                     </template>
                     <template v-else>
-                      第 {{ currentKpIndex + 1 }} / {{ totalKp }} 个知识点
+                      {{ $t('editor.kpProgress', { current: currentKpIndex + 1, total: totalKp }) }}
                     </template>
                   </span>
                   <span v-if="currentSubTopic" class="conv-progress-topic">{{ currentSubTopic }}</span>
@@ -89,7 +102,7 @@
                 <textarea
                   v-model="userInput"
                   class="conv-textarea"
-                  placeholder="输入你的回答... (Ctrl+Enter 发送)"
+                  :placeholder="$t('editor.inputPlaceholder')"
                   :disabled="isBusy || isCompleted"
                   rows="3"
                   @keydown="onConvKeydown"
@@ -100,23 +113,23 @@
                     class="conv-btn conv-btn-skip"
                     :disabled="isBusy || isCompleted"
                     @click="onSkipTurn"
-                  >跳过</button>
+                  >{{ $t('editor.skip') }}</button>
                   <button
                     class="conv-btn conv-btn-end"
                     :disabled="isBusy || isCompleted"
                     @click="onEndConversation"
-                  >结束对话</button>
+                  >{{ $t('editor.endChat') }}</button>
                   <button
                     class="conv-btn conv-btn-send"
                     :disabled="!canSend || isBusy || isCompleted"
                     @click="sendAnswer"
                   >
-                    {{ isBusy ? '发送中...' : '发送' }}
+                    {{ isBusy ? $t('editor.sending') : $t('editor.send') }}
                   </button>
                 </div>
 
                 <div v-if="isCompleted" class="conv-completed-banner">
-                  对话已结束，点击下方"退出对话"保存生成内容。
+                  {{ $t('editor.chatEndedHint') }}
                 </div>
               </div>
               <!-- /@deprecated conversing textarea mode -->
@@ -159,7 +172,7 @@
             @click="toggleChat()"
           >
             <div class="action-inner">
-              <span class="action-label">对话生成</span>
+              <span class="action-label">{{ $t('editor.chatGenerate') }}</span>
             </div>
           </GlassWrapper>
         </div>
@@ -170,7 +183,7 @@
             @click="startChatFile()"
           >
             <div class="action-inner">
-              <span class="action-label">文件导入</span>
+              <span class="action-label">{{ $t('editor.fileImport') }}</span>
             </div>
           </GlassWrapper>
         </div>
@@ -181,21 +194,21 @@
         <div class="action-glass-host">
           <GlassWrapper interactive :disabled="isBusy" @click="onRegenerate">
             <div class="action-inner">
-              <span class="action-label">重新生成</span>
+              <span class="action-label">{{ $t('editor.regenerate') }}</span>
             </div>
           </GlassWrapper>
         </div>
         <div class="action-glass-host">
           <GlassWrapper interactive :disabled="isBusy" @click="onMarkConcept">
             <div class="action-inner">
-              <span class="action-label">标记概念</span>
+              <span class="action-label">{{ $t('editor.markConcept') }}</span>
             </div>
           </GlassWrapper>
         </div>
         <div class="action-glass-host">
           <GlassWrapper interactive @click="toggleChat()">
             <div class="action-inner">
-              <span class="action-label">退出对话</span>
+              <span class="action-label">{{ $t('editor.exitChat') }}</span>
             </div>
           </GlassWrapper>
         </div>
@@ -206,6 +219,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch, computed, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import FileUploadArea from '../ai/FileUploadArea.vue';
@@ -226,6 +240,7 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
 import { useNodeStore } from '../../stores/nodeStore';
+import type { TreeNode } from '../../types/node';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
@@ -288,13 +303,20 @@ interface UploadedFile {
   extension: string;
   text_length: number;
   text_preview: string;
+  formatted_text?: string;
+  ocr_applied?: boolean;
+  ocr_reason?: string | null;
+  ocr_status?: string;
+  total_pages?: number;
 }
 import 'katex/dist/katex.min.css';
 
 const PROSEMIRROR_SLICE_MIME = 'application/x-prosemirror-slice';
+const CHAT_PROMPT_TEXT = '想聊点啥？主动换行可以给我发送消息。我会基于我们的聊天记录来填充这个知识点的内容，当然，之后你也可以把我填充的内容剪切到其他知识点中，随你喜欢。';
 
 const store = useNodeStore();
-const { activeNode, pathNodes, childNodes } = storeToRefs(store);
+const { activeNode, pathNodes, childNodes, treeNodes } = storeToRefs(store);
+const { t } = useI18n();
 const lowlight = createLowlight(all);
 const {
   setEditor,
@@ -331,11 +353,53 @@ const hasUserEdited = ref(false);
 const isChatSunk = ref(false);
 const isFileSunk = ref(false);
 const isAnimating = ref(false);
+
+const currentNodePath = computed(() => {
+  if (!activeNode.value) return '';
+  return [...pathNodes.value.map((node) => node.name), activeNode.value.name].join(' / ');
+});
+
+const sameNameNodePaths = computed(() => {
+  if (!activeNode.value) return [];
+
+  const activeName = activeNode.value.name.trim();
+  const paths: string[] = [];
+  const visited = new Set<string>();
+
+  function walk(nodes: TreeNode[], ancestors: string[]): void {
+    for (const node of nodes) {
+      const nodePathParts = [...ancestors, node.name];
+      if (node.name.trim() === activeName && !visited.has(node.id)) {
+        paths.push(nodePathParts.join(' / '));
+        visited.add(node.id);
+      }
+      walk(node.children, nodePathParts);
+    }
+  }
+
+  walk(treeNodes.value, []);
+
+  if (paths.length === 0 && currentNodePath.value) {
+    paths.push(currentNodePath.value);
+  }
+
+  return paths;
+});
+
+async function refreshSameNameTree(): Promise<void> {
+  try {
+    await store.refreshTree();
+  } catch (error) {
+    console.error('[MarkdownEditor] Failed to refresh tree for same-name paths:', error);
+  }
+}
 const userInput = ref('');
 const pendingFile = ref<UploadedFile | null>(null);
 const lastActiveNodeId = ref<string | null>(null);
 
-const CHAT_PROMPT_TEXT = '想聊点啥？主动换行可以给我发送消息。我会基于我们的聊天记录来填充这个知识点的内容，当然，之后你也可以把我填充的内容剪切到其他知识点中，随你喜欢。';
+function getChatPromptText(): string {
+  return t('editor.chatPrompt');
+}
 
 const LockedParagraphAttr = Extension.create({
   name: 'lockedParagraphAttr',
@@ -406,7 +470,7 @@ function protectMathHtmlTags(text: string): { protected: string; restore: (s: st
 /**
  * Escape all < as &lt; so marked doesn't treat text-in-angle-brackets as HTML tags.
  * Without this, content like <中文> or <**bold** text> creates invalid nodes.
- * Math HTML tags (generated by preprocessMathForMarkdown) are protected from escaping.
+ * Math HTML tags (generated by protectMathDollarSyntax) are protected from escaping.
  */
 function escapeNonHtmlAngleBrackets(text: string): string {
   const { protected: processed, restore } = protectMathHtmlTags(text);
@@ -422,12 +486,22 @@ function stripUnknownNodes(json: JSONContent, schema: Editor['schema']): JSONCon
 
   if (!schema.nodes[json.type]) {
     if (Array.isArray(json.content) && json.content.length > 0) {
-      return {
-        type: 'paragraph',
-        content: json.content
-          .map(c => stripUnknownNodes(c, schema))
-          .filter((c): c is JSONContent => c !== null),
-      };
+      const strippedChildren = json.content
+        .map(c => stripUnknownNodes(c, schema))
+        .filter((c): c is JSONContent => c !== null);
+
+      if (strippedChildren.length === 0) return null;
+
+      // Only wrap in paragraph if all children are inline nodes.
+      // Block children inside a paragraph would fail schema validation.
+      const allInline = strippedChildren.every(
+        c => c && typeof c === 'object' && c.type && INLINE_NODE_TYPES.has(c.type),
+      );
+      if (allInline) {
+        return { type: 'paragraph', content: strippedChildren };
+      }
+      // Unknown node with block children — drop it to avoid invalid structure
+      return null;
     }
     if (typeof json.text === 'string' && json.text) {
       return { type: 'text', text: json.text };
@@ -448,7 +522,7 @@ function stripUnknownNodes(json: JSONContent, schema: Editor['schema']): JSONCon
 const INLINE_NODE_TYPES = new Set(['text', 'hardBreak', 'image', 'inlineMath', 'mention']);
 
 /** Block nodes whose content model requires paragraphs, not raw inline nodes. */
-const BLOCK_WRAPPER_TYPES = new Set(['listItem', 'blockquote']);
+const BLOCK_WRAPPER_TYPES = new Set(['listItem', 'blockquote', 'doc']);
 
 /**
  * Wrap bare inline nodes (text, hardBreak, etc.) in paragraphs inside
@@ -544,6 +618,7 @@ function repairEmptyHeadings(json: JSONContent, mgr: MarkdownManager, rawContent
           h.content = reparsedHeading.content;
         }
       } catch {
+        console.error('[MarkdownEditor] heading reparse failed for:', rawH.text);
         // Fallback: plain text node
         h.content = [{ type: 'text', text: rawH.text }];
       }
@@ -556,17 +631,28 @@ function parseMarkdownContent(instance: Editor, content: string): JSONContent | 
   const mgr = getMarkdownManager(instance);
   if (!mgr) return null;
   try {
-    // Math preprocessing first: convert $...$ / $$...$$ to HTML tags.
-    // Must run before angle-bracket escaping so < inside LaTeX (e.g. $x < y$)
-    // is correctly preserved as &lt; inside the data-latex attribute.
-    const withMath = preprocessMathForMarkdown(content);
+    // Strip control characters that would break HTML/XML parsing
+    content = sanitizeControlChars(content);
+    // Convert ALL $$...$$ to $...$ to prevent blockMath-in-listItem errors.
+    // ProseMirror schema forbids blockMath as a child of listItem, and the
+    // block-math tokenizer produces blockMath nodes that fail validation inside
+    // list items. The AI is told to use $...$ for all math, so $$ usage is rare.
+    content = content.replace(/\$\$([\s\S]+?)\$\$/g, (_full, latex: string) => {
+      return `$${latex.trim()}$`;
+    });
+    // Protect $...$ / $$...$$ math syntax from angle-bracket escaping so
+    // that < inside LaTeX (e.g. $x < y$) is preserved. The custom
+    // markdownTokenizer on the Mathematics extension handles these directly.
+    const mathProtected = protectMathDollarSyntax(content);
     // Escape unprotected < to &lt; so marked doesn't treat text like <中文> as HTML.
-    // Math HTML tags (span/div with data-type="...math") are protected from escaping.
-    const htmlSafe = escapeNonHtmlAngleBrackets(withMath);
+    // Math HTML tags (from old saved content) are also protected from escaping.
+    const htmlSafe = escapeNonHtmlAngleBrackets(mathProtected.protected);
+    // Restore $...$ / $$...$$ math syntax so the custom tokenizer can parse it
+    const finalContent = mathProtected.restore(htmlSafe);
     // Table tokens are handled by TableMarkdownParser (custom extension registered
     // on the editor). marked's gfm:true produces 'table' tokens; the extension
     // converts them directly to TipTap JSON without going through generateJSON.
-    const parsed = mgr.parse(htmlSafe);
+    const parsed = mgr.parse(finalContent);
 
     // Strip nodes with unknown types, then wrap bare inline nodes in paragraphs
     const stripped = stripUnknownNodes(parsed, instance.schema) ?? parsed;
@@ -586,46 +672,51 @@ function parseMarkdownContent(instance: Editor, content: string): JSONContent | 
 }
 
 /**
- * Escape HTML special characters in LaTeX content so they survive the HTML→JSON parse.
+ * Pre-process markdown text to protect $...$ / $$...$$ math syntax from
+ * angle-bracket escaping. Unlike the old approach (converting to HTML tags
+ * and relying on generateJSON's parseHTML), we keep the original $ syntax
+ * so that the Mathematics extension's custom markdownTokenizer can parse
+ * math directly. This avoids the fragile HTML round-trip through
+ * parseHTMLToken → generateJSON → baseExtensions.
+ *
+ * The placeholder approach ensures that < inside LaTeX (e.g. $x < y$)
+ * survives escapeNonHtmlAngleBrackets intact.
  */
-function escapeLatexForHtmlAttr(latex: string): string {
-  return latex
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+function protectMathDollarSyntax(text: string): { protected: string; restore: (s: string) => string } {
+  const blocks: string[] = [];
+  const PROTECTED = '\x00MDS';
+  let idx = 0;
+
+  let processed = text;
+  // Block math first ($$...$$) — multiline, non-greedy
+  processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
+    const placeholder = `${PROTECTED}${idx}\x00`;
+    blocks.push(match);
+    idx++;
+    return placeholder;
+  });
+
+  // Inline math ($...$) — single-line, exclude currency with (?![ \d])
+  processed = processed.replace(/\$(?![ \d])([^$\n]+?)\$/g, (match) => {
+    const placeholder = `${PROTECTED}${idx}\x00`;
+    blocks.push(match);
+    idx++;
+    return placeholder;
+  });
+
+  return {
+    protected: processed,
+    restore: (s: string) => s.replace(/\x00MDS(\d+)\x00/g, (_m, i) => blocks[parseInt(i)] ?? ''),
+  };
 }
 
 /**
- * Pre-process markdown text: convert $...$ (inline math) and $$...$$ (block math)
- * into HTML tags that the Mathematics extension's parseHTML can recognize.
- *
- * The Mathematics extension registers:
- *   parseHTML: [{ tag: 'span[data-type="inline-math"]' }]
- *   parseHTML: [{ tag: 'div[data-type="block-math"]' }]
- *
- * The TipTap MarkdownManager parses these HTML tags via generateJSON(),
- * which respects extension parseHTML rules and creates inlineMath/blockMath nodes.
+ * Strip control characters that are invalid in HTML/XML and will break
+ * the DOM parser used by generateJSON inside the markdown manager.
  */
-function preprocessMathForMarkdown(text: string): string {
-  // Fast path: no $ delimiters means no LaTeX math to preprocess
-  if (!text.includes('$')) {
-    return text;
-  }
-
-  // Block math first ($$...$$) — supports multiline with [\s\S]+?
-  // Use a non-greedy match so adjacent blocks stay separate
-  let result = text.replace(/\$\$([\s\S]+?)\$\$/g, (_full, latex: string) => {
-    return `<div data-type="block-math" data-latex="${escapeLatexForHtmlAttr(latex.trim())}"></div>`;
-  });
-
-  // Inline math ($...$) — single-line only.
-  // The lookahead (?![ \d]) prevents matching currency values like $100 or $ 50.
-  result = result.replace(/\$(?![ \d])([^$\n]+?)\$/g, (_full, latex: string) => {
-    return `<span data-type="inline-math" data-latex="${escapeLatexForHtmlAttr(latex.trim())}"></span>`;
-  });
-
-  return result;
+function sanitizeControlChars(text: string): string {
+  // Strip C1 control characters (U+0080-U+009F) — invalid in HTML/XML
+  return text.replace(/[\x80-\x9f]/g, ' ');
 }
 
 function startChatText() {
@@ -638,7 +729,7 @@ function startChatText() {
         {
           type: 'paragraph',
           attrs: { locked: 'true' },
-          content: [{ type: 'text', text: CHAT_PROMPT_TEXT }],
+          content: [{ type: 'text', text: getChatPromptText() }],
         },
         { type: 'paragraph' },
       ],
@@ -744,7 +835,7 @@ function buildInlineChatDoc(pendingUserMsg?: string): JSONContent {
       content.push({
         type: 'paragraph',
         attrs: { locked: 'true' },
-        content: [{ type: 'text', text: '让我思考一下...' }],
+        content: [{ type: 'text', text: t('editor.thinking') }],
       });
     }
   }
@@ -784,7 +875,9 @@ async function appendKnowledgeNote(note: string): Promise<void> {
     if (activeNode.value) {
       activeNode.value.content = newContent;
     }
-  } catch { /* save failed, continue */ }
+  } catch {
+    console.error('[MarkdownEditor] autoSave failed');
+  }
 }
 
 async function sendInlineMessage() {
@@ -831,7 +924,9 @@ async function sendInlineMessage() {
           if (activeNode.value) {
             activeNode.value.content = result.consolidated_content;
           }
-        } catch { /* save failed, keep incremental content */ }
+        } catch {
+          console.error('[MarkdownEditor] saveActiveNodeContent failed during sendInlineMessage consolidation');
+        }
       }
     }
 
@@ -842,6 +937,7 @@ async function sendInlineMessage() {
     applyInlineChatDoc(buildInlineChatDoc());
 
   } catch {
+    console.error('[MarkdownEditor] sendInlineMessage failed');
     chatMode.value = 'text_input';
     applyInlineChatDoc(buildInlineChatDoc());
   }
@@ -903,7 +999,9 @@ async function onEndConversation() {
         if (activeNode.value) {
           activeNode.value.content = result.consolidated_content;
         }
-      } catch { /* save failed, keep incremental content */ }
+      } catch {
+        console.error('[MarkdownEditor] saveActiveNodeContent failed during onEndConversation');
+      }
     }
   }
 }
@@ -919,7 +1017,7 @@ async function onRegenerate() {
 
 async function onMarkConcept() {
   if (isBusy.value) return;
-  const name = window.prompt('输入概念名称：');
+  const name = window.prompt(t('editor.conceptNamePrompt'));
   if (!name || !name.trim()) return;
   const result = await markConcept(name.trim());
   if (result) {
@@ -1025,6 +1123,7 @@ async function toggleChat() {
             chatMode.value = 'text_input';
             applyInlineChatDoc(buildInlineChatDoc());
           } catch {
+            console.error('[MarkdownEditor] doStartContextualChat failed, falling back to text mode');
             // Fallback to simple text mode on failure
             startChatText();
           }
@@ -1085,15 +1184,21 @@ function formatFileSize(bytes: number): string {
 async function fillContentFromFile() {
   if (!pendingFile.value || !activeNode.value) return;
   isBusy.value = true;
+  errorMessage.value = '';
   try {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
-    const token = localStorage.getItem('acacia_backend_token');
-    const resp = await fetch(`${backendUrl}/file-content/${pendingFile.value.file_id}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!resp.ok) throw new Error('获取文件内容失败');
-    const data = await resp.json();
-    const fullText = data.full_text || '';
+
+    // Use pipeline-formatted text directly (already processed during upload)
+    let fullText = pendingFile.value.formatted_text || '';
+
+    if (!fullText.trim()) {
+      errorMessage.value = t('editor.emptyContentWarning');
+      return;
+    }
+
+    // Rewrite image URLs to absolute backend URLs so they load in the editor
+    fullText = fullText.replace(/\/file-images\//g, `${backendUrl}/file-images/`);
+
     await store.saveActiveNodeContent(activeNode.value.id, fullText);
     lastSavedContent.value = fullText;
     draft.value = fullText;
@@ -1106,7 +1211,7 @@ async function fillContentFromFile() {
     pendingFile.value = null;
     isFileSunk.value = false;
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : '填入内容失败';
+    errorMessage.value = e instanceof Error ? e.message : t('editor.fillContentFailed');
   } finally {
     isBusy.value = false;
   }
@@ -1114,6 +1219,8 @@ async function fillContentFromFile() {
 
 async function startLineByLineChat() {
   if (!pendingFile.value || !activeNode.value) return;
+  isBusy.value = true;
+  errorMessage.value = '';
   try {
     const prevId = lastActiveNodeId.value;
     const transType = prevId ? 'navigation' : 'initial';
@@ -1131,8 +1238,10 @@ async function startLineByLineChat() {
     isChatSunk.value = true;
     chatMode.value = 'text_input';
     applyInlineChatDoc(buildInlineChatDoc());
-  } catch {
-    // Failed — stay on choice screen
+  } catch (e) {
+    console.error('[MarkdownEditor] resumeOrStartChat contextual start failed:', e);
+  } finally {
+    isBusy.value = false;
   }
 }
 
@@ -1290,6 +1399,30 @@ function buildPlainTextDoc(content: string): JSONContent {
   };
 }
 
+function getJsonTextLength(node: JSONContent | null | undefined): number {
+  if (!node) return 0;
+  let length = typeof node.text === 'string' ? node.text.length : 0;
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      length += getJsonTextLength(child);
+    }
+  }
+  return length;
+}
+
+function shouldUsePlainTextFallback(source: string, parsedDoc: JSONContent | null): boolean {
+  if (!parsedDoc) return true;
+  const trimmed = source.trim();
+  if (!trimmed) return false;
+
+  const hasMath = /\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<!\\)\$(?![\s\d])(?:\\.|[^$\\\n])+?(?<!\\)\$/.test(trimmed);
+  const hasTable = /^\s*\|.+\|\s*$/m.test(trimmed);
+  if (!hasMath && !hasTable) return false;
+
+  const parsedTextLength = getJsonTextLength(parsedDoc);
+  return parsedTextLength < trimmed.length * 0.7;
+}
+
 function parseMarkdownDoc(instance: Editor, content: string): JSONContent | null {
   return parseMarkdownContent(instance, content);
 }
@@ -1349,12 +1482,17 @@ function syncEditorContent(content: string): void {
 
   const source = sanitizeMarkdownSource(normalized);
   const parsedDoc = parseMarkdownDoc(editor.value, source);
+  const doc = shouldUsePlainTextFallback(source, parsedDoc)
+    ? buildPlainTextDoc(source)
+    : parsedDoc;
 
   isApplyingExternalContent.value = true;
-  editor.value.commands.setContent(parsedDoc ?? buildPlainTextDoc(source), {
+  editor.value.commands.setContent(doc, {
     emitUpdate: false,
   });
-  migrateMathStrings(editor.value);
+  if (doc === parsedDoc) {
+    migrateMathStrings(editor.value);
+  }
   isApplyingExternalContent.value = false;
 }
 
@@ -1594,6 +1732,10 @@ watch(
     if (activeNode.value && editor.value) {
       syncEditorContent(content);
     }
+
+    if (activeNode.value) {
+      void refreshSameNameTree();
+    }
   },
   { immediate: true },
 );
@@ -1646,7 +1788,65 @@ onBeforeUnmount(() => {
 .editor-input {
   width: 100%;
   min-height: 100%;
-  padding: 44px 16px 14px;
+  padding: 12px 16px 14px;
+}
+
+.same-name-paths {
+  margin: 16px 16px 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-hint, rgba(102, 255, 229, 0.34));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-primary, #ffffff) 7%, transparent);
+  color: var(--color-primary);
+  user-select: text;
+}
+
+.same-name-paths-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.same-name-paths-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.same-name-path {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-hint, rgba(102, 255, 229, 0.78));
+  overflow-wrap: anywhere;
+}
+
+:global([data-theme-brightness='light']) .same-name-paths {
+  background: color-mix(in srgb, var(--color-primary-on-light, var(--color-primary, #1f2937)) 7%, transparent);
+  border-color: color-mix(in srgb, var(--color-hint-on-light, var(--color-hint, #2563eb)) 55%, transparent);
+  color: var(--color-primary-on-light, var(--color-primary));
+}
+
+:global([data-theme-brightness='light']) .same-name-paths-title {
+  color: var(--color-primary-on-light, var(--color-primary));
+}
+
+:global([data-theme-brightness='light']) .same-name-path {
+  color: var(--color-hint-on-light, var(--color-hint));
+}
+
+:global([data-theme-brightness='dark']) .same-name-paths {
+  background: color-mix(in srgb, var(--color-primary-on-dark, var(--color-primary, #ffffff)) 7%, transparent);
+  border-color: color-mix(in srgb, var(--color-hint-on-dark, var(--color-hint, #66ffe5)) 55%, transparent);
+  color: var(--color-primary-on-dark, var(--color-primary));
+}
+
+:global([data-theme-brightness='dark']) .same-name-paths-title {
+  color: var(--color-primary-on-dark, var(--color-primary));
+}
+
+:global([data-theme-brightness='dark']) .same-name-path {
+  color: var(--color-hint-on-dark, var(--color-hint));
 }
 
 .editor-input.editor-readonly {

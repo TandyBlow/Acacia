@@ -8,5 +8,7 @@ bcrypt
 httpx
 pymupdf
 easyocr
+pix2text
+texteller
 python-docx
 python-multipart

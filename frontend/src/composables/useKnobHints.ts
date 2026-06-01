@@ -16,7 +16,8 @@ function loadState(action: HintAction): HintState {
     const raw = localStorage.getItem(`acacia_knob_hint_${action}`);
     if (!raw) return { count: 0, lastAction: 0 };
     return JSON.parse(raw) as HintState;
-  } catch {
+  } catch (e) {
+    console.error('[useKnobHints] loadState failed:', e);
     return { count: 0, lastAction: 0 };
   }
 }
@@ -24,8 +25,9 @@ function loadState(action: HintAction): HintState {
 function saveState(action: HintAction, state: HintState): void {
   try {
     localStorage.setItem(`acacia_knob_hint_${action}`, JSON.stringify(state));
-  } catch {
+  } catch (e) {
     // localStorage unavailable (private browsing)
+    console.error('[useKnobHints] saveState failed:', e);
   }
 }
 
