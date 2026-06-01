@@ -212,7 +212,15 @@ async function save() {
     }
     dirty.value = false;
     isCreating.value = false;
-    await fetchList();() {
+    await fetchList();
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : t('admin.saveFailed');
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function togglePublish() {
   const next = !editPublished.value;
   saving.value = true;
   saveError.value = '';
