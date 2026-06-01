@@ -1772,7 +1772,6 @@ watch(
           chatMode.value = 'idle';
         }
       }
-      isMarkdownSourceMode.value = false;
     }
 
     if (activeNode.value && editor.value) {
@@ -1902,17 +1901,6 @@ onBeforeUnmount(() => {
 
 .markdown-preview {
   color: var(--color-primary);
-}
-
-.markdown-source-editor {
-  min-height: 100%;
-  border: 0;
-  outline: none;
-  resize: none;
-  background: transparent;
-  color: var(--color-primary);
-  font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-  white-space: pre-wrap;
 }
 
 .markdown-preview :deep(.katex-display) {
