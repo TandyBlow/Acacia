@@ -70,7 +70,13 @@
 
             <!-- idle or conversing: editor + optional conversation controls -->
             <template v-else>
+              <div
+                v-if="showMarkdownRenderedContent"
+                class="markdown-preview editor-input"
+                v-html="renderedMarkdown"
+              />
               <EditorContent
+                v-else
                 :editor="editor"
                 class="editor-input"
                 :class="{ 'editor-readonly': chatMode === 'conversing' }"
@@ -239,11 +245,14 @@ import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import katex from 'katex';
 import { useNodeStore } from '../../stores/nodeStore';
 import type { TreeNode } from '../../types/node';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
+import { apiFetch } from '../../utils/api';
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import type { EditorState } from 'prosemirror-state';
 import 'highlight.js/styles/github.css';
@@ -353,6 +362,64 @@ const hasUserEdited = ref(false);
 const isChatSunk = ref(false);
 const isFileSunk = ref(false);
 const isAnimating = ref(false);
+
+const isMarkdownLikeContent = computed(() => {
+  const content = activeNode.value?.content ?? '';
+  return /(^|\n)\s{0,3}#{1,6}\s|(^|\n)\s{0,3}>\s|(^|\n)\s*\|.+\|\s*$|```|\$\$[\s\S]+?\$\$|(?<!\\)\$(?![\s\d])(?:\\.|[^$\\\n])+?(?<!\\)\$/m.test(content);
+});
+
+const showMarkdownRenderedContent = computed(() => chatMode.value === 'idle' && isMarkdownLikeContent.value);
+
+function renderMathInMarkdown(source: string): string {
+  const mathBlocks: string[] = [];
+  const placeholderPrefix = 'ACACIA_RENDER_MATH_';
+  let index = 0;
+
+  function stashMath(match: string, displayMode: boolean): string {
+    const raw = displayMode ? match.slice(2, -2) : match.slice(1, -1);
+    let html = '';
+    try {
+      html = katex.renderToString(raw.trim(), {
+        displayMode,
+        throwOnError: false,
+        strict: false,
+        trust: false,
+      });
+    } catch {
+      html = `<code>${escapeHtml(match)}</code>`;
+    }
+    const placeholder = `${placeholderPrefix}${index}__`;
+    mathBlocks.push(html);
+    index += 1;
+    return placeholder;
+  }
+
+  return source
+    .replace(/\$\$([\s\S]+?)\$\$/g, (match) => stashMath(match, true))
+    .replace(/(?<!\\)\$(?![\s\d])(?:\\.|[^$\\\n])+?(?<!\\)\$/g, (match) => stashMath(match, false))
+    .replace(new RegExp(`${placeholderPrefix}(\\d+)__`, 'g'), (_match, i) => mathBlocks[Number(i)] ?? '');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const renderedMarkdown = computed(() => {
+  const html = marked.parse(renderMathInMarkdown(activeNode.value?.content ?? ''), {
+    gfm: true,
+    breaks: true,
+  });
+  return DOMPurify.sanitize(String(html), {
+    USE_PROFILES: { html: true },
+    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mtext', 'annotation'],
+    ADD_ATTR: ['xmlns', 'encoding', 'class', 'style', 'aria-hidden'],
+  });
+});
 
 const currentNodePath = computed(() => {
   if (!activeNode.value) return '';
@@ -1206,6 +1273,13 @@ async function fillContentFromFile() {
       activeNode.value.content = fullText;
     }
     syncEditorContent(fullText);
+    // Clean up temp files on server after file content is consumed
+    if (pendingFile.value?.file_id) {
+      apiFetch('/cleanup-file', {
+        method: 'POST',
+        body: JSON.stringify({ file_id: pendingFile.value.file_id }),
+      }).catch(() => { /* fire-and-forget */ });
+    }
     // Exit back to idle
     chatMode.value = 'idle';
     pendingFile.value = null;
@@ -1399,30 +1473,6 @@ function buildPlainTextDoc(content: string): JSONContent {
   };
 }
 
-function getJsonTextLength(node: JSONContent | null | undefined): number {
-  if (!node) return 0;
-  let length = typeof node.text === 'string' ? node.text.length : 0;
-  if (Array.isArray(node.content)) {
-    for (const child of node.content) {
-      length += getJsonTextLength(child);
-    }
-  }
-  return length;
-}
-
-function shouldUsePlainTextFallback(source: string, parsedDoc: JSONContent | null): boolean {
-  if (!parsedDoc) return true;
-  const trimmed = source.trim();
-  if (!trimmed) return false;
-
-  const hasMath = /\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<!\\)\$(?![\s\d])(?:\\.|[^$\\\n])+?(?<!\\)\$/.test(trimmed);
-  const hasTable = /^\s*\|.+\|\s*$/m.test(trimmed);
-  if (!hasMath && !hasTable) return false;
-
-  const parsedTextLength = getJsonTextLength(parsedDoc);
-  return parsedTextLength < trimmed.length * 0.7;
-}
-
 function parseMarkdownDoc(instance: Editor, content: string): JSONContent | null {
   return parseMarkdownContent(instance, content);
 }
@@ -1482,17 +1532,12 @@ function syncEditorContent(content: string): void {
 
   const source = sanitizeMarkdownSource(normalized);
   const parsedDoc = parseMarkdownDoc(editor.value, source);
-  const doc = shouldUsePlainTextFallback(source, parsedDoc)
-    ? buildPlainTextDoc(source)
-    : parsedDoc;
 
   isApplyingExternalContent.value = true;
-  editor.value.commands.setContent(doc, {
+  editor.value.commands.setContent(parsedDoc ?? buildPlainTextDoc(source), {
     emitUpdate: false,
   });
-  if (doc === parsedDoc) {
-    migrateMathStrings(editor.value);
-  }
+  migrateMathStrings(editor.value);
   isApplyingExternalContent.value = false;
 }
 
@@ -1727,6 +1772,7 @@ watch(
           chatMode.value = 'idle';
         }
       }
+      isMarkdownSourceMode.value = false;
     }
 
     if (activeNode.value && editor.value) {
@@ -1852,6 +1898,65 @@ onBeforeUnmount(() => {
 .editor-input.editor-readonly {
   opacity: 0.72;
   pointer-events: none;
+}
+
+.markdown-preview {
+  color: var(--color-primary);
+}
+
+.markdown-source-editor {
+  min-height: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--color-primary);
+  font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+}
+
+.markdown-preview :deep(.katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+
+.markdown-preview :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 18px;
+  font-size: 14px;
+}
+
+.markdown-preview :deep(th),
+.markdown-preview :deep(td) {
+  border: 1px solid var(--color-hint, rgba(102, 255, 229, 0.28));
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.markdown-preview :deep(th) {
+  font-weight: 700;
+  background: rgba(102, 128, 255, 0.08);
+}
+
+.markdown-preview :deep(blockquote) {
+  margin: 0 0 1em;
+  padding: 8px 14px;
+  border-left: 3px solid var(--color-hint, rgba(102, 255, 229, 0.54));
+  color: var(--color-hint, rgba(102, 255, 229, 0.78));
+}
+
+.markdown-preview :deep(pre) {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e5e7eb;
+}
+
+.markdown-preview :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 }
 
 /* ── Chat: file upload form ──────────────────────────────────────── */

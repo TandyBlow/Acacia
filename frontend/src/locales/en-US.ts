@@ -128,6 +128,8 @@ export default {
   editor: {
     chatGenerate: 'Chat Generate beta',
     fileImport: 'File Import beta',
+    editMarkdown: 'Edit Markdown',
+    previewMarkdown: 'Preview',
     regenerate: 'Regenerate',
     markConcept: 'Mark Concept',
     exitChat: 'Exit Chat',

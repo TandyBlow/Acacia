@@ -145,10 +145,64 @@ def _seed_default_official_nodes():
             )
 
 
+def _cleanup_uploaded_file(owner_id: str, file_id: str):
+    """Delete all cached files for an uploaded file (original, .txt, .formatted.txt, images)."""
+    import glob as _glob
+    import shutil as _shutil
+    upload_dir = f"/tmp/acacia_uploads/{owner_id}"
+    pattern = os.path.join(upload_dir, f"{file_id}.*")
+    for f in _glob.glob(pattern):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    img_dir = os.path.join("/tmp/acacia_uploads/images", file_id)
+    if os.path.isdir(img_dir):
+        _shutil.rmtree(img_dir, ignore_errors=True)
+
+
+def _cleanup_stale_uploads(max_age_seconds: int = 21600):
+    """Remove uploaded files older than max_age_seconds (default 6 hours) from /tmp/acacia_uploads/."""
+    import glob as _glob
+    import shutil as _shutil
+    uploads_root = "/tmp/acacia_uploads"
+    if not os.path.isdir(uploads_root):
+        return
+    now = __import__("time").time()
+    for owner_dir in os.listdir(uploads_root):
+        owner_path = os.path.join(uploads_root, owner_dir)
+        if owner_dir == "images":
+            for img_dir in os.listdir(owner_path):
+                img_path = os.path.join(owner_path, img_dir)
+                try:
+                    if now - os.path.getmtime(img_path) > max_age_seconds:
+                        _shutil.rmtree(img_path, ignore_errors=True)
+                except OSError:
+                    pass
+            continue
+        if not os.path.isdir(owner_path):
+            continue
+        for fname in os.listdir(owner_path):
+            fpath = os.path.join(owner_path, fname)
+            try:
+                if now - os.path.getmtime(fpath) > max_age_seconds:
+                    os.remove(fpath)
+            except OSError:
+                pass
+        # Remove empty owner dirs
+        try:
+            remaining = os.listdir(owner_path)
+            if not remaining:
+                os.rmdir(owner_path)
+        except OSError:
+            pass
+
+
 @app.on_event("startup")
 def startup():
     init_db()
     _seed_default_official_nodes()
+    _cleanup_stale_uploads()
 
 
 @app.get("/")
@@ -813,6 +867,21 @@ def list_file_images(file_id: str):
     return {"images": [{"filename": f} for f in files]}
 
 
+class CleanupFileRequest(BaseModel):
+    file_id: str
+
+
+@app.post("/cleanup-file")
+def cleanup_file_endpoint(
+    request: CleanupFileRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Delete uploaded file caches after the file has been consumed
+    (content filled into node, chat ended, etc.). Idempotent."""
+    _cleanup_uploaded_file(user["sub"], request.file_id)
+    return {"status": "ok"}
+
+
 @app.get("/ocr-progress/{file_id}")
 def get_ocr_progress_endpoint(
     file_id: str,
@@ -1184,8 +1253,16 @@ def chat_end_endpoint(
 ):
     """Manually end a Socratic chat session."""
     from chat_service import end_chat
+    from session_store import load_session
     try:
-        return end_chat(request.session_id)
+        # Clean up uploaded file associated with this session
+        session = load_session(request.session_id)
+        if session:
+            file_id = session.get("file_id", "")
+            if file_id:
+                _cleanup_uploaded_file(session.get("owner_id", user["sub"]), file_id)
+        result = end_chat(request.session_id)
+        return result
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

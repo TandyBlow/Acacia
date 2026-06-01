@@ -128,6 +128,8 @@ export default {
   editor: {
     chatGenerate: '对话生成 beta',
     fileImport: '文件导入 beta',
+    editMarkdown: '编辑 Markdown',
+    previewMarkdown: '预览',
     regenerate: '重新生成',
     markConcept: '标记概念',
     exitChat: '退出对话',
