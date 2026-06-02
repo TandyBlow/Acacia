@@ -586,24 +586,25 @@ async function animateContentTransition() {
     return;
   }
 
-  // Skip animation when content area is hidden in compact nav mode.
-  // The deferred compactMode switch will trigger animateCompactToggle
-  // which handles the nav→content transition with proper animation.
+  // When content area is hidden in compact nav mode, skip the content
+  // animation and delegate to animateCompactToggle. Wait for data loading
+  // to finish first — without this, a cold cache means pendingNodeContext
+  // is still null and the nav→content switch renders a blank page.
   if (layoutType.value === 'small' && compactMode.value === 'nav') {
-    // Wait for data loading to complete before applying pending data.
-    // Without this, a slow backend response causes applyPendingData() to
-    // find no pendingNodeContext yet, so the first click appears to do
-    // nothing — the user must click a second time (by then the data is
-    // cached from the first fetch).
     if (isTransitioning.value) {
+      const ct = contentAnimToken.value;
       await new Promise<void>(resolve => {
         const stop = watch(isTransitioning, (v) => {
           if (!v) { stop(); resolve(); }
         });
       });
-      if (token !== contentAnimToken.value) return;
+      if (ct !== contentAnimToken.value) return;
     }
-    nodeStore.applyPendingData();
+    // animateCompactToggle calls applyPendingData() at the right phase
+    // (after nav slides out, before content slides in), so we must NOT
+    // apply it here — doing so would flash the new content before the
+    // animation plays when data is cached.
+    compactMode.value = 'content';
     return;
   }
 
