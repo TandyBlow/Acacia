@@ -590,6 +590,19 @@ async function animateContentTransition() {
   // The deferred compactMode switch will trigger animateCompactToggle
   // which handles the nav→content transition with proper animation.
   if (layoutType.value === 'small' && compactMode.value === 'nav') {
+    // Wait for data loading to complete before applying pending data.
+    // Without this, a slow backend response causes applyPendingData() to
+    // find no pendingNodeContext yet, so the first click appears to do
+    // nothing — the user must click a second time (by then the data is
+    // cached from the first fetch).
+    if (isTransitioning.value) {
+      await new Promise<void>(resolve => {
+        const stop = watch(isTransitioning, (v) => {
+          if (!v) { stop(); resolve(); }
+        });
+      });
+      if (token !== contentAnimToken.value) return;
+    }
     nodeStore.applyPendingData();
     return;
   }

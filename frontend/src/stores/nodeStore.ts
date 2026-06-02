@@ -235,8 +235,29 @@ export const useNodeStore = defineStore('node', () => {
         if (officialNodeContent.value) {
           loadOfficialNodeContent(officialNodeContent.value.id);
         }
+        refreshCurrentNode();
       }
     });
+  }
+
+  async function refreshCurrentNode(): Promise<void> {
+    if (!activeNode.value || !currentNodeId.value) return;
+    if (isEditState.value || isDailyQuizState.value || isOfficialContentState.value || isTreeOverviewState.value) return;
+    nodeCache.invalidate(currentNodeId.value);
+    try {
+      const context = await dataAdapter!.getNodeContext(currentNodeId.value);
+      nodeCache.setCache(currentNodeId.value, context);
+      activeNode.value = context.nodeInfo;
+      pathNodes.value = context.pathNodes;
+      childNodes.value = context.children;
+      hasAnyNodes.value = !!(
+        context.nodeInfo ||
+        context.children.length > 0 ||
+        context.pathNodes.length > 0
+      );
+    } catch {
+      // Silently keep stale data if refresh fails
+    }
   }
 
   function setViewState(state: string): void {
@@ -449,7 +470,19 @@ export const useNodeStore = defineStore('node', () => {
       }
 
       if (viewState.value === ViewStates.DELETE && operationNode.value) {
-        await dataAdapter!.deleteNode(operationNode.value.id, deleteWithChildren.value);
+        try {
+          await dataAdapter!.deleteNode(operationNode.value.id, deleteWithChildren.value);
+        } catch (delErr) {
+          const msg = formatError(delErr);
+          if (msg.includes('Node not found') || msg.includes('404')) {
+            nodeCache.invalidate(currentNodeId.value);
+            nodeCache.invalidate(operationNode.value.parentId);
+            const reloadId = currentNodeId.value;
+            await loadNode(reloadId, { replace: true });
+            return;
+          }
+          throw delErr;
+        }
         nodeCache.invalidate(currentNodeId.value);
         nodeCache.invalidate(operationNode.value.parentId);
         const reloadId = currentNodeId.value;
@@ -518,6 +551,7 @@ export const useNodeStore = defineStore('node', () => {
     cancelOperation,
     saveActiveNodeContent,
     refreshTree,
+    refreshCurrentNode,
     resetAfterLogout,
     onKnobClick,
     confirmOperation,
