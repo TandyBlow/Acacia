@@ -70,13 +70,7 @@
 
             <!-- idle or conversing: editor + optional conversation controls -->
             <template v-else>
-              <div
-                v-if="showMarkdownRenderedContent"
-                class="markdown-preview editor-input"
-                v-html="renderedMarkdown"
-              />
               <EditorContent
-                v-else
                 :editor="editor"
                 class="editor-input"
                 :class="{ 'editor-readonly': chatMode === 'conversing' }"
@@ -362,64 +356,6 @@ const hasUserEdited = ref(false);
 const isChatSunk = ref(false);
 const isFileSunk = ref(false);
 const isAnimating = ref(false);
-
-const isMarkdownLikeContent = computed(() => {
-  const content = activeNode.value?.content ?? '';
-  return /(^|\n)\s{0,3}#{1,6}\s|(^|\n)\s{0,3}>\s|(^|\n)\s*\|.+\|\s*$|```|\$\$[\s\S]+?\$\$|(?<!\\)\$(?![\s\d])(?:\\.|[^$\\\n])+?(?<!\\)\$/m.test(content);
-});
-
-const showMarkdownRenderedContent = computed(() => chatMode.value === 'idle' && isMarkdownLikeContent.value);
-
-function renderMathInMarkdown(source: string): string {
-  const mathBlocks: string[] = [];
-  const placeholderPrefix = 'ACACIA_RENDER_MATH_';
-  let index = 0;
-
-  function stashMath(match: string, displayMode: boolean): string {
-    const raw = displayMode ? match.slice(2, -2) : match.slice(1, -1);
-    let html = '';
-    try {
-      html = katex.renderToString(raw.trim(), {
-        displayMode,
-        throwOnError: false,
-        strict: false,
-        trust: false,
-      });
-    } catch {
-      html = `<code>${escapeHtml(match)}</code>`;
-    }
-    const placeholder = `${placeholderPrefix}${index}__`;
-    mathBlocks.push(html);
-    index += 1;
-    return placeholder;
-  }
-
-  return source
-    .replace(/\$\$([\s\S]+?)\$\$/g, (match) => stashMath(match, true))
-    .replace(/(?<!\\)\$(?![\s\d])(?:\\.|[^$\\\n])+?(?<!\\)\$/g, (match) => stashMath(match, false))
-    .replace(new RegExp(`${placeholderPrefix}(\\d+)__`, 'g'), (_match, i) => mathBlocks[Number(i)] ?? '');
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-const renderedMarkdown = computed(() => {
-  const html = marked.parse(renderMathInMarkdown(activeNode.value?.content ?? ''), {
-    gfm: true,
-    breaks: true,
-  });
-  return DOMPurify.sanitize(String(html), {
-    USE_PROFILES: { html: true },
-    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mtext', 'annotation'],
-    ADD_ATTR: ['xmlns', 'encoding', 'class', 'style', 'aria-hidden'],
-  });
-});
 
 const currentNodePath = computed(() => {
   if (!activeNode.value) return '';
@@ -1899,54 +1835,6 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.markdown-preview {
-  color: var(--color-primary);
-}
-
-.markdown-preview :deep(.katex-display) {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px 0;
-}
-
-.markdown-preview :deep(table) {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 12px 0 18px;
-  font-size: 14px;
-}
-
-.markdown-preview :deep(th),
-.markdown-preview :deep(td) {
-  border: 1px solid var(--color-hint, rgba(102, 255, 229, 0.28));
-  padding: 8px 10px;
-  vertical-align: top;
-}
-
-.markdown-preview :deep(th) {
-  font-weight: 700;
-  background: rgba(102, 128, 255, 0.08);
-}
-
-.markdown-preview :deep(blockquote) {
-  margin: 0 0 1em;
-  padding: 8px 14px;
-  border-left: 3px solid var(--color-hint, rgba(102, 255, 229, 0.54));
-  color: var(--color-hint, rgba(102, 255, 229, 0.78));
-}
-
-.markdown-preview :deep(pre) {
-  overflow-x: auto;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.72);
-  color: #e5e7eb;
-}
-
-.markdown-preview :deep(code) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-}
-
 /* ── Chat: file upload form ──────────────────────────────────────── */
 
 .chat-input-form {
@@ -2412,6 +2300,13 @@ onBeforeUnmount(() => {
   display: block;
   margin: 0.5em 0 0.9em;
   padding: 0.7em 0.8em;
+  overflow-x: auto;
+}
+
+.editor-input :deep(.tiptap-mathematics-render .katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
 }
 
 .editor-input :deep(.inline-math-error),

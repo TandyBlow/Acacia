@@ -31,3 +31,10 @@ export function invalidate(nodeId: string | null): void {
 export function invalidateAll(): void {
   cache.clear();
 }
+
+export function updateCachedContent(nodeId: string | null, content: string): void {
+  const entry = cache.get(nodeId);
+  if (entry && entry.context.nodeInfo) {
+    entry.context.nodeInfo = { ...entry.context.nodeInfo, content };
+  }
+}

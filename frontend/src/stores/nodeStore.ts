@@ -426,6 +426,7 @@ export const useNodeStore = defineStore('node', () => {
       if (activeNode.value?.id === nodeId) {
         activeNode.value = { ...activeNode.value, content };
       }
+      nodeCache.updateCachedContent(nodeId, content);
       _triggerStyleCheck();
       return true;
     } catch (error) {
