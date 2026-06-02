@@ -239,8 +239,6 @@ import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { all, createLowlight } from 'lowlight';
 import DOMPurify from 'dompurify';
-import { marked } from 'marked';
-import katex from 'katex';
 import { useNodeStore } from '../../stores/nodeStore';
 import type { TreeNode } from '../../types/node';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
