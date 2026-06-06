@@ -14,7 +14,6 @@ span offsets.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import time
@@ -157,7 +156,7 @@ class FullPipeline:
 
         # Stage 1+2: Extract text and spans, check OCR
         yield _progress("extract", "Extracting text and spans from PDF...", 5)
-        needs_ocr = await asyncio.to_thread(self._extract_and_check)
+        needs_ocr = self._extract_and_check()
 
         if not self.text.strip():
             yield pipeline_error("extract", "Empty text extracted from PDF", False)
@@ -232,9 +231,7 @@ class FullPipeline:
             )
 
             try:
-                chunk_annotations = await asyncio.to_thread(
-                    annotate_chunk, chunk, self.text
-                )
+                chunk_annotations = annotate_chunk(chunk, self.text)
             except Exception as e:
                 logger.error(f"Chunk {chunk_idx} annotation failed: {e}")
                 yield pipeline_error(
@@ -316,8 +313,7 @@ class FullPipeline:
             yield review_issue(v.region, v.rule_name, "detected")
 
         if errors:
-            self.llm_annotations = await asyncio.to_thread(
-                llm_review_violations,
+            self.llm_annotations = llm_review_violations(
                 self.violations, self.text, self.llm_annotations
             )
             self.markdown = merge_annotations(
