@@ -31,6 +31,7 @@ from style_service_sqlite import compute_style_sqlite
 from style_generator import _cache_key, build_profile_text
 from file_parser import parse_file, get_file_info, extract_pdf_images
 from parse_task_manager import enqueue_parse, get_parse_progress, should_preserve_verbatim
+from pipeline_task_manager import _pipeline_manager
 from quiz_service_sqlite import (
     compute_adaptive_difficulty,
     generate_batch_questions_sqlite,
@@ -712,6 +713,15 @@ async def upload_file_endpoint(
     # Enqueue background parsing — returns immediately
     enqueue_parse(file_id, file_path, owner_id, file_ext, file.filename)
 
+    # Start pipeline as a background asyncio task for real-time SSE streaming
+    await _pipeline_manager.start_pipeline(
+        file_id=file_id,
+        file_path=file_path,
+        owner_id=owner_id,
+        file_ext=file_ext,
+        original_filename=file.filename,
+    )
+
     return {
         "file_id": file_id,
         "filename": file.filename,
@@ -926,16 +936,13 @@ async def extract_stream_endpoint(
     max_pages: int = 0,
     user: dict = Depends(get_current_user)
 ):
-    """SSE streaming endpoint: run markdown pipeline on an uploaded file.
+    """SSE streaming endpoint: stream pipeline events from the background task.
 
-    For PDFs: uses FullPipeline (spans -> formulas -> metadata -> LLM annotation -> merge -> review).
-    For other files: uses format_document_text() with chunked LLM formatting.
+    The pipeline is started by POST /upload-file as a background asyncio.Task.
+    This endpoint reads events from the task's buffered event stream.
 
-    Emits SSE events: pipeline_start, stage_progress, sentence_result,
-    pipeline_complete, pipeline_error.
-
-    Caches the final markdown as {file_id}.formatted.txt so subsequent
-    Fill Content / Start Explain operations read it directly.
+    Cross-worker fallback: if the pipeline runs on a different uvicorn worker,
+    checks the on-disk formatted cache and replays it as SSE events.
     """
     import glob as glob_mod
     import json as _json
@@ -943,96 +950,77 @@ async def extract_stream_endpoint(
     owner_id = user["sub"]
     upload_dir = f"/tmp/acacia_uploads/{owner_id}"
 
-    # Find the uploaded file on disk
+    # Path A: pipeline is running (or ran) in this worker process
+    if _pipeline_manager.has_task(file_id):
+        async def event_generator():
+            async for sse_str in _pipeline_manager.get_events(file_id):
+                yield sse_str
+            await _pipeline_manager.cleanup(file_id)
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Path B: cross-worker — pipeline started by another worker process.
+    # Check the on-disk formatted cache first.
+    fmt_cache_path = os.path.join(upload_dir, f"{file_id}.formatted.txt")
+    if os.path.exists(fmt_cache_path):
+        with open(fmt_cache_path, "r", encoding="utf-8") as f:
+            formatted = f.read()
+
+        pattern = os.path.join(upload_dir, f"{file_id}.*")
+        matches = [m for m in glob_mod.glob(pattern)
+                   if not m.endswith('.txt') and not m.endswith('.formatted.txt')]
+        file_name = os.path.basename(matches[0]) if matches else file_id
+
+        async def cached_event_generator():
+            yield f"event: pipeline_start\ndata: {_json.dumps({'file_name': file_name, 'page_count': 0, 'total_chars': len(formatted)})}\n\n"
+            yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'merge', 'detail': 'Retrieved cached result', 'percent': 100, 'stageMs': 0, 'totalMs': 0})}\n\n"
+            yield f"event: pipeline_complete\ndata: {_json.dumps({'total_markdown_length': len(formatted), 'issues_found': 0, 'issues_resolved': 0, 'unresolved': 0, 'final_markdown': formatted})}\n\n"
+
+        return StreamingResponse(
+            cached_event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Path C: no cached result — find the file and start a fallback pipeline
     pattern = os.path.join(upload_dir, f"{file_id}.*")
-    matches = [m for m in glob_mod.glob(pattern) if not m.endswith('.txt') and not m.endswith('.formatted.txt')]
+    matches = [m for m in glob_mod.glob(pattern)
+               if not m.endswith('.txt') and not m.endswith('.formatted.txt')]
     if not matches:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found. Upload first via POST /upload-file."
         )
     file_path = matches[0]
-    is_pdf = file_path.lower().endswith('.pdf')
+    file_ext = os.path.splitext(file_path)[1].lower()
 
-    async def event_generator():
-        if is_pdf:
-            # PDF: FullPipeline (spans → formulas → metadata → LLM annotation → merge → review)
-            from pdf_markdown.pipeline import FullPipeline
-            from pdf_markdown.streaming import format_sse
+    await _pipeline_manager.start_pipeline(
+        file_id=file_id,
+        file_path=file_path,
+        owner_id=owner_id,
+        file_ext=file_ext,
+        max_pages=max_pages,
+    )
 
-            pipe = FullPipeline(file_path, max_pages=max_pages)
-            final_markdown = ""
-
-            async for event in pipe.run_streaming():
-                if event.event == "pipeline_complete":
-                    final_markdown = event.data.get("final_markdown", "")
-                yield format_sse(event)
-
-            # Cache the result
-            if final_markdown:
-                fmt_cache_path = os.path.join(upload_dir, f"{file_id}.formatted.txt")
-                try:
-                    with open(fmt_cache_path, 'w', encoding='utf-8') as f:
-                        f.write(final_markdown)
-                except Exception as e:
-                    logger.warning("Failed to write formatted cache for %s: %s", file_id, e)
-        else:
-            # Non-PDF: use the existing format_document_text with simple SSE progress
-            import time as _time
-            from parse_task_manager import format_document_text
-
-            t_start = _time.time()
-            file_name = os.path.basename(file_path)
-
-            # Read cached text
-            cache_path = os.path.join(upload_dir, f"{file_id}.txt")
-            if os.path.exists(cache_path):
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    text_content = f.read()
-            else:
-                from file_parser import parse_file as _parse_file
-                text_content = _parse_file(file_path)
-
-            total_chars = len(text_content)
-            yield f"event: pipeline_start\ndata: {_json.dumps({'file_name': file_name, 'page_count': 0, 'total_chars': total_chars})}\n\n"
-
-            if not text_content.strip():
-                yield f"event: pipeline_error\ndata: {_json.dumps({'stage': 'extract', 'message': 'Empty file content', 'recoverable': False})}\n\n"
-                return
-
-            file_ext = os.path.splitext(file_path)[1].lower()
-            if should_preserve_verbatim(file_ext):
-                yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'merge', 'detail': 'Preserving Markdown source...', 'percent': 90, 'stageMs': 0, 'totalMs': int((_time.time() - t_start) * 1000)})}\n\n"
-                formatted = text_content
-            else:
-                # Stage: formatting
-                yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'annotate', 'detail': 'Formatting with LLM...', 'percent': 30, 'stageMs': 0, 'totalMs': int((_time.time() - t_start) * 1000)})}\n\n"
-
-                try:
-                    formatted = format_document_text(text_content)
-                except Exception as e:
-                    yield f"event: pipeline_error\ndata: {_json.dumps({'stage': 'annotate', 'message': str(e), 'recoverable': False})}\n\n"
-                    return
-
-            total_ms = int((_time.time() - t_start) * 1000)
-            yield f"event: stage_progress\ndata: {_json.dumps({'stage': 'merge', 'detail': 'Formatting complete', 'percent': 90, 'stageMs': total_ms, 'totalMs': total_ms})}\n\n"
-
-            yield f"event: pipeline_complete\ndata: {_json.dumps({'total_markdown_length': len(formatted), 'issues_found': 0, 'issues_resolved': 0, 'unresolved': 0, 'final_markdown': formatted})}\n\n"
-
-        # Cache the result — pipeline_complete.final_markdown was already yielded,
-        # but we also persist it for subsequent reads
-        fmt_cache_path = os.path.join(upload_dir, f"{file_id}.formatted.txt")
-        # The final_markdown was yielded in pipeline_complete; for PDFs the
-        # pipeline handles its own caching. For non-PDFs we cache here.
-        if not is_pdf:
-            try:
-                with open(fmt_cache_path, 'w', encoding='utf-8') as f:
-                    f.write(formatted)
-            except Exception as e:
-                logger.warning("Failed to write formatted cache for %s: %s", file_id, e)
+    async def fallback_event_generator():
+        async for sse_str in _pipeline_manager.get_events(file_id):
+            yield sse_str
+        await _pipeline_manager.cleanup(file_id)
 
     return StreamingResponse(
-        event_generator(),
+        fallback_event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
