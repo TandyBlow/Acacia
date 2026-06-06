@@ -7,13 +7,12 @@ Decouples pipeline execution from the SSE request handler:
 - Supports multiple concurrent SSE readers and late-joining clients
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
 import os
 import time
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +20,15 @@ logger = logging.getLogger(__name__)
 class _PipelineState:
     """Per-file pipeline state shared between the background task and SSE readers."""
 
-    def __init__(self, file_id: str) -> None:
+    def __init__(self, file_id: str):
         self.file_id = file_id
-        self.status: str = "running"          # "running" | "completed" | "failed"
-        self.buffered_events: list[str] = []   # all SSE-formatted events emitted so far
-        self.new_event = asyncio.Event()       # signaled when a new event is appended
-        self.done = asyncio.Event()            # signaled when pipeline finishes (pass/fail)
-        self.final_markdown: str = ""
-        self.error_message: str = ""
-        self.task: asyncio.Task | None = None
+        self.status = "running"
+        self.buffered_events: List[str] = []
+        self.new_event = asyncio.Event()
+        self.done = asyncio.Event()
+        self.final_markdown = ""
+        self.error_message = ""
+        self.task: Optional[asyncio.Task] = None
 
 
 class PipelineTaskManager:
@@ -40,8 +39,8 @@ class PipelineTaskManager:
     and late-joining clients that receive a full event replay from the buffer.
     """
 
-    def __init__(self) -> None:
-        self._states: dict[str, _PipelineState] = {}
+    def __init__(self):
+        self._states: Dict[str, _PipelineState] = {}
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -121,7 +120,7 @@ class PipelineTaskManager:
         """Check if a pipeline task is registered in this process."""
         return file_id in self._states
 
-    def get_state(self, file_id: str) -> dict | None:
+    def get_state(self, file_id: str) -> Optional[Dict]:
         """Return a snapshot of pipeline state for diagnostics."""
         state = self._states.get(file_id)
         if state is None:

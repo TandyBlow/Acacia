@@ -31,7 +31,13 @@ from style_service_sqlite import compute_style_sqlite
 from style_generator import _cache_key, build_profile_text
 from file_parser import parse_file, get_file_info, extract_pdf_images
 from parse_task_manager import enqueue_parse, get_parse_progress, should_preserve_verbatim
-from pipeline_task_manager import _pipeline_manager
+
+try:
+    from pipeline_task_manager import _pipeline_manager
+except Exception:
+    import logging as _logging
+    _logging.getLogger(__name__).exception("pipeline_task_manager import failed")
+    _pipeline_manager = None
 from quiz_service_sqlite import (
     compute_adaptive_difficulty,
     generate_batch_questions_sqlite,
@@ -714,13 +720,14 @@ async def upload_file_endpoint(
     enqueue_parse(file_id, file_path, owner_id, file_ext, file.filename)
 
     # Start pipeline as a background asyncio task for real-time SSE streaming
-    await _pipeline_manager.start_pipeline(
-        file_id=file_id,
-        file_path=file_path,
-        owner_id=owner_id,
-        file_ext=file_ext,
-        original_filename=file.filename,
-    )
+    if _pipeline_manager is not None:
+        await _pipeline_manager.start_pipeline(
+            file_id=file_id,
+            file_path=file_path,
+            owner_id=owner_id,
+            file_ext=file_ext,
+            original_filename=file.filename,
+        )
 
     return {
         "file_id": file_id,
