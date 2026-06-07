@@ -52,7 +52,8 @@ jobs:
             echo ">>> npm run build" | tee -a "$LOG"
             NODE_OPTIONS="--max-old-space-size=4096" VITE_DATA_MODE=backend VITE_BACKEND_URL=/api npm run build 2>&1 | tee -a "$LOG"
 
-            echo ">>> systemctl restart acacia" | tee -a "$LOG"
+            echo ">>> reset failed state + restart acacia" | tee -a "$LOG"
+            sudo systemctl reset-failed acacia 2>&1 | tee -a "$LOG"
             sudo systemctl restart acacia 2>&1 | tee -a "$LOG"
             sleep 2
 
