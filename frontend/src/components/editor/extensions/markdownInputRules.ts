@@ -3,18 +3,18 @@ import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Strike from '@tiptap/extension-strike';
 
-const boldStarInputRegex = /(?:^|[^*])(\*\*(?!\s+\*\*)((?:[^*]+))\*\*(?!\s+\*\*))$/;
-const boldStarPasteRegex = /(?:^|[^*])(\*\*(?!\s+\*\*)((?:[^*]+))\*\*(?!\s+\*\*))/g;
-const boldUnderscoreInputRegex = /(?:^|[^_])(__(?!\s+__)((?:[^_]+))__(?!\s+__))$/;
-const boldUnderscorePasteRegex = /(?:^|[^_])(__(?!\s+__)((?:[^_]+))__(?!\s+__))/g;
+const boldStarInputRegex = /(?<!\*)\*\*(?!\s+\*\*)((?:[^*]+))\*\*(?!\s+\*\*)$/;
+const boldStarPasteRegex = /(?<!\*)\*\*(?!\s+\*\*)((?:[^*]+))\*\*(?!\s+\*\*)/g;
+const boldUnderscoreInputRegex = /(?<!_)__(?!\s+__)((?:[^_]+))__(?!\s+__)$/;
+const boldUnderscorePasteRegex = /(?<!_)__(?!\s+__)((?:[^_]+))__(?!\s+__)/g;
 
-const italicStarInputRegex = /(?:^|[^*])(\*(?!\s+\*)((?:[^*]+))\*(?!\s+\*))$/;
-const italicStarPasteRegex = /(?:^|[^*])(\*(?!\s+\*)((?:[^*]+))\*(?!\s+\*))/g;
-const italicUnderscoreInputRegex = /(?:^|[^_])(_(?!\s+_)((?:[^_]+))_(?!\s+_))$/;
-const italicUnderscorePasteRegex = /(?:^|[^_])(_(?!\s+_)((?:[^_]+))_(?!\s+_))/g;
+const italicStarInputRegex = /(?<!\*)\*(?!\s+\*((?:[^*]+))\*(?!\s+\*)$/;
+const italicStarPasteRegex = /(?<!\*)\*(?!\s+\*)((?:[^*]+))\*(?!\s+\*)/g;
+const italicUnderscoreInputRegex = /(?<!_)_(?!\s+_)((?:[^_]+))_(?!\s+_)$/;
+const italicUnderscorePasteRegex = /(?<!_)_(?!\s+_)((?:[^_]+))_(?!\s+_)/g;
 
-const strikeInputRegex = /(?:^|[^~])(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))$/;
-const strikePasteRegex = /(?:^|[^~])(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))/g;
+const strikeInputRegex = /(?<!~)~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~)$/;
+const strikePasteRegex = /(?<!~)~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~)/g;
 
 export const MarkdownBold = Bold.extend({
   addInputRules() {
