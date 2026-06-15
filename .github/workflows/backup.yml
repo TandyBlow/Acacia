@@ -11,13 +11,20 @@ jobs:
     steps:
       - name: Checkpoint and download database
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh -o StrictHostKeyChecking=no root@67.230.171.167 \
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            -o IdentitiesOnly=yes \
+            root@67.230.171.167 \
             "sqlite3 /opt/acacia/data/acacia.db 'PRAGMA wal_checkpoint(TRUNCATE)'"
 
-          scp -o StrictHostKeyChecking=no root@67.230.171.167:/opt/acacia/data/acacia.db ./acacia.db
+          scp -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            -o IdentitiesOnly=yes \
+            root@67.230.171.167:/opt/acacia/data/acacia.db ./acacia.db
 
       - name: Upload backup
         uses: actions/upload-artifact@v4
