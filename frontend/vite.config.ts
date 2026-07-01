@@ -3,6 +3,14 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { execSync } from 'node:child_process'
+
+let gitCommitCount = '0'
+try {
+  gitCommitCount = execSync('git rev-list --count HEAD', { encoding: 'utf-8' }).trim()
+} catch {
+  // Not a git repo or git not available — version will show 0
+}
 
 function loadManifest() {
   try {
@@ -22,6 +30,9 @@ const manifest = loadManifest()
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __GIT_COMMIT_COUNT__: JSON.stringify(gitCommitCount),
+  },
   plugins: [
     vue(),
     VitePWA({
