@@ -1552,8 +1552,19 @@ const editor = useEditor({
         return false;
       }
 
-      const markdownText = event.clipboardData.getData('text/markdown');
-      const plainText = event.clipboardData.getData('text/plain');
+      // Per Clipboard API spec, getData() for non-mandatory MIME types
+      // (like text/markdown) can throw DOMException. Only text/plain,
+      // text/html, text/uri-list are mandatory. Guard with type check
+      // and try-catch so a throw doesn't abort the whole handler.
+      let markdownText = '';
+      if (clipboardTypes.includes('text/markdown')) {
+        try { markdownText = event.clipboardData.getData('text/markdown'); } catch { /* ignore */ }
+      }
+      let plainText = '';
+      if (clipboardTypes.includes('text/plain')) {
+        try { plainText = event.clipboardData.getData('text/plain'); } catch { /* ignore */ }
+      }
+
       const source = sanitizeMarkdownSource(normalizePastedText(markdownText || plainText));
       if (!source) {
         return false;
