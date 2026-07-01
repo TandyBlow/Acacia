@@ -8,7 +8,7 @@ const boldStarPasteRegex = /(?<!\*)\*\*(?!\s+\*\*)((?:[^*]+))\*\*(?!\s+\*\*)/g;
 const boldUnderscoreInputRegex = /(?<!_)__(?!\s+__)((?:[^_]+))__(?!\s+__)$/;
 const boldUnderscorePasteRegex = /(?<!_)__(?!\s+__)((?:[^_]+))__(?!\s+__)/g;
 
-const italicStarInputRegex = /(?<!\*)\*(?!\s+\*((?:[^*]+))\*(?!\s+\*)$/;
+const italicStarInputRegex = /(?<!\*)\*(?!\s+\*)((?:[^*]+))\*(?!\s+\*)$/;
 const italicStarPasteRegex = /(?<!\*)\*(?!\s+\*)((?:[^*]+))\*(?!\s+\*)/g;
 const italicUnderscoreInputRegex = /(?<!_)_(?!\s+_)((?:[^_]+))_(?!\s+_)$/;
 const italicUnderscorePasteRegex = /(?<!_)_(?!\s+_)((?:[^_]+))_(?!\s+_)/g;
