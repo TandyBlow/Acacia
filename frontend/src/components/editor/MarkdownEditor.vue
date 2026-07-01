@@ -1552,18 +1552,15 @@ const editor = useEditor({
         return false;
       }
 
-      // Per Clipboard API spec, getData() for non-mandatory MIME types
-      // (like text/markdown) can throw DOMException. Only text/plain,
-      // text/html, text/uri-list are mandatory. Guard with type check
-      // and try-catch so a throw doesn't abort the whole handler.
-      let markdownText = '';
-      if (clipboardTypes.includes('text/markdown')) {
-        try { markdownText = event.clipboardData.getData('text/markdown'); } catch { /* ignore */ }
-      }
-      let plainText = '';
-      if (clipboardTypes.includes('text/plain')) {
-        try { plainText = event.clipboardData.getData('text/plain'); } catch { /* ignore */ }
-      }
+      // Per Clipboard API spec, getData() throws DOMException for types
+      // not present in clipboardData.types. We check types first so this
+      // should never throw; a throw here is a real bug worth surfacing.
+      const markdownText = clipboardTypes.includes('text/markdown')
+        ? event.clipboardData.getData('text/markdown')
+        : '';
+      const plainText = clipboardTypes.includes('text/plain')
+        ? event.clipboardData.getData('text/plain')
+        : '';
 
       const source = sanitizeMarkdownSource(normalizePastedText(markdownText || plainText));
       if (!source) {
