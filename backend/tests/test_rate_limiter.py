@@ -53,12 +53,12 @@ async def test_login_rate_limit_blocks_after_5_failures(mock_scope, mock_receive
     # 5 failed logins should NOT be blocked
     for i in range(5):
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
         assert collector.status != 429, f"Request {i+1} should not be rate limited, got {collector.status}"
 
     # 6th request should be blocked
     collector = type(mock_send)()
-    await middleware(mock_scope, mock_receive(), collector)
+    await middleware(mock_scope, mock_receive, collector)
     assert collector.status == 429, f"6th request should be 429, got {collector.status}"
     chinese_msg = "登录尝试过多".encode("utf-8")
     assert any(chinese_msg in msg.get("body", b"") for msg in collector.messages), (
@@ -94,24 +94,24 @@ async def test_login_success_resets_counter(mock_scope, mock_receive, mock_send)
     # 3 failed attempts (counter = 3)
     for _ in range(3):
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
 
     # 1 successful login — does NOT increment counter (stays at 3)
     collector = type(mock_send)()
-    await middleware(mock_scope, mock_receive(), collector)
+    await middleware(mock_scope, mock_receive, collector)
     assert collector.status == 200
 
     # 2 more failed attempts (counter = 5) should NOT trigger rate limit
     for i in range(2):
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
         assert collector.status != 429, (
             f"Failed login {i+1} after success should not trigger rate limit (counter at {3+i})"
         )
 
     # 6th failed attempt overall (counter = 5 >= 5) SHOULD trigger rate limit
     collector = type(mock_send)()
-    await middleware(mock_scope, mock_receive(), collector)
+    await middleware(mock_scope, mock_receive, collector)
     assert collector.status == 429, "6th failed attempt should trigger rate limit"
 
 
@@ -134,12 +134,12 @@ async def test_global_rate_limit_blocks_after_limit(mock_scope, mock_receive, mo
     # GLOBAL_LIMIT requests should succeed
     for i in range(GLOBAL_LIMIT):
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
         assert collector.status == 200, f"Request {i+1}: expected 200, got {collector.status}"
 
     # (GLOBAL_LIMIT+1)th should be blocked
     collector = type(mock_send)()
-    await middleware(mock_scope, mock_receive(), collector)
+    await middleware(mock_scope, mock_receive, collector)
     assert collector.status == 429, f"Request {GLOBAL_LIMIT+1}: expected 429, got {collector.status}"
 
 
@@ -164,11 +164,11 @@ async def test_llm_rate_limit_blocks_after_10(mock_scope, mock_receive, mock_sen
 
         for i in range(10):
             collector = type(mock_send)()
-            await middleware(mock_scope, mock_receive(), collector)
+            await middleware(mock_scope, mock_receive, collector)
             assert collector.status == 200, f"LLM request {i+1}: expected 200, got {collector.status}"
 
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
         assert collector.status == 429, f"11th LLM request should be 429, got {collector.status}"
 
 
@@ -190,5 +190,5 @@ async def test_fail_open_on_db_error(mock_scope, mock_receive, mock_send):
                side_effect=sqlite3.OperationalError("disk I/O error")):
         middleware = RateLimitMiddleware(health_app)
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
         assert collector.status == 200, f"Should fail open (200), got {collector.status}"

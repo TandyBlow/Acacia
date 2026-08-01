@@ -26,7 +26,7 @@ async def test_logs_request_fields(mock_scope, mock_receive, mock_send, caplog):
                return_value={"sub": "test-user-123", "username": "test"}):
         middleware = LoggingMiddleware(test_app)
         collector = type(mock_send)()
-        await middleware(mock_scope, mock_receive(), collector)
+        await middleware(mock_scope, mock_receive, collector)
 
     log_messages = " ".join(r.message for r in caplog.records)
     assert "method=POST" in log_messages, "should log method=POST"
