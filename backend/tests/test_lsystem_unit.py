@@ -95,9 +95,9 @@ class TestLSystemInterpretation:
         )
         assert len(branches) == 3  # Main + 2 branches
 
-    def test_thickness_by_depth(self):
-        """Test thickness decreases with depth"""
-        branches_shallow = interpret_lsystem(
+    def test_thickness_by_stack_depth(self):
+        """Test thickness decreases with stack depth (branch level), not node depth"""
+        branches_flat = interpret_lsystem(
             lstring="F",
             start_pos=(0, 0),
             start_angle=90,
@@ -106,16 +106,20 @@ class TestLSystemInterpretation:
             node_id="test-id",
             depth=0
         )
-        branches_deep = interpret_lsystem(
-            lstring="F",
+        branches_nested = interpret_lsystem(
+            lstring="F[F]",
             start_pos=(0, 0),
             start_angle=90,
             initial_length=10,
             base_angle_delta=25,
             node_id="test-id",
-            depth=5
+            depth=0
         )
-        assert branches_shallow[0]["thickness"] > branches_deep[0]["thickness"]
+        # Flat branch: stack depth 0 -> thickness 8
+        assert branches_flat[0]["thickness"] == 8
+        # Nested branch: stack depth 1 -> thickness 7
+        assert branches_nested[1]["thickness"] == 7
+        assert branches_flat[0]["thickness"] > branches_nested[1]["thickness"]
 
 
 class TestSkeletonGeneration:

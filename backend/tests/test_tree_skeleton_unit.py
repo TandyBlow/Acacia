@@ -95,7 +95,7 @@ class TestTreeStats:
         tree = [{"id": "r1", "name": "R", "depth": 0, "parent_id": None, "child_count": 0, "mastery_score": 0.5}]
         stats = _compute_tree_stats(tree)
         assert stats is not None
-        _, _, root_stats, total, max_depth, wdr, msr = stats
+        _, _, root_stats, total, max_depth, wdr, msr, health = stats
         assert total == 1
         assert max_depth == 0
         assert len(root_stats) == 1
@@ -104,7 +104,7 @@ class TestTreeStats:
     def test_multi_root(self):
         stats = _compute_tree_stats(SAMPLE_TREE)
         assert stats is not None
-        _, _, root_stats, total, max_depth, wdr, msr = stats
+        _, _, root_stats, total, max_depth, wdr, msr, health = stats
         assert len(root_stats) == 3
         assert total == len(SAMPLE_TREE)
         assert max_depth > 0
