@@ -21,6 +21,7 @@ vi.mock('../services/nodeCache', () => ({
 }));
 
 import { useNodeStore, setDataAdapter } from './nodeStore';
+import { usePageTransition } from '../composables/usePageTransition';
 
 describe('useNodeStore', () => {
   beforeEach(() => {
@@ -39,6 +40,7 @@ describe('useNodeStore', () => {
     mockAdapter.getNodeContext!.mockResolvedValueOnce(rootContext);
 
     await store.loadNode(null);
+    store.applyPendingData();
 
     expect(mockAdapter.getNodeContext).toHaveBeenCalledWith(null);
     expect(store.viewState).toBe('display');
@@ -100,13 +102,21 @@ describe('useNodeStore', () => {
     mockAdapter.createNode!.mockResolvedValueOnce(createdNode);
 
     await store.loadNode('parent-1');
+    // loadNode() does not await the async startTransition; wait until the
+    // navigation completes so the follow-up calls are not dropped by the
+    // module-level isTransitioning guard.
+    await vi.waitFor(() => expect(usePageTransition().isTransitioning.value).toBe(false));
+    store.applyPendingData();
     store.startAdd();
+    // startAdd()'s async startTransition calls setViewState -> clearTransientState,
+    // which wipes pendingNodeName; set the name only after ADD settles.
+    await vi.waitFor(() => expect(store.viewState).toBe('add'));
     store.pendingNodeName = '  New Node  ';
 
     await store.confirmOperation();
 
     expect(mockAdapter.createNode).toHaveBeenCalledWith('parent-1', 'New Node');
-    expect(mockAdapter.getNodeContext).toHaveBeenLastCalledWith('new-1');
+    await vi.waitFor(() => expect(mockAdapter.getNodeContext).toHaveBeenLastCalledWith('new-1'));
     expect(store.viewState).toBe('display');
   });
 });
