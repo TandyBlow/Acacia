@@ -106,12 +106,11 @@ def _is_valid_latex(text: str) -> bool:
 
     # Short results must still look like math — reject plain text or garbled fragments
     # "U 11 1 1 1" or "N ni TEN lonica" are not formulas
-    has_math_content = bool(re.search(r'[=+\-≤≥≠∈∪∩⊆⊃×÷^]', stripped))
     has_greek = bool(re.search(r'[Ωωσαβγδεφψθπλμ]', stripped))
     has_set_notation = bool(re.search(r'[∅∈∉⊂⊃∪∩]', stripped))
-    # Has LaTeX commands (checked earlier)
-    if not (has_math_content or has_greek or has_set_notation or has_latex):
-        return False
+    # has_latex / has_operators already returned True above; from here only
+    # Greek or set-notation marks a short fragment as a valid formula.
+    return bool(has_greek or has_set_notation)
 
 
 def _crop_and_ocr(
