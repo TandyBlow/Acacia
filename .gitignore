@@ -38,6 +38,8 @@ frontend/src/combined_project_code.txt
 
 # Database files
 *.db
+*.db-shm
+*.db-wal
 
 # Screenshots and debug images (whitelist real assets)
 *.png
@@ -125,3 +127,12 @@ combine.py
 frontend/src/combine.py
 frontend/src/combined_project_code.txt
 try260215.html
+
+# Claude Code workspace (LOCAL ONLY — never push)
+docs/
+
+# Personal / private documents (never commit)
+*.doc
+*.docx
+*.xlsx
+*.csv

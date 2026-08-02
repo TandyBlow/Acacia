@@ -2,6 +2,7 @@ from uuid import uuid4
 import logging
 import warnings
 import os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -36,7 +37,16 @@ from routers.review_routes import router as review_router
 from routers.admin_routes import router as admin_router
 from routers.upload_routes import _cleanup_stale_uploads
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Startup: init DB, seed official nodes, clean stale uploads."""
+    init_db()
+    _seed_default_official_nodes()
+    _cleanup_stale_uploads()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
@@ -92,13 +102,6 @@ def _seed_default_official_nodes():
                 "VALUES (?, ?, ?, ?, ?)",
                 (str(uuid4()), "欢迎", DEFAULT_WELCOME_CONTENT, 1, 1),
             )
-
-
-@app.on_event("startup")
-def startup():
-    init_db()
-    _seed_default_official_nodes()
-    _cleanup_stale_uploads()
 
 
 @app.get("/")
