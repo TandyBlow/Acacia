@@ -72,25 +72,9 @@ def get_ocr_progress(file_id: str) -> dict | None:
 
 
 def _detect_backend_name() -> str | None:
-    """Lightweight backend detection (no imports)."""
-    try:
-        import pix2text
-        return "pix2text"
-    except ImportError:
-        pass
-    try:
-        import easyocr
-        return "easyocr"
-    except ImportError:
-        pass
-    try:
-        import pytesseract
-        pytesseract.get_tesseract_version()
-        return "tesseract"
-    except Exception as e:
-        logger.debug("Tesseract not available: %s", e)
-        pass
-    return None
+    """Detect the available OCR backend (delegates to ocr_backends)."""
+    from pdf_ocr import _detect_available_backend
+    return _detect_available_backend()
 
 
 def _run_ocr_thread(file_id: str, file_path: str, owner_id: str,

@@ -1,5 +1,5 @@
 """
-Pure document-formatting logic extracted from parse_task_manager.
+Pure document-formatting logic (extracted from the legacy parse task flow).
 
 LLM-based Markdown formatting of extracted text: LaTeX math protect/restore,
 paragraph-aware text chunking, and the verbatim-preservation predicate.

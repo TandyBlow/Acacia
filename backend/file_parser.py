@@ -11,7 +11,6 @@ from parser_text import (
 from parser_pdf import (
     parse_pdf,
     _clean_pdf_text,
-    is_scanned_pdf,
     extract_pdf_images,
 )
 from parser_pdf_spans import (

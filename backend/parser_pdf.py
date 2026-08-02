@@ -94,31 +94,6 @@ def parse_pdf(file_path: str) -> str:
     return _clean_pdf_text(raw_text)
 
 
-def is_scanned_pdf(file_path: str) -> bool:
-    """Check if a PDF appears to be scanned (image-based, needs OCR).
-
-    Returns True if text extraction yields very little text relative to page count,
-    suggesting the PDF contains mostly images rather than embedded text.
-    """
-    try:
-        import fitz
-    except ImportError:
-        return False
-
-    doc = fitz.open(file_path)
-    try:
-        page_count = len(doc)
-        total_chars = 0
-        for page in doc:
-            total_chars += len(page.get_text("text").strip())
-
-        # If average chars per page is very low, likely a scanned PDF
-        avg_chars = total_chars / max(page_count, 1)
-        return avg_chars < 50
-    finally:
-        doc.close()
-
-
 def extract_pdf_images(file_path: str, output_dir: str) -> list[dict]:
     """Extract embedded images from a PDF and save them to output_dir.
 

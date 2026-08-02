@@ -94,7 +94,7 @@ def format_content_endpoint(
             for f in os.listdir(img_dir)
         )
 
-    from parse_task_manager import format_document_text
+    from parse_format import format_document_text
 
     try:
         formatted = format_document_text(text_content, image_urls)

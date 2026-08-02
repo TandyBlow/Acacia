@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
 from file_parser import extract_pdf_images
-from parse_task_manager import enqueue_parse
+from parse_threads import enqueue_parse
 from routers.auth_deps import get_current_user
 from routers.extract_routes import _pipeline_manager
 

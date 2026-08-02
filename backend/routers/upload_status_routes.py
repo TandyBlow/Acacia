@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from file_parser import parse_file, get_file_info
-from parse_task_manager import get_parse_progress, should_preserve_verbatim
+from parse_format import should_preserve_verbatim
+from parse_threads import get_parse_progress
 from routers.auth_deps import get_current_user
 
 router = APIRouter()
