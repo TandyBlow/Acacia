@@ -77,10 +77,15 @@ def _protect_math(text: str) -> tuple[str, dict[str, str]]:
 
 
 def _restore_math(text: str, replacements: dict[str, str]) -> str:
-    """Restore placeholders produced by _protect_math."""
+    """Restore placeholders produced by _protect_math.
+
+    The LLM sometimes wraps a placeholder in backticks (inline code). That form
+    must be replaced first, otherwise the bare replace below consumes the
+    placeholder inside the backticks and leaves stray backticks behind.
+    """
     for placeholder, value in replacements.items():
-        text = text.replace(placeholder, value)
         text = text.replace(f"`{placeholder}`", value)
+        text = text.replace(placeholder, value)
     return text
 
 
