@@ -4,9 +4,18 @@ import { parseMarkdownDoc } from './MarkdownEditorMarkdown'
 import { buildPlainTextDoc, normalizePastedText, sanitizeMarkdownSource } from './MarkdownEditorMarkdownUtil'
 import type { MarkdownEditorContext } from './MarkdownEditorContext'
 
+const MAX_SAVE_RETRIES = 3
+const SAVE_RETRY_BASE_MS = 2000
+
+interface SaveTarget {
+  nodeId: string
+  content: string
+}
+
 let autoSaveTimer: number | null = null
 let saveInFlight = false
-let queuedContent: string | null = null
+let pendingSave: SaveTarget | null = null
+let retryCount = 0
 
 export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
   function clearAutoSaveTimer(): void {
@@ -16,48 +25,77 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     }
   }
 
-  async function enqueueSave(nodeId: string, content: string): Promise<void> {
-    if (!ctx.activeNode.value || ctx.activeNode.value.id !== nodeId) {
+  function scheduleRetry(nodeId: string, content: string): void {
+    if (retryCount >= MAX_SAVE_RETRIES) {
+      console.error('[MarkdownEditor] save gave up after retries:', nodeId)
       return
     }
-    if (content === ctx.lastSavedContent.value) {
-      return
+    retryCount += 1
+    scheduleAutoSave(nodeId, content, SAVE_RETRY_BASE_MS * 2 ** (retryCount - 1))
+  }
+
+  // Resolves false only when the content is known not to be persisted.
+  async function enqueueSave(
+    nodeId: string,
+    content: string,
+    options?: { force?: boolean; keepalive?: boolean },
+  ): Promise<boolean> {
+    if (!options?.force && content === ctx.lastSavedContent.value) {
+      return true
     }
 
     if (saveInFlight) {
-      queuedContent = content
-      return
+      pendingSave = { nodeId, content }
+      return true
     }
 
     saveInFlight = true
     try {
-      const saved = await ctx.store.saveActiveNodeContent(nodeId, content)
-      if (saved && ctx.activeNode.value?.id === nodeId) {
-        ctx.lastSavedContent.value = content
+      const saved = await ctx.store.saveActiveNodeContent(nodeId, content, options)
+      if (saved) {
+        retryCount = 0
+        if (ctx.activeNode.value?.id === nodeId) {
+          ctx.lastSavedContent.value = content
+        }
+      } else {
+        scheduleRetry(nodeId, content)
       }
+      return saved
     } finally {
       saveInFlight = false
-      if (queuedContent !== null) {
-        const nextContent = queuedContent
-        queuedContent = null
-        if (ctx.activeNode.value?.id === nodeId && nextContent !== ctx.lastSavedContent.value) {
-          await enqueueSave(nodeId, nextContent)
-        }
+      const queued = pendingSave
+      pendingSave = null
+      if (queued && queued.content !== content) {
+        void enqueueSave(queued.nodeId, queued.content, { force: true })
       }
     }
   }
 
-  function scheduleAutoSave(nodeId: string, content: string): void {
+  function scheduleAutoSave(
+    nodeId: string,
+    content: string,
+    delayMs: number = AUTO_SAVE_DELAY_MS,
+  ): void {
     clearAutoSaveTimer()
+    pendingSave = { nodeId, content }
     autoSaveTimer = window.setTimeout(() => {
+      pendingSave = null
       void enqueueSave(nodeId, content)
-    }, AUTO_SAVE_DELAY_MS)
+    }, delayMs)
+  }
+
+  // Writes out whatever is still pending. Call before tearing down a node.
+  function flushPendingSave(options?: { keepalive?: boolean }): void {
+    clearAutoSaveTimer()
+    const target = pendingSave
+    pendingSave = null
+    if (!target) return
+    void enqueueSave(target.nodeId, target.content, { ...options, force: true })
   }
 
   function resetAutoSave(): void {
     clearAutoSaveTimer()
-    saveInFlight = false
-    queuedContent = null
+    retryCount = 0
   }
 
   function syncEditorContent(content: string): void {
@@ -86,7 +124,14 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     ctx.isApplyingExternalContent.value = false
   }
 
-  return { syncEditorContent, resetAutoSave, clearAutoSaveTimer, scheduleAutoSave, enqueueSave }
+  return {
+    syncEditorContent,
+    resetAutoSave,
+    clearAutoSaveTimer,
+    scheduleAutoSave,
+    enqueueSave,
+    flushPendingSave,
+  }
 }
 
 export type MarkdownEditorSave = ReturnType<typeof useMarkdownEditorSave>

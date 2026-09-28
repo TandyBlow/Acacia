@@ -30,6 +30,7 @@ export function useMarkdownEditorWatchers(
   watch(
     [() => ctx.editor.value, () => ctx.activeNode.value?.id],
     (val, oldVal) => {
+      deps.save.flushPendingSave()
       deps.save.resetAutoSave()
 
       const content = ctx.activeNode.value?.content ?? ''
@@ -107,12 +108,28 @@ export function useMarkdownEditorWatchers(
     })
 
     window.addEventListener('cinema:chat-mode', deps.onCinemaChatMode)
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibilityChange)
   })
 
+  // Last-chance flush for tab close / backgrounding.
+  function onPageHide(): void {
+    deps.save.flushPendingSave({ keepalive: true })
+  }
+
+  function onVisibilityChange(): void {
+    if (document.visibilityState === 'hidden') {
+      onPageHide()
+    }
+  }
+
   onBeforeUnmount(() => {
+    deps.save.flushPendingSave()
     ctx.unregisterRegion('content-editor')
     deps.save.clearAutoSaveTimer()
     deps.editor.value?.destroy()
     window.removeEventListener('cinema:chat-mode', deps.onCinemaChatMode)
+    window.removeEventListener('pagehide', onPageHide)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
   })
 }

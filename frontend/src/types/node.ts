@@ -56,7 +56,7 @@ export interface StyleResult {
 export interface CoreDataAdapter {
   getNodeContext(nodeId: string | null): Promise<NodeContext>;
   createNode(parentId: string | null, name: string): Promise<NodeRecord>;
-  updateNodeContent(nodeId: string, content: string): Promise<void>;
+  updateNodeContent(nodeId: string, content: string, options?: { keepalive?: boolean }): Promise<void>;
   deleteNode(nodeId: string, deleteChildren: boolean): Promise<void>;
   moveNode(nodeId: string, newParentId: string | null): Promise<void>;
   getTree(): Promise<TreeNode[]>;

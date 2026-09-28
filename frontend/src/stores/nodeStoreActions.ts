@@ -98,14 +98,19 @@ export function createNodeStoreActions(
     }
   }
 
-  async function saveActiveNodeContent(nodeId: string, content: string): Promise<boolean> {
-    if (!state.activeNode.value || state.activeNode.value.id !== nodeId) {
+  async function saveActiveNodeContent(
+    nodeId: string,
+    content: string,
+    options?: { force?: boolean; keepalive?: boolean },
+  ): Promise<boolean> {
+    // force lets a flushed save land after navigation already moved on.
+    if (!options?.force && (!state.activeNode.value || state.activeNode.value.id !== nodeId)) {
       return false;
     }
 
     state.errorMessage.value = null;
     try {
-      await getDataAdapter().updateNodeContent(nodeId, content);
+      await getDataAdapter().updateNodeContent(nodeId, content, { keepalive: options?.keepalive });
       if (state.activeNode.value?.id === nodeId) {
         state.activeNode.value = { ...state.activeNode.value, content };
       }
@@ -114,6 +119,7 @@ export function createNodeStoreActions(
       return true;
     } catch (error) {
       state.errorMessage.value = formatError(error);
+      console.error('[nodeStore] saveActiveNodeContent failed:', nodeId, error);
       return false;
     }
   }

@@ -15,10 +15,11 @@ export const backendAdapter: DataAdapter = {
     });
   },
 
-  async updateNodeContent(nodeId: string, content: string): Promise<void> {
+  async updateNodeContent(nodeId: string, content: string, options?: { keepalive?: boolean }): Promise<void> {
     await apiFetch(`/nodes/${nodeId}/content`, {
       method: 'PATCH',
       body: JSON.stringify({ content }),
+      keepalive: options?.keepalive,
     });
   },
 
