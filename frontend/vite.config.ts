@@ -44,7 +44,23 @@ export default defineConfig({
       manifestFilename: 'manifest.json',
       manifest,
       injectManifest: {
-        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 8 MB
+        // Only precache small app-shell assets. Large chunks (main.js ≈6.4 MB)
+        // are fetched by the page itself — precaching them doubles the
+        // first-load download (page + SW install). Per-user AI background
+        // images (2–4 MB each) are served by nginx and must never enter the
+        // precache list either.
+        globIgnores: [
+          'sw.js',
+          // Injecting an over-limit asset is a hard error, so main.js must
+          // be excluded from the manifest, not just left over the limit.
+          '**/assets/main-*.js',
+          '**/backgrounds/**',
+          '**/platform-billboard.png',
+          '**/demo_styles*.json',
+          '**/sunken-demo.html',
+          '**/*.tmp',
+        ],
+        maximumFileSizeToCacheInBytes: 512 * 1024, // 512 KB
       },
     }),
   ],

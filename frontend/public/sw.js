@@ -1,4 +1,5 @@
-const APP_SHELL_CACHE = 'app-shell-v2'
+// v3 retires caches that hold /api/ responses written by older handlers.
+const APP_SHELL_CACHE = 'app-shell-v3'
 const PRECACHE_URLS = [...new Set(
   self.__WB_MANIFEST.map((entry) => {
     let url = typeof entry === 'string' ? entry : entry.url
@@ -37,6 +38,14 @@ self.addEventListener('fetch', (event) => {
   const isDev = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
   if (isDev) {
     event.respondWith(fetch(event.request))
+    return
+  }
+
+  // Images (incl. per-user AI backgrounds, 2–4 MB each) and API calls go
+  // straight to the network: no SW interception, no cache.put of big files.
+  // The browser HTTP cache (nginx) handles them.
+  const url = new URL(event.request.url)
+  if (event.request.destination === 'image' || url.pathname.startsWith('/api/')) {
     return
   }
 
