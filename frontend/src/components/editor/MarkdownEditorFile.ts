@@ -33,8 +33,11 @@ export function useMarkdownEditorFile(
       // Rewrite image URLs to absolute backend URLs so they load in the editor
       fullText = fullText.replace(/\/file-images\//g, `${backendUrl}/file-images/`)
 
-      await ctx.store.saveActiveNodeContent(ctx.activeNode.value.id, fullText)
-      ctx.lastSavedContent.value = fullText
+      const saved = await save.enqueueSave(ctx.activeNode.value.id, fullText)
+      if (!saved) {
+        ctx.errorMessage.value = ctx.t('editor.fillContentFailed')
+        return
+      }
       ctx.draft.value = fullText
       if (ctx.activeNode.value) {
         ctx.activeNode.value.content = fullText

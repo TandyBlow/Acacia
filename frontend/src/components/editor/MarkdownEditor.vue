@@ -132,7 +132,7 @@ import 'katex/dist/katex.min.css'
 const ctx = createMarkdownEditorContext()
 const doc = useMarkdownEditorChatDoc(ctx)
 const save = useMarkdownEditorSave(ctx)
-const chat = useMarkdownEditorChat(ctx, doc)
+const chat = useMarkdownEditorChat(ctx, doc, save)
 const toggle = useMarkdownEditorChatToggle(ctx, doc, save)
 const concept = useMarkdownEditorConcept(ctx, doc)
 const file = useMarkdownEditorFile(ctx, doc, save)

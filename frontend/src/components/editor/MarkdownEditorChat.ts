@@ -1,7 +1,12 @@
 import type { MarkdownEditorChatDoc } from './MarkdownEditorChatDoc'
 import type { MarkdownEditorContext } from './MarkdownEditorContext'
+import type { MarkdownEditorSave } from './MarkdownEditorSave'
 
-export function useMarkdownEditorChat(ctx: MarkdownEditorContext, doc: MarkdownEditorChatDoc) {
+export function useMarkdownEditorChat(
+  ctx: MarkdownEditorContext,
+  doc: MarkdownEditorChatDoc,
+  save: MarkdownEditorSave,
+) {
   async function appendKnowledgeNote(note: string): Promise<void> {
     if (!ctx.activeNode.value || !note.trim()) return
     const nodeId = ctx.activeNode.value.id
@@ -9,15 +14,14 @@ export function useMarkdownEditorChat(ctx: MarkdownEditorContext, doc: MarkdownE
     const newContent = currentContent
       ? currentContent + '\n\n' + note
       : note
-    try {
-      await ctx.store.saveActiveNodeContent(nodeId, newContent)
-      ctx.lastSavedContent.value = newContent
-      ctx.draft.value = newContent
-      if (ctx.activeNode.value) {
-        ctx.activeNode.value.content = newContent
-      }
-    } catch {
-      console.error('[MarkdownEditor] autoSave failed')
+    const saved = await save.enqueueSave(nodeId, newContent)
+    if (!saved) {
+      console.error('[MarkdownEditor] appendKnowledgeNote save failed:', nodeId)
+      return
+    }
+    ctx.draft.value = newContent
+    if (ctx.activeNode.value) {
+      ctx.activeNode.value.content = newContent
     }
   }
 
@@ -58,15 +62,15 @@ export function useMarkdownEditorChat(ctx: MarkdownEditorContext, doc: MarkdownE
         }
         // Auto-end: replace incremental appends with LLM-consolidated content
         if (result?.consolidated_content && ctx.activeNode.value) {
-          try {
-            await ctx.store.saveActiveNodeContent(ctx.activeNode.value.id, result.consolidated_content)
-            ctx.lastSavedContent.value = result.consolidated_content
+          const nodeId = ctx.activeNode.value.id
+          const saved = await save.enqueueSave(nodeId, result.consolidated_content)
+          if (!saved) {
+            console.error('[MarkdownEditor] consolidation save failed:', nodeId)
+          } else {
             ctx.draft.value = result.consolidated_content
             if (ctx.activeNode.value) {
               ctx.activeNode.value.content = result.consolidated_content
             }
-          } catch {
-            console.error('[MarkdownEditor] saveActiveNodeContent failed during sendInlineMessage consolidation')
           }
         }
       }
@@ -118,15 +122,15 @@ export function useMarkdownEditorChat(ctx: MarkdownEditorContext, doc: MarkdownE
       doc.rebuildTranscriptFromMessages()
       // Replace incremental knowledge_note appends with LLM-consolidated version
       if (result.consolidated_content && ctx.activeNode.value) {
-        try {
-          await ctx.store.saveActiveNodeContent(ctx.activeNode.value.id, result.consolidated_content)
-          ctx.lastSavedContent.value = result.consolidated_content
+        const nodeId = ctx.activeNode.value.id
+        const saved = await save.enqueueSave(nodeId, result.consolidated_content)
+        if (!saved) {
+          console.error('[MarkdownEditor] onEndConversation save failed:', nodeId)
+        } else {
           ctx.draft.value = result.consolidated_content
           if (ctx.activeNode.value) {
             ctx.activeNode.value.content = result.consolidated_content
           }
-        } catch {
-          console.error('[MarkdownEditor] saveActiveNodeContent failed during onEndConversation')
         }
       }
     }
