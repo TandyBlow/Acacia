@@ -1,6 +1,6 @@
 import type { Editor, JSONContent } from '@tiptap/core'
 import type { MarkdownManager } from '@tiptap/markdown'
-import { stripUnknownNodes, wrapBareInlineContent } from './MarkdownEditorMarkdownUtil'
+import { liftBlockNodesFromInlineContainers, stripUnknownNodes, wrapBareInlineContent } from './MarkdownEditorMarkdownUtil'
 
 export function getMarkdownManager(instance: Editor): MarkdownManager | null {
   return instance.markdown ?? instance.storage?.markdown?.manager ?? null;
@@ -105,14 +105,17 @@ export function parseMarkdownContent(instance: Editor, content: string): JSONCon
     // Strip nodes with unknown types, then wrap bare inline nodes in paragraphs
     const stripped = stripUnknownNodes(parsed, instance.schema) ?? parsed;
     const sanitized = wrapBareInlineContent(stripped);
+    // marked nests block-level nodes (e.g. images) inside paragraphs, which
+    // fails schema validation and would throw away the whole document.
+    const lifted = liftBlockNodesFromInlineContainers(sanitized, instance.schema);
 
     // Workaround for @tiptap/markdown bug: ordered lists corrupt parser state,
     // making all subsequent heading content empty. Repair by re-parsing each
     // empty heading's text from the original markdown content.
-    repairEmptyHeadings(sanitized, mgr, content);
+    repairEmptyHeadings(lifted, mgr, content);
 
-    instance.schema.nodeFromJSON(sanitized).check();
-    return sanitized;
+    instance.schema.nodeFromJSON(lifted).check();
+    return lifted;
   } catch (err) {
     console.error('[MarkdownEditor] parseMarkdownContent failed:', err, 'content preview:', content.slice(0, 200));
     return null;

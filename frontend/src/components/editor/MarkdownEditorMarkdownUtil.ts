@@ -38,7 +38,10 @@ export function stripUnknownNodes(json: JSONContent, schema: Editor['schema']): 
   return cleaned;
 }
 /** Inline node types that should be wrapped in a paragraph inside block containers. */
-const INLINE_NODE_TYPES = new Set(['text', 'hardBreak', 'image', 'inlineMath', 'mention']);
+const INLINE_NODE_TYPES = new Set(['text', 'hardBreak', 'inlineMath', 'mention']);
+
+/** Inline containers whose content must stay inline-only; block children break schema.check(). */
+const INLINE_CONTAINER_TYPES = new Set(['paragraph', 'heading']);
 
 /** Block nodes whose content model requires paragraphs, not raw inline nodes. */
 const BLOCK_WRAPPER_TYPES = new Set(['listItem', 'blockquote', 'doc']);
@@ -102,6 +105,71 @@ export function sanitizeMarkdownSource(content: string): string {
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '')
     .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[^'"]*\2/gi, ' $1="#"');
+}
+
+function trimEdgeHardBreaks(nodes: JSONContent[]): JSONContent[] {
+  let start = 0;
+  let end = nodes.length;
+  while (start < end && nodes[start]?.type === 'hardBreak') start += 1;
+  while (end > start && nodes[end - 1]?.type === 'hardBreak') end -= 1;
+  return nodes.slice(start, end);
+}
+
+/**
+ * Split a paragraph/heading whose content contains block-level nodes (marked
+ * tokenizes a standalone image line as an inline token inside a paragraph,
+ * but the image node is block-level, which fails schema.check() and discards
+ * the whole parse). Inline runs keep the original node's type and attrs; the
+ * block nodes become siblings at the same position.
+ */
+function splitInlineContainerAroundBlocks(node: JSONContent, schema: Editor['schema']): JSONContent[] {
+  const content = Array.isArray(node.content) ? node.content : [];
+  const hasBlockChild = content.some(
+    c => c?.type && schema.nodes[c.type]?.isInline === false,
+  );
+  if (!hasBlockChild) return [node];
+
+  const pieces: JSONContent[] = [];
+  let inlineRun: JSONContent[] = [];
+
+  const flushRun = (): void => {
+    const trimmed = trimEdgeHardBreaks(inlineRun);
+    inlineRun = [];
+    if (trimmed.length === 0) return;
+    // Spread the node so attrs (heading level, locked attr) carry over.
+    pieces.push({ ...node, content: trimmed });
+  };
+
+  for (const child of content) {
+    if (child?.type && schema.nodes[child.type]?.isInline === false) {
+      flushRun();
+      pieces.push(child);
+    } else {
+      inlineRun.push(child);
+    }
+  }
+  flushRun();
+  return pieces;
+}
+
+/**
+ * Recursively lift block-level nodes out of inline containers (paragraph,
+ * heading) so the document passes schema validation.
+ */
+export function liftBlockNodesFromInlineContainers(json: JSONContent, schema: Editor['schema']): JSONContent {
+  if (!json || typeof json !== 'object') return json;
+
+  const result: JSONContent = { ...json };
+  if (Array.isArray(result.content)) {
+    result.content = result.content.flatMap(child => {
+      if (!child || typeof child !== 'object') return [child];
+      if (INLINE_CONTAINER_TYPES.has(child.type ?? '') && Array.isArray(child.content)) {
+        return splitInlineContainerAroundBlocks(child, schema);
+      }
+      return [liftBlockNodesFromInlineContainers(child, schema)];
+    });
+  }
+  return result;
 }
 
 export function normalizePastedText(content: string): string {
