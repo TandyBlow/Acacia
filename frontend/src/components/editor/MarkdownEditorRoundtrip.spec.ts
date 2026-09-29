@@ -287,3 +287,50 @@ describe('inline math tokenizer boundaries', () => {
     editor.destroy();
   });
 });
+
+describe('blocks emptied after lists get repaired', () => {
+  it('keeps the paragraph that follows an ordered list', () => {
+    const editor = makeEditor();
+    const md = '1. one\n2. two\n\ntext after';
+
+    const doc = parseDoc(editor, md);
+    expect(blockTypes(doc)).toEqual(['orderedList', 'paragraph']);
+    const last = doc?.content?.[1]?.content?.[0]?.text;
+    expect(last).toBe('text after');
+
+    const out = serialize(editor, doc!);
+    expect(out).toContain('text after');
+    editor.destroy();
+  });
+
+  it('repairs a heading emptied by a preceding ordered list', () => {
+    const editor = makeEditor();
+    const md = '1. one\n2. two\n\n# Heading after list';
+
+    const doc = parseDoc(editor, md);
+    const heading = doc?.content?.[1];
+    expect(heading?.type).toBe('heading');
+    expect(heading?.content?.[0]?.text).toBe('Heading after list');
+    editor.destroy();
+  });
+
+  it('does not leak # lines from code fences into real headings', () => {
+    const editor = makeEditor();
+    const md = '```\n# FAKE\n```\n\n1. x\n\n# REAL';
+
+    const doc = parseDoc(editor, md);
+    const heading = (doc?.content ?? []).find(n => n.type === 'heading');
+    expect(heading?.content?.[0]?.text).toBe('REAL');
+    editor.destroy();
+  });
+
+  it('leaves already-populated blocks untouched', () => {
+    const editor = makeEditor();
+    const md = 'intro paragraph\n\n1. one\n\noutro paragraph';
+
+    const doc = parseDoc(editor, md);
+    expect(doc?.content?.[0]?.content?.[0]?.text).toBe('intro paragraph');
+    expect(doc?.content?.[2]?.content?.[0]?.text).toBe('outro paragraph');
+    editor.destroy();
+  });
+});

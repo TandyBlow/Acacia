@@ -1,5 +1,6 @@
 import type { Editor, JSONContent } from '@tiptap/core'
 import type { MarkdownManager } from '@tiptap/markdown'
+import { marked } from 'marked'
 import { liftBlockNodesFromInlineContainers, maskCodeRegions, stripUnknownNodes, wrapBareInlineContent } from './MarkdownEditorMarkdownUtil'
 
 export function getMarkdownManager(instance: Editor): MarkdownManager | null {
@@ -39,46 +40,99 @@ function escapeNonHtmlAngleBrackets(text: string): string {
   const escaped = mathTags.protected.replace(/<(?=[A-Za-z!/?])/g, '&lt;');
   return code.restore(mathTags.restore(escaped));
 }
-function repairEmptyHeadings(json: JSONContent, mgr: MarkdownManager, rawContent: string): void {
+/** marked block token type → TipTap node type at doc top level. */
+const BLOCK_TOKEN_NODE_TYPES: Record<string, string> = {
+  heading: 'heading',
+  paragraph: 'paragraph',
+  // marked's block-level fallback for content it cannot classify.
+  text: 'paragraph',
+  html: 'paragraph',
+  code: 'codeBlock',
+  blockquote: 'blockquote',
+  hr: 'horizontalRule',
+  table: 'table',
+};
+
+function expectedNodeTypeForToken(token: { type: string; ordered?: boolean }): string | null {
+  if (token.type === 'list') return token.ordered ? 'orderedList' : 'bulletList';
+  return BLOCK_TOKEN_NODE_TYPES[token.type] ?? null;
+}
+
+/**
+ * Re-parse a single block's raw markdown in isolation and return the content
+ * of its first non-empty node of the wanted type. The result goes through the
+ * same strip/lift normalization as the main pipeline so a repaired block can
+ * never fail the schema check that follows.
+ */
+function reparseBlockContent(
+  mgr: MarkdownManager,
+  raw: string,
+  nodeType: string,
+  schema: Editor['schema'],
+): JSONContent[] | null {
+  try {
+    const parsed = mgr.parse(raw);
+    const candidate = (parsed.content ?? []).find(
+      n => n.type === nodeType && Array.isArray(n.content) && n.content.length > 0,
+    );
+    if (!candidate) return null;
+    const stripped = stripUnknownNodes(candidate, schema) ?? candidate;
+    const lifted = liftBlockNodesFromInlineContainers(stripped, schema);
+    return Array.isArray(lifted.content) && lifted.content.length > 0 ? lifted.content : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Repair blocks that @tiptap/markdown's ordered-list parsing empties (parser
+ * state corruption blanks the block right after a list, headings and
+ * paragraphs alike). Blocks are matched against a marked token stream built
+ * from the original markdown, one block token per doc node in order; code
+ * fences are real code tokens there, so `#` lines inside them can no longer
+ * skew the alignment. The repair only fires on blocks whose content is
+ * actually empty, and any structural divergence bails out instead of guessing.
+ */
+function repairEmptyBlocks(
+  json: JSONContent,
+  mgr: MarkdownManager,
+  rawContent: string,
+  schema: Editor['schema'],
+): void {
   if (!json.content || json.type !== 'doc') return;
 
-  // Index headings in the raw content by extracting heading lines
-  const rawHeadings: { level: number; text: string }[] = [];
-  const headingRe = /^(#{1,6})\s+(.+)$/gm;
-  let m: RegExpExecArray | null;
-  while ((m = headingRe.exec(rawContent)) !== null) {
-    rawHeadings.push({ level: (m[1] ?? '').length, text: (m[2] ?? '').trim() });
-  }
-
-  let headingIdx = 0;
-  for (const node of json.content) {
-    if (node.type !== 'heading') continue;
-    const h = node as JSONContent & { attrs?: { level?: number }; content?: JSONContent[] };
-
-    // Only repair truly empty headings (content is [] or missing)
-    if (h.content && h.content.length > 0) {
-      headingIdx++;
-      continue;
+  const tokens = marked.lexer(rawContent, { gfm: true, breaks: true });
+  let cursor = 0;
+  for (const token of tokens) {
+    if (token.type === 'space') continue;
+    const want = expectedNodeTypeForToken(token as { type: string; ordered?: boolean });
+    if (!want) {
+      console.warn('[MarkdownEditor] repairEmptyBlocks: unaligned token type, skipping repair:', token.type);
+      return;
+    }
+    const node = json.content[cursor];
+    if (!node || node.type !== want) {
+      console.warn('[MarkdownEditor] repairEmptyBlocks: doc structure diverged from tokens, skipping repair');
+      return;
     }
 
-    // Find the corresponding raw heading text
-    const rawH = rawHeadings[headingIdx];
-    if (rawH && rawH.level === (h.attrs?.level ?? 1)) {
-      // Re-parse this heading in isolation to get proper inline content
-      const prefix = '#'.repeat(rawH.level);
-      try {
-        const reparsed = mgr.parse(`${prefix} ${rawH.text}`);
-        const reparsedHeading = reparsed.content?.find(n => n.type === 'heading');
-        if (reparsedHeading?.content) {
-          h.content = reparsedHeading.content;
+    const isEmpty = !Array.isArray(node.content) || node.content.length === 0;
+    const repairable = node.type === 'heading' || node.type === 'paragraph';
+    if (isEmpty && repairable) {
+      if (node.type === 'heading') {
+        const depth = (token as { depth?: number }).depth;
+        if (typeof depth === 'number' && depth !== node.attrs?.level) {
+          cursor += 1;
+          continue;
         }
-      } catch {
-        console.error('[MarkdownEditor] heading reparse failed for:', rawH.text);
-        // Fallback: plain text node
-        h.content = [{ type: 'text', text: rawH.text }];
+      }
+      const raw = token.raw ?? '';
+      if (raw.trim()) {
+        const repaired = reparseBlockContent(mgr, raw, node.type, schema);
+        if (repaired) node.content = repaired;
       }
     }
-    headingIdx++;
+    cursor += 1;
   }
 }
 
@@ -114,9 +168,9 @@ export function parseMarkdownContent(instance: Editor, content: string): JSONCon
     const lifted = liftBlockNodesFromInlineContainers(sanitized, instance.schema);
 
     // Workaround for @tiptap/markdown bug: ordered lists corrupt parser state,
-    // making all subsequent heading content empty. Repair by re-parsing each
-    // empty heading's text from the original markdown content.
-    repairEmptyHeadings(lifted, mgr, content);
+    // leaving the following block (heading or paragraph) empty. Repair by
+    // re-parsing each empty block from its original markdown token.
+    repairEmptyBlocks(lifted, mgr, content, instance.schema);
 
     instance.schema.nodeFromJSON(lifted).check();
     return lifted;
