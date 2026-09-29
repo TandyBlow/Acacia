@@ -12,6 +12,7 @@ import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { all, createLowlight } from 'lowlight';
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
+import { ListItemWithBlockMath } from './extensions/listItemWithBlockMath';
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
 import { createMarkdownEditorExtensions } from './MarkdownEditorExtensions';
 import { parseMarkdownDoc } from './MarkdownEditorMarkdown';
@@ -39,6 +40,7 @@ function makeEditor(): Editor {
         bold: false,
         italic: false,
         strike: false,
+        listItem: false,
         link: {
           openOnClick: false,
           autolink: true,
@@ -49,6 +51,7 @@ function makeEditor(): Editor {
           },
         },
       }),
+      ListItemWithBlockMath,
       Markdown.configure({
         markedOptions: {
           gfm: true,
@@ -160,6 +163,64 @@ describe('image notes survive a roundtrip', () => {
     // The image must come back as a block line, not a flattened paragraph.
     expect(firstOut).toContain('![Figure 1](http://x/y.png)');
     expect(firstOut).toContain('# Title');
+    editor.destroy();
+  });
+});
+
+describe('block math survives a roundtrip', () => {
+  it('keeps a multi-line $$ block as blockMath instead of collapsing it inline', () => {
+    const editor = makeEditor();
+    const md = 'Formula:\n$$\n\\int_0^1 x\\,dx = \\frac{1}{2}\n$$\n\ndone';
+
+    const doc = parseDoc(editor, md);
+    expect(doc?.content?.map(n => n.type)).toEqual(['paragraph', 'blockMath', 'paragraph']);
+    expect(doc?.content?.[1]?.attrs?.latex).toContain('\\int_0^1');
+
+    // The serialized form must parse back to blockMath, not inline math.
+    const out = serialize(editor, doc!);
+    const reparsed = parseDoc(editor, out);
+    expect(reparsed?.content?.[1]?.type).toBe('blockMath');
+    editor.destroy();
+  });
+
+  it('accepts a $$ block as the first node of a list item', () => {
+    const editor = makeEditor();
+    const doc = parseDoc(editor, '- $$x$$\n- plain item');
+
+    const firstItem = doc?.content?.[0]?.content?.[0];
+    expect(firstItem?.type).toBe('listItem');
+    expect(firstItem?.content?.[0]?.type).toBe('blockMath');
+    editor.destroy();
+  });
+
+  it('leaves $$ inside a code fence untouched', () => {
+    const editor = makeEditor();
+    const doc = parseDoc(editor, '```\ncost=$$X$$\n```');
+
+    expect(doc?.content?.[0]?.type).toBe('codeBlock');
+    const out = serialize(editor, doc!);
+    expect(out).toContain('cost=$$X$$');
+    expect(out).not.toContain('$cost');
+    editor.destroy();
+  });
+
+  it('still parses single-$ inline math', () => {
+    const editor = makeEditor();
+    const doc = parseDoc(editor, 'energy is $E=mc^2$ here');
+
+    const paragraph = doc?.content?.[0];
+    const math = paragraph?.content?.find(n => n.type === 'inlineMath');
+    expect(math?.attrs?.latex).toBe('E=mc^2');
+    editor.destroy();
+  });
+
+  it('preserves < inside a multi-line $$ block', () => {
+    const editor = makeEditor();
+    const md = '$$\na < b\nc = d\n$$';
+
+    const doc = parseDoc(editor, md);
+    expect(doc?.content?.[0]?.type).toBe('blockMath');
+    expect(doc?.content?.[0]?.attrs?.latex).toContain('a < b');
     editor.destroy();
   });
 });

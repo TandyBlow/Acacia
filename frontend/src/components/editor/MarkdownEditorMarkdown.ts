@@ -81,13 +81,10 @@ export function parseMarkdownContent(instance: Editor, content: string): JSONCon
   try {
     // Strip control characters that would break HTML/XML parsing
     content = sanitizeControlChars(content);
-    // Convert ALL $$...$$ to $...$ to prevent blockMath-in-listItem errors.
-    // ProseMirror schema forbids blockMath as a child of listItem, and the
-    // block-math tokenizer produces blockMath nodes that fail validation inside
-    // list items. The AI is told to use $...$ for all math, so $$ usage is rare.
-    content = content.replace(/\$\$([\s\S]+?)\$\$/g, (_full, latex: string) => {
-      return `$${latex.trim()}$`;
-    });
+    // $$...$$ stays intact: the block-math tokenizer handles it directly, and
+    // the listItem schema now accepts a leading blockMath (see
+    // extensions/listItemWithBlockMath.ts), so collapsing $$ to $ — which
+    // forced block math inline and rewrote $$ inside code fences — is gone.
     // Protect $...$ / $$...$$ math syntax from angle-bracket escaping so
     // that < inside LaTeX (e.g. $x < y$) is preserved. The custom
     // markdownTokenizer on the Mathematics extension handles these directly.

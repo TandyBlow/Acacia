@@ -9,6 +9,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { all, createLowlight } from 'lowlight'
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi'
+import { ListItemWithBlockMath } from './extensions/listItemWithBlockMath'
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules'
 import { createMarkdownEditorExtensions } from './MarkdownEditorExtensions'
 import type { MarkdownEditorHandlers } from './MarkdownEditorPaste'
@@ -30,6 +31,9 @@ export function createMarkdownEditorEditor(
         bold: false,
         italic: false,
         strike: false,
+        // Replaced by ListItemWithBlockMath so list items can start with a
+        // $$-math block without failing schema validation.
+        listItem: false,
         link: {
           openOnClick: false,
           autolink: true,
@@ -40,6 +44,7 @@ export function createMarkdownEditorEditor(
           },
         },
       }),
+      ListItemWithBlockMath,
       LockedParagraphAttr,
       Markdown.configure({
         markedOptions: {
