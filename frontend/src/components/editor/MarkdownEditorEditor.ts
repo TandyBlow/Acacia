@@ -1,7 +1,7 @@
 import { useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
-import { Mathematics } from '@tiptap/extension-mathematics'
+import { BlockMath } from '@tiptap/extension-mathematics'
 import { Markdown } from '@tiptap/markdown'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -10,6 +10,7 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { all, createLowlight } from 'lowlight'
 import { CodeBlockWithUi } from './extensions/codeBlockWithUi'
 import { ListItemWithBlockMath } from './extensions/listItemWithBlockMath'
+import { StrongSpanGuard, TightInlineMath } from './extensions/markdownMathTokenizers'
 import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules'
 import { createMarkdownEditorExtensions } from './MarkdownEditorExtensions'
 import type { MarkdownEditorHandlers } from './MarkdownEditorPaste'
@@ -64,7 +65,17 @@ export function createMarkdownEditorEditor(
       MarkdownBold,
       MarkdownItalic,
       MarkdownStrike,
-      Mathematics.configure({
+      // Must be registered before the math tokenizers so **$x$** claims the
+      // bold span before inline math can see the $ inside it.
+      StrongSpanGuard,
+      BlockMath.configure({
+        katexOptions: {
+          throwOnError: true,
+          strict: false,
+          trust: false,
+        },
+      }),
+      TightInlineMath.configure({
         katexOptions: {
           throwOnError: true,
           strict: false,

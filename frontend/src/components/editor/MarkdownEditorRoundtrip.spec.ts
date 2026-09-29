@@ -1,109 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { ref } from 'vue';
-import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import { Mathematics } from '@tiptap/extension-mathematics';
-import { Markdown } from '@tiptap/markdown';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
-import { all, createLowlight } from 'lowlight';
-import { CodeBlockWithUi } from './extensions/codeBlockWithUi';
-import { ListItemWithBlockMath } from './extensions/listItemWithBlockMath';
-import { MarkdownBold, MarkdownItalic, MarkdownStrike } from './extensions/markdownInputRules';
-import { createMarkdownEditorExtensions } from './MarkdownEditorExtensions';
-import { parseMarkdownDoc } from './MarkdownEditorMarkdown';
+import { makeEditor, parseDoc, serialize, blockTypes } from './roundtripTestUtils';
 import type { JSONContent } from '@tiptap/core';
-import type { MarkdownEditorContext } from './MarkdownEditorContext';
-
-/**
- * Mirrors the extension stack of MarkdownEditorEditor.ts so the tests exercise
- * the production parse pipeline. The Locked* extensions only affect editing
- * interactions, not parsing, and are left out.
- */
-function makeEditor(): Editor {
-  const lowlight = createLowlight(all);
-  const ctxStub = {
-    chatMode: ref('idle'),
-    isApplyingExternalContent: ref(false),
-  } as unknown as MarkdownEditorContext;
-  const { TableMarkdownParser } = createMarkdownEditorExtensions(ctxStub);
-
-  return new Editor({
-    content: '',
-    extensions: [
-      StarterKit.configure({
-        codeBlock: false,
-        bold: false,
-        italic: false,
-        strike: false,
-        listItem: false,
-        link: {
-          openOnClick: false,
-          autolink: true,
-          defaultProtocol: 'https',
-          HTMLAttributes: {
-            target: '_blank',
-            rel: 'noopener noreferrer nofollow',
-          },
-        },
-      }),
-      ListItemWithBlockMath,
-      Markdown.configure({
-        markedOptions: {
-          gfm: true,
-          breaks: true,
-        },
-      }),
-      Image.configure({
-        allowBase64: false,
-        HTMLAttributes: {
-          loading: 'lazy',
-        },
-      }),
-      CodeBlockWithUi.configure({
-        lowlight,
-      }),
-      MarkdownBold,
-      MarkdownItalic,
-      MarkdownStrike,
-      Mathematics.configure({
-        katexOptions: {
-          throwOnError: true,
-          strict: false,
-          trust: false,
-        },
-      }),
-      Table.configure({
-        resizable: false,
-        HTMLAttributes: {
-          class: 'md-table',
-        },
-      }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TableMarkdownParser,
-    ],
-  });
-}
-
-function parseDoc(editor: Editor, md: string): JSONContent | null {
-  return parseMarkdownDoc(editor, md);
-}
-
-function blockTypes(editor: Editor, md: string): string[] | null {
-  const doc = parseDoc(editor, md);
-  return doc ? (doc.content ?? []).map(n => n.type ?? '') : null;
-}
-
-function serialize(editor: Editor, doc: JSONContent): string {
-  editor.commands.setContent(doc, { emitUpdate: false });
-  return editor.getMarkdown();
-}
 
 describe('image notes survive a roundtrip', () => {
   // The exact trigger from docs/tasks/2026-09-29-format-roundtrip-corruption.md.
@@ -120,7 +18,7 @@ describe('image notes survive a roundtrip', () => {
 
   it('parses the diagnostic trigger input into block structure instead of failing', () => {
     const editor = makeEditor();
-    expect(blockTypes(editor, triggerInput)).toEqual([
+    expect(blockTypes(parseDoc(editor, triggerInput))).toEqual([
       'heading',
       'paragraph',
       'image',
@@ -318,6 +216,74 @@ describe('angle brackets round-trip', () => {
 
     const reparsed = parseDoc(editor, out);
     expect(serialize(editor, reparsed!)).toBe(out);
+    editor.destroy();
+  });
+});
+
+describe('inline math tokenizer boundaries', () => {
+  it('keeps currency spans as plain text', () => {
+    const editor = makeEditor();
+    const md = 'It costs $5 and $10 total.';
+
+    const doc = parseDoc(editor, md);
+    const hasMath = (doc?.content?.[0]?.content ?? []).some(n => n.type === 'inlineMath');
+    expect(hasMath).toBe(false);
+
+    const out = serialize(editor, doc!);
+    expect(out).toContain('$5 and $10 total.');
+    editor.destroy();
+  });
+
+  it('keeps a dollar amount inside inline code untouched', () => {
+    const editor = makeEditor();
+    const md = 'cost `$100` and `$200` done';
+
+    const doc = parseDoc(editor, md);
+    const codeTexts = (doc?.content?.[0]?.content ?? [])
+      .filter(n => (n.marks ?? []).some(m => m.type === 'code'))
+      .map(n => n.text);
+    expect(codeTexts).toEqual(['$100', '$200']);
+    editor.destroy();
+  });
+
+  it('parses bold-wrapped math as math without leaving literal asterisks', () => {
+    const editor = makeEditor();
+    const md = '**$x$** end';
+
+    const doc = parseDoc(editor, md);
+    const children = doc?.content?.[0]?.content ?? [];
+    const math = children.find(n => n.type === 'inlineMath');
+    expect(math?.attrs?.latex).toBe('x');
+
+    // Known upstream limitation: @tiptap/markdown's applyMarkToContent only
+    // marks text nodes, so a mark on a bare atom (inlineMath) is not
+    // representable. The regression this guards against is the old tokenizer
+    // silently eating the ** delimiters; text around math keeps its bold.
+    const out = serialize(editor, doc!);
+    expect(out).not.toContain('**');
+    editor.destroy();
+  });
+
+  it('keeps bold around currency as text inside bold', () => {
+    const editor = makeEditor();
+    const md = '**costs $5 and $10** total';
+
+    const doc = parseDoc(editor, md);
+    const boldText = (doc?.content?.[0]?.content ?? [])
+      .filter(n => (n.marks ?? []).some(m => m.type === 'bold'))
+      .map(n => n.text)
+      .join('');
+    expect(boldText).toContain('costs $5 and $10');
+    editor.destroy();
+  });
+
+  it('still parses regular inline math with digit-leading or trailing latex', () => {
+    const editor = makeEditor();
+    const doc = parseDoc(editor, 'so $2x$ and $E=mc^2$ work');
+    const latexes = (doc?.content?.[0]?.content ?? [])
+      .filter(n => n.type === 'inlineMath')
+      .map(n => n.attrs?.latex);
+    expect(latexes).toEqual(['2x', 'E=mc^2']);
     editor.destroy();
   });
 });
