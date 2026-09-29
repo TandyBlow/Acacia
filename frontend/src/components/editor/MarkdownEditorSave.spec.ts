@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { MarkdownEditorContext } from './MarkdownEditorContext';
 
+// migrateMathStrings walks editor.state/view, which the mock editor lacks.
+vi.mock('@tiptap/extension-mathematics', () => ({ migrateMathStrings: vi.fn() }));
+
 // MarkdownEditorSave keeps its pending save in module state, so each test
 // needs a fresh module instance.
 function makeCtx() {
@@ -10,8 +13,36 @@ function makeCtx() {
     activeNode: ref<{ id: string; content: string } | null>({ id: 'n1', content: 'old' }),
     lastSavedContent: ref('old'),
     draft: ref(''),
+    isParseDegraded: ref(false),
+    isApplyingExternalContent: ref(false),
+    editor: ref<{
+      commands: { setContent: ReturnType<typeof vi.fn> };
+      setEditable: ReturnType<typeof vi.fn>;
+      markdown?: unknown;
+      schema?: unknown;
+    }>({ commands: { setContent: vi.fn() }, setEditable: vi.fn() }),
     store: { saveActiveNodeContent: vi.fn().mockResolvedValue(true) },
   };
+}
+
+/** Mock editor without a markdown manager: every parse fails through this one. */
+function makeEditor(overrides: Record<string, unknown> = {}) {
+  return {
+    commands: { setContent: vi.fn() },
+    setEditable: vi.fn(),
+    ...overrides,
+  };
+}
+
+/** Mock editor whose markdown manager parses to a fixed valid doc. */
+function makeParsingEditor(parsedDoc: unknown) {
+  return makeEditor({
+    markdown: { parse: vi.fn(() => parsedDoc) },
+    schema: {
+      nodes: { doc: {}, paragraph: {}, text: {} },
+      nodeFromJSON: () => ({ check: vi.fn() }),
+    },
+  });
 }
 
 async function loadSave(ctx: ReturnType<typeof makeCtx>) {
@@ -95,5 +126,61 @@ describe('MarkdownEditorSave', () => {
     await save.enqueueSave('n1', 'typed content');
 
     expect(ctx.lastSavedContent.value).toBe('old');
+  });
+
+  it('goes read-only and degraded when parsing fails', async () => {
+    const ctx = makeCtx();
+    const save = await loadSave(ctx);
+
+    save.syncEditorContent('# Title\n\nSome **bold** text with $E=mc^2$.');
+
+    expect(ctx.isParseDegraded.value).toBe(true);
+    expect(ctx.editor.value.setEditable).toHaveBeenCalledWith(false);
+    // The flat fallback is still shown so the user can see the content.
+    expect(ctx.editor.value.commands.setContent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'doc' }),
+      expect.objectContaining({ emitUpdate: false }),
+    );
+  });
+
+  it('never persists a degraded doc through any save path', async () => {
+    const ctx = makeCtx();
+    const save = await loadSave(ctx);
+    save.syncEditorContent('# Title');
+
+    save.scheduleAutoSave('n1', 'flattened');
+    await vi.runAllTimersAsync();
+    save.flushPendingSave();
+    await vi.runAllTimersAsync();
+    const forced = await save.enqueueSave('n1', 'flattened', { force: true });
+
+    expect(forced).toBe(false);
+    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.lastSavedContent.value).toBe('old');
+  });
+
+  it('recovers saving when a later load parses successfully', async () => {
+    const ctx = makeCtx();
+    const save = await loadSave(ctx);
+    save.syncEditorContent('# Title');
+    expect(ctx.isParseDegraded.value).toBe(true);
+
+    const parsedDoc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hello' }] }],
+    };
+    ctx.editor.value = makeParsingEditor(parsedDoc);
+    save.syncEditorContent('# Title');
+
+    expect(ctx.isParseDegraded.value).toBe(false);
+    expect(ctx.editor.value.setEditable).toHaveBeenLastCalledWith(true);
+    expect(ctx.editor.value.commands.setContent).toHaveBeenLastCalledWith(
+      parsedDoc,
+      expect.objectContaining({ emitUpdate: false }),
+    );
+
+    save.scheduleAutoSave('n1', 'parsed content');
+    await vi.runAllTimersAsync();
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith('n1', 'parsed content', undefined);
   });
 });

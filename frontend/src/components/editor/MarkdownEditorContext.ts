@@ -105,6 +105,10 @@ export function createMarkdownEditorContext() {
   const lastSavedContent = ref('')
   const isApplyingExternalContent = ref(false)
   const isMigratingMath = ref(false)
+  // True while the editor is showing the plain-text fallback because the saved
+  // markdown failed to parse. While set, every save path is blocked so the
+  // degraded flat version can never overwrite the intact server copy.
+  const isParseDegraded = ref(false)
   // Reassigned by createMarkdownEditorEditor later; composables must always
   // read ctx.editor.value at call time, never capture the initial ref.
   // Use shallowRef so Vue's UnwrapRef doesn't strip Editor's private members
@@ -170,6 +174,7 @@ export function createMarkdownEditorContext() {
     lastSavedContent,
     isApplyingExternalContent,
     isMigratingMath,
+    isParseDegraded,
     editor,
     showBottomBar,
     canSend,
