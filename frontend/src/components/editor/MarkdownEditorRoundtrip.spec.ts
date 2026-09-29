@@ -224,3 +224,100 @@ describe('block math survives a roundtrip', () => {
     editor.destroy();
   });
 });
+
+describe('angle brackets round-trip', () => {
+  function inlineTexts(doc: JSONContent | null): string[] {
+    return (doc?.content ?? []).flatMap(node =>
+      (node.content ?? []).map(child => child.text ?? ''),
+    );
+  }
+
+  it('keeps a bare comparison operator as literal text instead of &lt;', () => {
+    const editor = makeEditor();
+    const md = 'if a < b then done';
+
+    const doc = parseDoc(editor, md);
+    const out = serialize(editor, doc!);
+    expect(out).toContain('a < b');
+    expect(out).not.toContain('&lt;');
+
+    const reparsed = parseDoc(editor, out);
+    expect(serialize(editor, reparsed!)).toBe(out);
+    editor.destroy();
+  });
+
+  it('keeps < inside inline code spans', () => {
+    const editor = makeEditor();
+    const md = 'use `code with <angle>` here';
+
+    const doc = parseDoc(editor, md);
+    const codeText = (doc?.content?.[0]?.content ?? []).find(n =>
+      (n.marks ?? []).some(m => m.type === 'code'),
+    );
+    expect(codeText?.text).toBe('code with <angle>');
+
+    const out = serialize(editor, doc!);
+    expect(out).toContain('`code with <angle>`');
+    expect(out).not.toContain('&lt;');
+    editor.destroy();
+  });
+
+  it('keeps < inside fenced code blocks', () => {
+    const editor = makeEditor();
+    const md = '```\nif (a < b) return;\n```';
+
+    const doc = parseDoc(editor, md);
+    expect(doc?.content?.[0]?.type).toBe('codeBlock');
+    const out = serialize(editor, doc!);
+    expect(out).toContain('a < b');
+    expect(out).not.toContain('&lt;');
+    editor.destroy();
+  });
+
+  it('turns <scheme://...> autolinks into links and round-trips them', () => {
+    const editor = makeEditor();
+    const md = 'go to <https://x.com> now';
+
+    const doc = parseDoc(editor, md);
+    const linkNode = (doc?.content?.[0]?.content ?? []).find(n =>
+      (n.marks ?? []).some(m => m.type === 'link'),
+    );
+    expect(linkNode?.text).toBe('https://x.com');
+
+    const out = serialize(editor, doc!);
+    expect(out).not.toContain('&lt;');
+    const reparsed = parseDoc(editor, out);
+    const stillLink = (reparsed?.content?.[0]?.content ?? []).find(n =>
+      (n.marks ?? []).some(m => m.type === 'link'),
+    );
+    expect(stillLink).toBeDefined();
+    editor.destroy();
+  });
+
+  it('keeps CJK angle-bracket text literal', () => {
+    const editor = makeEditor();
+    const md = 'see <中文> tag';
+
+    const doc = parseDoc(editor, md);
+    expect(inlineTexts(doc).join('')).toContain('<中文>');
+    const out = serialize(editor, doc!);
+    expect(out).toContain('<中文>');
+    expect(out).not.toContain('&lt;');
+    editor.destroy();
+  });
+
+  it('still neutralizes tag-shaped HTML as literal text', () => {
+    const editor = makeEditor();
+    const md = 'plain <b>bold</b> text';
+
+    const doc = parseDoc(editor, md);
+    const out = serialize(editor, doc!);
+    // Only `<` is escaped (as before); the tag stays inert literal text.
+    expect(out).toContain('&lt;b>');
+    expect(out).not.toContain('<b>');
+
+    const reparsed = parseDoc(editor, out);
+    expect(serialize(editor, reparsed!)).toBe(out);
+    editor.destroy();
+  });
+});

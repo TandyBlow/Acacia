@@ -107,6 +107,110 @@ export function sanitizeMarkdownSource(content: string): string {
     .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[^'"]*\2/gi, ' $1="#"');
 }
 
+const CODE_REGION_PLACEHOLDER = '\x00CR';
+
+function maskFencedBlocks(text: string, push: (region: string) => string): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let fence: { char: string; len: number; lines: string[] } | null = null;
+
+  for (const line of lines) {
+    if (fence) {
+      fence.lines.push(line);
+      const closing = new RegExp(`^ {0,3}\\${fence.char}{${fence.len},}\\s*$`);
+      if (closing.test(line)) {
+        out.push(push(fence.lines.join('\n')));
+        fence = null;
+      }
+      continue;
+    }
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (opening) {
+      const run = opening[1] ?? '`';
+      fence = { char: run[0] ?? '`', len: run.length, lines: [line] };
+      continue;
+    }
+    out.push(line);
+  }
+  // Unterminated fence: masked to the end of the text, like marked parses it.
+  if (fence) out.push(push(fence.lines.join('\n')));
+  return out.join('\n');
+}
+
+function maskCodeSpansAndAutolinks(text: string, push: (region: string) => string): string {
+  let out = '';
+  let i = 0;
+  const n = text.length;
+
+  while (i < n) {
+    const ch = text[i];
+    if (ch === '`') {
+      let runEnd = i;
+      while (runEnd < n && text[runEnd] === '`') runEnd += 1;
+      const runLen = runEnd - i;
+
+      // A span of N backticks closes at the next run of exactly N backticks.
+      let close = -1;
+      for (let k = runEnd; k < n; ) {
+        if (text[k] === '`') {
+          let runStart = k;
+          while (k < n && text[k] === '`') k += 1;
+          if (k - runStart === runLen) {
+            close = runStart;
+            break;
+          }
+        } else {
+          k += 1;
+        }
+      }
+
+      if (close !== -1) {
+        const spanEnd = close + runLen;
+        out += push(text.slice(i, spanEnd));
+        i = spanEnd;
+      } else {
+        out += text.slice(i, runEnd);
+        i = runEnd;
+      }
+      continue;
+    }
+    if (ch === '<') {
+      const rest = text.slice(i);
+      const autolink = /^<[A-Za-z][A-Za-z0-9+.-]*:\/\/[^<>\s]*>/.exec(rest);
+      if (autolink) {
+        out += push(autolink[0]);
+        i += autolink[0].length;
+        continue;
+      }
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Mask regions whose text must reach the markdown parser verbatim: fenced
+ * code blocks, inline code spans, and <scheme://...> autolinks. Callers
+ * rewrite the protected string (e.g. escape angle brackets) and run restore()
+ * afterwards, so `<` inside code is never rewritten to &lt;.
+ */
+export function maskCodeRegions(text: string): { protected: string; restore: (s: string) => string } {
+  const regions: string[] = [];
+  const push = (region: string): string => {
+    regions.push(region);
+    return `${CODE_REGION_PLACEHOLDER}${regions.length - 1}\x00`;
+  };
+
+  const withoutFences = maskFencedBlocks(text, push);
+  const withoutSpans = maskCodeSpansAndAutolinks(withoutFences, push);
+
+  return {
+    protected: withoutSpans,
+    restore: (s: string) => s.replace(/\x00CR(\d+)\x00/g, (_m, i) => regions[parseInt(i, 10)] ?? ''),
+  };
+}
+
 function trimEdgeHardBreaks(nodes: JSONContent[]): JSONContent[] {
   let start = 0;
   let end = nodes.length;
