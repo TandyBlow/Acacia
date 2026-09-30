@@ -136,6 +136,25 @@ function repairEmptyBlocks(
   }
 }
 
+/**
+ * Put currency-like $...$ spans (closing $ followed by a digit) back into the
+ * parsed document. The spans were replaced with placeholders before parsing
+ * so no registered tokenizer — stock or tightened — can consume
+ * "It costs $5 and $10 total." as inline math together with the whitespace
+ * inside the span.
+ */
+function restoreShieldedCurrency(json: JSONContent, spans: string[]): void {
+  if (!json || typeof json !== 'object' || spans.length === 0) return;
+  if (typeof json.text === 'string' && json.text.includes(CURRENCY_PLACEHOLDER)) {
+    json.text = json.text.replace(/\x00CUR(\d+)\x00/g, (_m, i) => spans[parseInt(i, 10)] ?? '');
+  }
+  if (Array.isArray(json.content)) {
+    for (const child of json.content) restoreShieldedCurrency(child, spans);
+  }
+}
+
+const CURRENCY_PLACEHOLDER = '\x00CUR';
+
 export function parseMarkdownContent(instance: Editor, content: string): JSONContent | null {
   const mgr = getMarkdownManager(instance);
   if (!mgr) return null;
@@ -155,10 +174,19 @@ export function parseMarkdownContent(instance: Editor, content: string): JSONCon
     const htmlSafe = escapeNonHtmlAngleBrackets(mathProtected.protected);
     // Restore $...$ / $$...$$ math syntax so the custom tokenizer can parse it
     const finalContent = mathProtected.restore(htmlSafe);
-    // Table tokens are handled by TableMarkdownParser (custom extension registered
-    // on the editor). marked's gfm:true produces 'table' tokens; the extension
-    // converts them directly to TipTap JSON without going through generateJSON.
-    const parsed = mgr.parse(finalContent);
+    // Shield currency spans from the math tokenizer: a $...$ pair whose
+    // closing $ is immediately followed by a digit is money, not math
+    // ("It costs $5 and $10 total."). The placeholder survives parsing as
+    // plain text and is substituted back into the document afterwards, so
+    // the behavior does not depend on which tokenizer variant is registered.
+    const currencySpans: string[] = [];
+    const code = maskCodeRegions(finalContent);
+    const shielded = code.protected.replace(/\$(?=\d)([^$\n]*?)\$(?=\d)/g, (match) => {
+      currencySpans.push(match);
+      return `${CURRENCY_PLACEHOLDER}${currencySpans.length - 1}\x00`;
+    });
+    const parsed = mgr.parse(code.restore(shielded));
+    restoreShieldedCurrency(parsed, currencySpans);
 
     // Strip nodes with unknown types, then wrap bare inline nodes in paragraphs
     const stripped = stripUnknownNodes(parsed, instance.schema) ?? parsed;

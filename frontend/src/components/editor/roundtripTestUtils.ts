@@ -6,7 +6,7 @@ import { ref } from 'vue';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
-import { BlockMath } from '@tiptap/extension-mathematics';
+import { BlockMath, Mathematics } from '@tiptap/extension-mathematics';
 import { Markdown } from '@tiptap/markdown';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
@@ -23,12 +23,38 @@ import type { JSONContent } from '@tiptap/core';
 import type { MarkdownEditorContext } from './MarkdownEditorContext';
 
 export function makeEditor(): Editor {
+  return makeEditorWithMath('tight');
+}
+
+/**
+ * mathVariant 'tight' uses the tightened tokenizer stack from
+ * MarkdownEditorEditor.ts; 'stock' uses the original Mathematics wrapper so
+ * tests can prove parse-side shielding holds even when the stock tokenizers
+ * are the ones registered.
+ */
+export function makeEditorWithMath(mathVariant: 'tight' | 'stock'): Editor {
   const lowlight = createLowlight(all);
   const ctxStub = {
     chatMode: ref('idle'),
     isApplyingExternalContent: ref(false),
   } as unknown as MarkdownEditorContext;
   const { TableMarkdownParser } = createMarkdownEditorExtensions(ctxStub);
+
+  const mathExtensions = mathVariant === 'tight'
+    ? [
+        StrongSpanGuard,
+        BlockMath.configure({
+          katexOptions: { throwOnError: true, strict: false, trust: false },
+        }),
+        TightInlineMath.configure({
+          katexOptions: { throwOnError: true, strict: false, trust: false },
+        }),
+      ]
+    : [
+        Mathematics.configure({
+          katexOptions: { throwOnError: true, strict: false, trust: false },
+        }),
+      ];
 
   return new Editor({
     content: '',
@@ -68,21 +94,7 @@ export function makeEditor(): Editor {
       MarkdownBold,
       MarkdownItalic,
       MarkdownStrike,
-      StrongSpanGuard,
-      BlockMath.configure({
-        katexOptions: {
-          throwOnError: true,
-          strict: false,
-          trust: false,
-        },
-      }),
-      TightInlineMath.configure({
-        katexOptions: {
-          throwOnError: true,
-          strict: false,
-          trust: false,
-        },
-      }),
+      ...mathExtensions,
       Table.configure({
         resizable: false,
         HTMLAttributes: {

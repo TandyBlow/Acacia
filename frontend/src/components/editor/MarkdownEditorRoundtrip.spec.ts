@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { makeEditor, parseDoc, serialize, blockTypes } from './roundtripTestUtils';
+import { makeEditor, makeEditorWithMath, parseDoc, serialize, blockTypes } from './roundtripTestUtils';
 import type { JSONContent } from '@tiptap/core';
 
 describe('image notes survive a roundtrip', () => {
@@ -284,6 +284,19 @@ describe('inline math tokenizer boundaries', () => {
       .filter(n => n.type === 'inlineMath')
       .map(n => n.attrs?.latex);
     expect(latexes).toEqual(['2x', 'E=mc^2']);
+    editor.destroy();
+  });
+
+  it('keeps currency spans as text even when the stock math tokenizers are registered', () => {
+    const editor = makeEditorWithMath('stock');
+    const md = 'It costs $5 and $10 total.';
+
+    const doc = parseDoc(editor, md);
+    const hasMath = (doc?.content?.[0]?.content ?? []).some(n => n.type === 'inlineMath');
+    expect(hasMath).toBe(false);
+
+    const out = serialize(editor, doc!);
+    expect(out).toContain('$5 and $10 total.');
     editor.destroy();
   });
 });
