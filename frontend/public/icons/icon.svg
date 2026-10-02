@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#1b2a4a"/>
+      <stop offset="100%" stop-color="#0b1120"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="bark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b45309"/>
+      <stop offset="100%" stop-color="#92400e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  
+  <ellipse cx="256" cy="408" rx="120" ry="14" fill="#1e293b"/>
+  <path d="M 238 402 C 247 370 249 345 246 312 L 266 312 C 263 345 265 370 274 402 C 262 410 250 410 238 402 Z" fill="url(#bark)"/>
+  <circle cx="256" cy="200" r="105" fill="url(#leaf)"/>
+  <circle cx="168" cy="258" r="72" fill="url(#leaf)"/>
+  <circle cx="344" cy="258" r="72" fill="url(#leaf)"/>
+  <circle cx="210" cy="170" r="11" fill="#ecfdf5" opacity="0.95"/>
+  <circle cx="300" cy="225" r="9" fill="#ecfdf5" opacity="0.95"/>
+  <circle cx="245" cy="255" r="7" fill="#ecfdf5" opacity="0.9"/>
+</svg>
