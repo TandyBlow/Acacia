@@ -17,6 +17,9 @@ export interface PendingNodeContext {
 
 export interface SaveConflict {
   nodeId: string;
+  /** The draft that was being saved when the conflict hit — NOT the
+   * currently displayed draft, which may belong to another node by now. */
+  draftContent: string;
   serverContent: string;
   serverRevision: number;
 }

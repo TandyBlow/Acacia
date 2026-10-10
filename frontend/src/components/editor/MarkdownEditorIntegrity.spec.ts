@@ -123,16 +123,20 @@ describe('checkParseIntegrity', () => {
     expect(flipped.ok).toBe(false);
   });
 
-  it('checks table row shapes and ignores cell text as prose', () => {
+  it('checks table row shapes and compares cell text as prose', () => {
     const source = '| a | b |\n| --- | --- |\n| 1 | 2 |';
+    const cell = (text: string) => ({
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
     const ok = checkParseIntegrity(
       source,
       doc([
         {
           type: 'table',
           content: [
-            { type: 'tableRow', content: [{ type: 'tableCell' }, { type: 'tableCell' }] },
-            { type: 'tableRow', content: [{ type: 'tableCell' }, { type: 'tableCell' }] },
+            { type: 'tableRow', content: [cell('a'), cell('b')] },
+            { type: 'tableRow', content: [cell('1'), cell('2')] },
           ],
         },
       ]),
@@ -144,11 +148,27 @@ describe('checkParseIntegrity', () => {
       doc([
         {
           type: 'table',
-          content: [{ type: 'tableRow', content: [{ type: 'tableCell' }, { type: 'tableCell' }] }],
+          content: [{ type: 'tableRow', content: [cell('a'), cell('b')] }],
         },
       ]),
     );
     expect(truncated.ok).toBe(false);
+
+    // Cells emptied out entirely: the row shape still matches, the text is gone.
+    const emptied = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'table',
+          content: [
+            { type: 'tableRow', content: [cell('a'), cell('b')] },
+            { type: 'tableRow', content: [cell(''), cell('')] },
+          ],
+        },
+      ]),
+    );
+    expect(emptied.ok).toBe(false);
+    expect(emptied.issues.some((i) => i.kind === 'lost' && i.sample.includes('1 2'))).toBe(true);
   });
 
   it('preserves code block whitespace exactly', () => {
@@ -157,12 +177,8 @@ describe('checkParseIntegrity', () => {
       source,
       doc([
         paragraph('before'),
-        { type: 'codeBlock', content: [
-          { type: 'text', text: 'line1' },
-          { type: 'hardBreak' },
-          { type: 'hardBreak' },
-          { type: 'text', text: 'line3' },
-        ] },
+        // Real parses keep the fenced content as one text node, newlines included.
+        { type: 'codeBlock', content: [{ type: 'text', text: 'line1\n\n\nline3' }] },
         paragraph('after'),
       ]),
     );
@@ -216,5 +232,60 @@ describe('checkParseIntegrity', () => {
   it('treats a null parse as a total loss', () => {
     const report = checkParseIntegrity('anything', null);
     expect(report.ok).toBe(false);
+  });
+
+  // ── Acceptance-review counterexamples (2026-10-10) ────────────────────
+
+  it('flags swapped paragraph order with identical content counts', () => {
+    const source = 'first paragraph comes first\n\nsecond paragraph comes second';
+    const report = checkParseIntegrity(
+      source,
+      doc([paragraph('second paragraph comes second'), paragraph('first paragraph comes first')]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((i) => i.kind === 'reordered')).toBe(true);
+  });
+
+  it('flags a brand-new paragraph injected into the document', () => {
+    const source = 'original paragraph stays';
+    const report = checkParseIntegrity(
+      source,
+      doc([paragraph('original paragraph stays'), paragraph('a brand new injected paragraph')]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((i) => i.kind === 'injected' && i.sample.includes('brand new'))).toBe(true);
+  });
+
+  it('flags a table whose cell text was emptied', () => {
+    const source = '| a | b |\n| --- | --- |\n| 1 | 2 |';
+    const cell = (text: string) => ({
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'table',
+          content: [
+            { type: 'tableRow', content: [cell('a'), cell('b')] },
+            { type: 'tableRow', content: [cell(''), cell('')] },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((i) => i.kind === 'lost' && i.unit === 'prose')).toBe(true);
+  });
+
+  it('keeps the plus sign so "a+b" losing into "ab" is caught', () => {
+    const report = checkParseIntegrity('the sum is a+b here', doc([paragraph('the sum is ab here')]));
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((i) => i.kind === 'lost' && i.sample.includes('a+b'))).toBe(true);
+  });
+
+  it('accepts a real plus sign that round-trips', () => {
+    const report = checkParseIntegrity('1+1=2 is arithmetic', doc([paragraph('1+1=2 is arithmetic')]));
+    expect(report.ok).toBe(true);
   });
 });

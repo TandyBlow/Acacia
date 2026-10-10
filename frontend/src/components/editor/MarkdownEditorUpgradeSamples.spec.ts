@@ -6,7 +6,7 @@
 // plus the parse-integrity checker, exactly like production load.
 import { describe, expect, it } from 'vitest';
 import { makeEditor, parseDoc } from './roundtripTestUtils';
-import { checkParseIntegrity } from './MarkdownEditorIntegrity';
+import { checkDocEquivalence, checkParseIntegrity } from './MarkdownEditorIntegrity';
 
 const SAMPLES: Array<{ name: string; md: string }> = [
   {
@@ -45,14 +45,25 @@ describe('upgrade regression samples (3.20.4 → 3.21.0)', () => {
       if (!report.ok) {
         failures.push(`${sample.name}: ${JSON.stringify(report.issues)}`);
       }
-      // The parse must also survive serialization: the doc that loads is the
-      // doc that would be autosaved.
+      // The parse must also survive serialization. Comparing serialized
+      // string against re-parse alone is not enough: if serialization itself
+      // dropped content, both sides of that check would share the loss. The
+      // doc-vs-doc equivalence check pins the editor document before and
+      // after the serialize/re-parse round trip.
       if (doc) {
         const reserialized = (() => {
           editor.commands.setContent(doc, { emitUpdate: false });
           return editor.getMarkdown();
         })();
         const reparsed = parseDoc(editor, reserialized);
+        if (reparsed === null) {
+          failures.push(`${sample.name} (reserialized): re-parse returned null`);
+          continue;
+        }
+        const docEquivalence = checkDocEquivalence(doc, reparsed);
+        if (!docEquivalence.ok) {
+          failures.push(`${sample.name} (doc roundtrip): ${JSON.stringify(docEquivalence.issues)}`);
+        }
         const rereport = checkParseIntegrity(reserialized, reparsed);
         if (!rereport.ok) {
           failures.push(`${sample.name} (reserialized): ${JSON.stringify(rereport.issues)}`);

@@ -23,7 +23,7 @@ import { maskCodeRegions } from './MarkdownEditorMarkdownUtil'
  */
 
 export interface IntegrityIssue {
-  kind: 'lost' | 'duplicated'
+  kind: 'lost' | 'duplicated' | 'injected' | 'reordered'
   /** e.g. "prose", "code", "math", "image", "href", "heading level" */
   unit: string
   /** Human-readable preview of the content unit. */
@@ -41,6 +41,8 @@ type CountKey = string // e.g. `prose\u0000<normalized text>`
 
 interface SourceShape {
   counts: Map<CountKey, { type: string; sample: string; count: number }>
+  /** Normalized prose units in document order, repeats included. */
+  proseSeq: string[]
   headingLevels: number[]
   listStarts: number[]
   checkboxes: boolean[]
@@ -66,7 +68,11 @@ function decodeEntities(text: string): string {
 function normProse(text: string): string {
   return decodeEntities(text)
     .replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1')
-    .replace(/[*_~[\]()<>#!`+|]/g, '')
+    // Only emphasis markers are pure syntax here: link/image/heading/table
+    // syntax is stripped at its extraction site, and characters like + and
+    // | are legitimate prose ("a+b", "a | b") — dropping them would blind
+    // the checker to "a+b" losing into "ab".
+    .replace(/[*_~]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -79,11 +85,26 @@ function normCode(text: string): string {
   return text.replace(/\r\n?/g, '\n').trim()
 }
 
+/**
+ * Strip the fence/backtick markers from a masked code region so the unit
+ * matches the doc side, whose code text never carries them: fenced blocks
+ * lose their opening/closing lines, inline spans their backticks.
+ */
+function stripCodeFence(region: string): string {
+  const withoutBlock = region
+    .replace(/^\s*(`{3,}|~{3,})[^\n]*\n/, '')
+    .replace(/\n\s*(`{3,}|~{3,})\s*$/, '')
+  if (withoutBlock !== region) return withoutBlock
+  const inline = /^(`+)([\s\S]*)\1$/.exec(region.trim())
+  return inline ? inline[2] ?? '' : region
+}
+
 // ── Source-side extraction ─────────────────────────────────────────────
 
 export function extractSourceShape(source: string): SourceShape {
   const shape: SourceShape = {
     counts: new Map(),
+    proseSeq: [],
     headingLevels: [],
     listStarts: [],
     checkboxes: [],
@@ -94,6 +115,7 @@ export function extractSourceShape(source: string): SourceShape {
   const pushUnit = (type: string, raw: string): void => {
     const value = type === 'prose' ? normProse(raw) : type === 'math' ? normMath(raw) : type === 'code' ? normCode(raw) : raw.trim()
     if (!value) return
+    if (type === 'prose') shape.proseSeq.push(value)
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
@@ -110,9 +132,10 @@ export function extractSourceShape(source: string): SourceShape {
   const masked = maskCodeRegions(text)
   const regions = masked.protected.match(/\x00CR(\d+)\x00/g) ?? []
   for (const token of regions) {
-    const index = parseInt(token.slice(4, -1), 10)
+    // token = \x00CR<digits>\x00 — digits start at index 3 (the NUL is one char).
+    const index = parseInt(token.slice(3, -1), 10)
     const region = maskedRestorePeek(masked, index)
-    if (region !== null) pushUnit('code', region)
+    if (region !== null) pushUnit('code', stripCodeFence(region))
   }
   text = masked.protected.replace(/\x00CR\d+\x00/g, '\n')
 
@@ -198,6 +221,9 @@ export function extractSourceShape(source: string): SourceShape {
       if (!/^\s*\|?\s*:?-{3,}[-| :]*$/.test(line)) {
         const inner = line.trim().replace(/^\|/, '').replace(/\|$/, '')
         shape.tableRows.push(inner.split('|').length)
+        // Cell text participates in the prose checks (counts + order), so a
+        // row whose cells were emptied is reported as lost content.
+        pushUnit('prose', inner.replace(/\|/g, ' '))
       }
       lineClass.push('none')
       continue
@@ -253,6 +279,8 @@ function detectTableRows(lines: string[]): Set<number> {
 
 interface DocShape {
   counts: Map<CountKey, { type: string; sample: string; count: number }>
+  /** Normalized prose units in document order, repeats included. */
+  proseSeq: string[]
   headingLevels: number[]
   listStarts: number[]
   checkboxes: boolean[]
@@ -263,6 +291,7 @@ interface DocShape {
 function extractDocShape(doc: JSONContent): DocShape {
   const shape: DocShape = {
     counts: new Map(),
+    proseSeq: [],
     headingLevels: [],
     listStarts: [],
     checkboxes: [],
@@ -272,6 +301,7 @@ function extractDocShape(doc: JSONContent): DocShape {
 
   const pushUnit = (type: string, value: string): void => {
     if (!value) return
+    if (type === 'prose') shape.proseSeq.push(value)
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
@@ -309,6 +339,13 @@ function extractDocShape(doc: JSONContent): DocShape {
         continue
       }
       if (node.type === 'text' && typeof node.text === 'string') {
+        // Inline code spans are code units, mirroring the source side where
+        // the backticks are stripped — they must not leak into the prose line.
+        if ((node.marks ?? []).some((m) => m.type === 'code')) {
+          flush()
+          pushUnit('code', node.text)
+          continue
+        }
         line += node.text
         for (const mark of node.marks ?? []) {
           if (mark.type === 'link' && mark.attrs?.href) pushUnit('href', String(mark.attrs.href))
@@ -352,8 +389,14 @@ function extractDocShape(doc: JSONContent): DocShape {
           if (row.type === 'tableRow') {
             const cells = (row.content ?? []).filter(c => c.type === 'tableCell' || c.type === 'tableHeader')
             shape.tableRows.push(cells.length)
-            // Cell text is covered by the row-shape check; prose here would
-            // double-count against single-line source rows.
+            // Cell text joins into one prose unit per row, matching the
+            // source side where a table row is one stripped line — emptied
+            // cells then surface as lost prose.
+            const cellText = cells
+              .map(cell => collectCellText(cell))
+              .filter(t => t.trim())
+              .join(' ')
+            pushUnit('prose', normProse(cellText))
           }
         }
         return
@@ -370,6 +413,13 @@ function extractDocShape(doc: JSONContent): DocShape {
 
 function inlineText(node: JSONContent): string {
   return (node.content ?? []).map(c => c.text ?? '').join('')
+}
+
+/** All text inside a table cell, paragraphs joined with spaces. */
+function collectCellText(node: JSONContent): string {
+  if (node.type === 'text' && typeof node.text === 'string') return node.text
+  if (node.type === 'hardBreak') return ' '
+  return (node.content ?? []).map(collectCellText).join(' ')
 }
 
 function codeBlockText(node: JSONContent): string {
@@ -410,6 +460,22 @@ function compareCounts(
         actual: actualCount,
       })
     }
+  }
+  // Content present in the doc but absent from the source: injected blocks
+  // (an extra paragraph, swapped-in text). Without this pass a parse that
+  // added brand-new units alongside the original ones would pass, since the
+  // loop above only inspects keys the source knows about. Reference-style
+  // hrefs resolve doc-side only, so they stay exempt.
+  for (const [key, actual] of doc.counts) {
+    if (source.counts.has(key)) continue
+    if (actual.type === 'href') continue
+    issues.push({
+      kind: 'injected',
+      unit: actual.type,
+      sample: actual.sample,
+      expected: 0,
+      actual: actual.count,
+    })
   }
 }
 
@@ -466,6 +532,29 @@ function compareSequences(source: SourceShape, doc: DocShape, issues: IntegrityI
       actual: doc.hardBreaks,
     })
   }
+  // Paragraph order: only meaningful when the content multiset matches —
+  // a loss or duplication is already reported above, and reordering with
+  // identical counts is its own corruption ("A, B" parsed as "B, A").
+  const countsMatch =
+    source.counts.size === doc.counts.size &&
+    [...source.counts.entries()].every(([key, expected]) => doc.counts.get(key)?.count === expected.count)
+  if (countsMatch) {
+    let at = 0
+    for (const unit of source.proseSeq) {
+      const found = doc.proseSeq.indexOf(unit, at)
+      if (found === -1) {
+        issues.push({
+          kind: 'reordered',
+          unit: 'paragraph order',
+          sample: unit.slice(0, 60),
+          expected: source.proseSeq.length,
+          actual: doc.proseSeq.length,
+        })
+        break
+      }
+      at = found + 1
+    }
+  }
 }
 
 export function checkParseIntegrity(source: string, doc: JSONContent | null): IntegrityReport {
@@ -478,6 +567,23 @@ export function checkParseIntegrity(source: string, doc: JSONContent | null): In
   const issues: IntegrityIssue[] = []
   compareCounts(sourceShape, docShape, issues, { loss: true, duplication: true })
   compareSequences(sourceShape, docShape, issues)
+
+  return { ok: issues.length === 0, issues }
+}
+
+/**
+ * Compare two document shapes directly — used to prove that a serialization
+ * step kept the editor's document intact: comparing only the serialized
+ * string against its re-parse would miss content lost during serialization
+ * itself, since both sides of that check would share the loss.
+ */
+export function checkDocEquivalence(before: JSONContent, after: JSONContent): IntegrityReport {
+  const beforeShape = extractDocShape(before)
+  const afterShape = extractDocShape(after)
+
+  const issues: IntegrityIssue[] = []
+  compareCounts(beforeShape, afterShape, issues, { loss: true, duplication: true })
+  compareSequences(beforeShape, afterShape, issues)
 
   return { ok: issues.length === 0, issues }
 }

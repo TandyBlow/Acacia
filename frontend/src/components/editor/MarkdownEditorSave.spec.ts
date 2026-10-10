@@ -223,7 +223,7 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    ctx.store.lastSaveConflict = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+    ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5 };
     const save = await loadSave(ctx);
 
     ctx.draft.value = 'typed content';
@@ -247,7 +247,7 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true };
 
     ctx.draft.value = 'my draft';
     await save.resolveConflictKeepMine();
@@ -272,7 +272,7 @@ describe('MarkdownEditorSave', () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { rejectWithConflict = resolve; });
-        ctx.store.lastSaveConflict = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+        ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5 };
         return false;
       }
       return true;
@@ -301,7 +301,7 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true };
 
     save.resolveConflictTakeServer();
 
@@ -309,5 +309,94 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.lastSavedContent.value).toBe('server text');
     expect(ctx.saveConflict.value).toBeNull();
     expect(ctx.editor.value.commands.setContent).toHaveBeenCalled();
+  });
+
+  it('a late conflict response after switching nodes does not banner the new node', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
+    const save = await loadSave(ctx);
+
+    // Request for node A goes out; the user switches to node B; then the
+    // conflict response for A arrives.
+    ctx.activeNode.value = { id: 'n2', content: '' };
+    ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'a draft', serverContent: 'a server', serverRevision: 5 };
+
+    await save.enqueueSave('n1', 'a draft');
+
+    // No banner on node B; the conflict stays in the store for bookkeeping.
+    expect(ctx.saveConflict.value).toBeNull();
+    expect(ctx.store.lastSaveConflict?.nodeId).toBe('n1');
+    // No retry storm against a version conflict either.
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('keep-mine after switching nodes replays the captured snapshot, not the other node draft', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    // The conflict belongs to node A; the editor now shows node B with its
+    // own unsaved draft.
+    ctx.saveConflict.value = {
+      nodeId: 'n1',
+      draftContent: 'node A draft',
+      serverContent: 'node A server',
+      serverRevision: 5,
+      draftValidated: true,
+    };
+    ctx.activeNode.value = { id: 'n2', content: '' };
+    ctx.draft.value = 'node B draft';
+
+    await save.resolveConflictKeepMine();
+
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'n1',
+      'node A draft',
+      expect.objectContaining({ force: true, revision: 5 }),
+    );
+    // Node B's draft is untouched and its content never sent to node A.
+    expect(ctx.draft.value).toBe('node B draft');
+    expect(ctx.saveConflict.value).toBeNull();
+  });
+
+  it('keep-mine refuses to replay a snapshot that never passed validation', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = {
+      nodeId: 'n1',
+      draftContent: 'risky snapshot',
+      serverContent: 'server text',
+      serverRevision: 5,
+      draftValidated: false,
+    };
+    ctx.activeNode.value = { id: 'n2', content: '' };
+
+    const saved = await save.resolveConflictKeepMine();
+
+    expect(saved).toBe(false);
+    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+  });
+
+  it('take-server after switching nodes leaves the other node editor untouched', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = {
+      nodeId: 'n1',
+      draftContent: 'node A draft',
+      serverContent: 'node A server',
+      serverRevision: 5,
+      draftValidated: true,
+    };
+    ctx.activeNode.value = { id: 'n2', content: 'node B content' };
+    ctx.draft.value = 'node B draft';
+
+    save.resolveConflictTakeServer();
+
+    expect(ctx.saveConflict.value).toBeNull();
+    expect(ctx.draft.value).toBe('node B draft');
+    expect(ctx.activeNode.value?.content).toBe('node B content');
+    expect(ctx.editor.value.commands.setContent).not.toHaveBeenCalled();
   });
 });

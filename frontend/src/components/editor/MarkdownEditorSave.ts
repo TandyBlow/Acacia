@@ -104,8 +104,13 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       }
       const conflict = ctx.store.lastSaveConflict
       if (conflict?.nodeId === nodeId) {
-        // 412/428: keep the draft, pause autosave, let the user decide.
-        ctx.saveConflict.value = conflict
+        // 412/428: keep the conflicting draft, pause autosave, let the user
+        // decide. The banner only goes up while the conflicted node is still
+        // on screen — a late response after switching nodes stays in the
+        // store and never applies to the node now being edited.
+        if (ctx.activeNode.value?.id === nodeId) {
+          ctx.saveConflict.value = { ...conflict, draftValidated: validated }
+        }
         pendingSave = null
         clearAutoSaveTimer()
         return false
@@ -211,18 +216,29 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
   }
 
   /** Conflict resolution: overwrite the server with the local draft. */
-  async function resolveConflictKeepMine(): Promise<void> {
+  async function resolveConflictKeepMine(): Promise<boolean> {
     const conflict = ctx.saveConflict.value
-    if (!conflict) return
-    const saved = await enqueueSave(conflict.nodeId, ctx.draft.value, {
+    if (!conflict) return false
+    // While still on the conflicted node the draft may have evolved past the
+    // snapshot — save the latest, revalidated. After switching away the
+    // editor draft belongs to another node and must never land here; replay
+    // the snapshot captured at conflict time instead.
+    const onConflictedNode = ctx.activeNode.value?.id === conflict.nodeId
+    const content = onConflictedNode ? ctx.draft.value : conflict.draftContent
+    const validated = onConflictedNode ? validateContent(content) : conflict.draftValidated
+    const saved = await enqueueSave(conflict.nodeId, content, {
       force: true,
-      validated: true,
+      validated,
       revision: conflict.serverRevision,
     })
     if (saved) {
       ctx.store.lastSaveConflict = null
       ctx.saveConflict.value = null
+      if (onConflictedNode) {
+        ctx.lastSavedContent.value = content
+      }
     }
+    return saved
   }
 
   /** Conflict resolution: discard the local draft, adopt the server copy. */
@@ -231,12 +247,15 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     if (!conflict) return
     ctx.store.lastSaveConflict = null
     ctx.saveConflict.value = null
+    // Every editor mutation is bound to the conflicted node: by the time the
+    // user clicks, the editor may be showing a different node whose draft
+    // and content must stay untouched.
     if (ctx.activeNode.value?.id === conflict.nodeId) {
       ctx.activeNode.value = { ...ctx.activeNode.value, content: conflict.serverContent }
+      ctx.draft.value = conflict.serverContent
+      ctx.lastSavedContent.value = conflict.serverContent
+      syncEditorContent(conflict.serverContent)
     }
-    ctx.draft.value = conflict.serverContent
-    ctx.lastSavedContent.value = conflict.serverContent
-    syncEditorContent(conflict.serverContent)
   }
 
   return {

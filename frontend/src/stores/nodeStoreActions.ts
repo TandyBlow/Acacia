@@ -109,6 +109,9 @@ export function createNodeStoreActions(
     }
 
     state.errorMessage.value = null;
+    // A conflict recorded by an earlier save must not be mistaken for this
+    // one: after this call, a non-null lastSaveConflict is always fresh.
+    state.lastSaveConflict.value = null;
     try {
       // The version this content was edited against; a mismatch answers 412
       // and the conflict handler below takes over (never a blind retry).
@@ -140,9 +143,10 @@ export function createNodeStoreActions(
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 412 || status === 428) {
-        // Version conflict: keep the local draft untouched, pull the server
-        // copy, and let the user choose keep-mine or take-server.
-        state.lastSaveConflict.value = await _captureConflict(nodeId);
+        // Version conflict: keep the draft that was being saved, pull the
+        // server copy, and let the user choose keep-mine or take-server.
+        const { serverContent, serverRevision } = await _captureConflict(nodeId);
+        state.lastSaveConflict.value = { nodeId, draftContent: content, serverContent, serverRevision };
         console.error('[nodeStore] save conflict, autosave paused for node:', nodeId, status);
         return false;
       }
@@ -166,7 +170,7 @@ export function createNodeStoreActions(
       serverContent = cached?.nodeInfo?.content ?? '';
       serverRevision = cached?.nodeInfo?.revision ?? 0;
     }
-    return { nodeId, serverContent, serverRevision };
+    return { serverContent, serverRevision };
   }
 
   function resetAfterLogout(): void {

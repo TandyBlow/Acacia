@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/vue-3'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useNodeStore } from '../../stores/nodeStore'
+import type { SaveConflict } from '../../stores/nodeStoreState'
 import { useNodeChat } from '../../composables/useNodeChat'
 import { usePageTransition } from '../../composables/usePageTransition'
 import type { TreeNode } from '../../types/node'
@@ -114,9 +115,11 @@ export function createMarkdownEditorContext() {
   // the visible warning banner.
   const integrityIssueText = ref('')
   // A save was rejected because the server holds a newer version (412/428).
-  // The local draft is kept untouched; the user chooses keep-mine or
-  // take-server. Pauses autosave for the node until resolved.
-  const saveConflict = ref<{ nodeId: string; serverContent: string; serverRevision: number } | null>(null)
+  // Carries the draft snapshot captured at conflict time plus its validation
+  // verdict, bound to the node — a later response after the user switched
+  // nodes must never apply another node's draft here. Only set while the
+  // conflicted node is the one on screen.
+  const saveConflict = ref<(SaveConflict & { draftValidated: boolean }) | null>(null)
   // Reassigned by createMarkdownEditorEditor later; composables must always
   // read ctx.editor.value at call time, never capture the initial ref.
   // Use shallowRef so Vue's UnwrapRef doesn't strip Editor's private members
