@@ -136,3 +136,4 @@ docs/
 *.docx
 *.xlsx
 *.csv
+rescue/
