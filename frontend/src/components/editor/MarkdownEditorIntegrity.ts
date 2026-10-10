@@ -52,6 +52,17 @@ interface SourceShape {
   hardBreaks: number
 }
 
+/**
+ * Sentinel unit for an empty table cell. Empty cells keep their position in
+ * the prose sequence: text moving into a neighboring empty cell would
+ * otherwise look like a no-op, since empty cells are skipped as content.
+ */
+const EMPTY_CELL = '\u0000empty-cell'
+
+function unitSample(value: string): string {
+  return value === EMPTY_CELL ? '(empty cell)' : value.slice(0, 60)
+}
+
 const ENTITY_DECODED: Record<string, string> = {
   '&lt;': '<',
   '&gt;': '>',
@@ -135,7 +146,7 @@ export function extractSourceShape(source: string): SourceShape {
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
-    else shape.counts.set(key, { type, sample: value.slice(0, 60), count: 1 })
+    else shape.counts.set(key, { type, sample: unitSample(value), count: 1 })
   }
 
   // 1. Pull autolinks out as hrefs before code masking hides them. The URL
@@ -157,16 +168,20 @@ export function extractSourceShape(source: string): SourceShape {
   }
   text = masked.protected.replace(/\x00CR\d+\x00/g, '\n')
 
-  // 3. Math spans use the same precedence as protectMathDollarSyntax.
-  text = text
-    .replace(/\$\$([\s\S]+?)\$\$/g, (_m, latex: string) => {
-      pushUnit('math', latex)
-      return '\n'
-    })
-    .replace(/\$(?![ \d])([^$\n]+?)\$/g, (_m, latex: string) => {
-      pushUnit('math', latex)
+  // 3. Math spans in one pass so units keep source order: extracting all
+  // block math before all inline math would reorder a document that has
+  // inline math before a block and produce a false "reordered".
+  text = text.replace(
+    /\$\$([\s\S]+?)\$\$|\$(?![ \d])([^$\n]+?)\$/g,
+    (_m, blockLatex: string | undefined, inlineLatex: string | undefined) => {
+      if (blockLatex !== undefined) {
+        pushUnit('math', blockLatex)
+        return '\n'
+      }
+      pushUnit('math', inlineLatex ?? '')
       return ' '
-    })
+    },
+  )
 
   // 4. Images: src is a unit. The alt text becomes its own prose line:
   // TipTap images are block-level nodes, and the production parse lifts an
@@ -247,7 +262,10 @@ export function extractSourceShape(source: string): SourceShape {
         // row-merged unit would let text move between columns of the same
         // row unnoticed ("x | y z" rearranged to "x y | z" joins equally).
         for (const cell of inner.split('|')) {
-          pushUnit('prose', cell)
+          // Empty cells keep their position as sentinel units, so text
+          // moving into a neighboring empty cell is still detected.
+          if (normProse(cell)) pushUnit('prose', cell)
+          else pushUnit('prose', EMPTY_CELL)
         }
       }
       lineClass.push('none')
@@ -334,7 +352,7 @@ function extractDocShape(doc: JSONContent): DocShape {
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
-    else shape.counts.set(key, { type, sample: value.slice(0, 60), count: 1 })
+    else shape.counts.set(key, { type, sample: unitSample(value), count: 1 })
   }
 
   /** Inline runs between hardBreaks become one prose line each. */
@@ -430,9 +448,12 @@ function extractDocShape(doc: JSONContent): DocShape {
             shape.tableRows.push(cells.length)
             // Each cell is its own prose unit, preserving cell boundaries —
             // a row-merged unit would let text move between columns of the
-            // same row unnoticed. Emptied cells surface as lost prose.
+            // same row unnoticed. Empty cells keep their position as
+            // sentinel units, mirroring the source side.
             for (const cell of cells) {
-              pushUnit('prose', normProse(collectCellText(cell)))
+              const text = normProse(collectCellText(cell))
+              if (text) pushUnit('prose', text)
+              else pushUnit('prose', EMPTY_CELL)
             }
           }
         }
@@ -452,10 +473,17 @@ function inlineText(node: JSONContent): string {
   return (node.content ?? []).map(c => c.text ?? '').join('')
 }
 
-/** All text inside a table cell, paragraphs joined with spaces. */
+/**
+ * All text inside a table cell. Inline runs concatenate directly — a bold
+ * span followed by plain text is "abcd", never "ab cd" — while separate
+ * block children of the cell (multiple paragraphs) join with a space.
+ */
 function collectCellText(node: JSONContent): string {
-  if (node.type === 'text' && typeof node.text === 'string') return node.text
+  if (node.type === 'text') return typeof node.text === 'string' ? node.text : ''
   if (node.type === 'hardBreak') return ' '
+  if (node.type === 'paragraph' || node.type === 'heading') {
+    return (node.content ?? []).map(collectCellText).join('')
+  }
   return (node.content ?? []).map(collectCellText).join(' ')
 }
 

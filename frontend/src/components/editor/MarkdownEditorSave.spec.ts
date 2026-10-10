@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { MarkdownEditorContext } from './MarkdownEditorContext';
+import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
 
 // migrateMathStrings walks editor.state/view, which the mock editor lacks.
 vi.mock('@tiptap/extension-mathematics', () => ({ migrateMathStrings: vi.fn() }));
@@ -38,6 +39,9 @@ function makeEditor(overrides: Record<string, unknown> = {}) {
     setEditable: vi.fn(),
     getMarkdown: vi.fn(() => ''),
     getJSON: vi.fn(() => ({ type: 'doc', content: [] })),
+    // The validation memo keys on state.doc identity; tests bump this to
+    // simulate the document changing.
+    state: { doc: { v: 0 } },
     ...overrides,
   };
 }
@@ -49,7 +53,7 @@ function makeEditor(overrides: Record<string, unknown> = {}) {
  * driven separately, so tests can model serialization-stage loss.
  */
 function makeEchoEditor() {
-  const current = { docMd: '', outMd: '' };
+  const current = { docMd: '', outMd: '', docVersion: 0 };
   const echoDoc = (md: string) => ({
     type: 'doc',
     content: [{ type: 'paragraph', content: [{ type: 'text', text: md }] }],
@@ -71,6 +75,10 @@ function makeEchoEditor() {
   ) => {
     current.docMd = docMd;
     current.outMd = outMd;
+  };
+  (editor as unknown as { bumpDoc: () => void }).bumpDoc = () => {
+    current.docVersion += 1;
+    (editor as unknown as { state: { doc: { v: number } } }).state = { doc: { v: current.docVersion } };
   };
   return editor;
 }
@@ -505,5 +513,73 @@ describe('MarkdownEditorSave', () => {
       'the sum is a+b here',
       expect.anything(),
     );
+  });
+
+  // ── Round-3 acceptance fixes ───────────────────────────────────────────
+
+  it('a queued save for another node with identical content still goes out', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    // Node A's request hangs; node B's timer fires meanwhile and its save
+    // queues behind the in-flight request. Both nodes carry the same text.
+    let releaseA: (() => void) | null = null;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      await new Promise<void>((resolve) => { releaseA = resolve; });
+      return true;
+    });
+    const save = await loadSave(ctx);
+
+    const inFlight = save.enqueueSave('nA', 'same text');
+    ctx.activeNode.value = { id: 'nB', content: '' };
+    save.scheduleAutoSave('nB', 'same text');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
+
+    releaseA!();
+    await inFlight;
+    await vi.runAllTimersAsync();
+
+    // The finally kick previously compared content only, dropping node B's
+    // identical queued save. It must compare the node too.
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'nB',
+      'same text',
+      expect.anything(),
+    );
+  });
+
+  it('the validation memo cannot bypass the doc-equivalence leg after the document changes', async () => {
+    const ctx = makeCtx();
+    const editor = makeEchoEditor();
+    const hooks = editor as unknown as {
+      setCurrent: (docMd: string, outMd?: string) => void;
+      bumpDoc: () => void;
+    };
+    // First pass: document and output are both "ab" — validation passes and
+    // is memoized.
+    hooks.setCurrent('ab');
+    ctx.editor.value = editor;
+    const save = await loadSave(ctx);
+    expect(await save.enqueueSave('n1', 'ab', { force: true })).toBe(true);
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+
+    // The document gains the "+" but the serialization still drops it. A
+    // stale memo keyed on the output string would reuse the ok verdict
+    // without re-reading the document.
+    hooks.setCurrent('a+b', 'ab');
+    hooks.bumpDoc();
+    ctx.draft.value = 'ab';
+    ctx.saveConflict.value = {
+      nodeId: 'n1',
+      draftContent: 'ab',
+      serverContent: 'server',
+      serverRevision: 5,
+      draftValidated: true,
+    };
+
+    const saved = await save.resolveConflictKeepMine();
+
+    expect(saved).toBe(false);
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    expect(ctx.saveConflict.value).not.toBeNull();
   });
 });

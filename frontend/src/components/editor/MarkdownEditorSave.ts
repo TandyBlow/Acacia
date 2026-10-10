@@ -20,25 +20,35 @@ export interface SaveTarget {
   validated: boolean
 }
 
-let autoSaveTimer: number | null = null
-// The timer is module-level and shared across editor instances, so it is
-// bound to the node it was scheduled for: a conflict response for one node
-// must not tear down another node's scheduled save.
-let autoSaveTimerNode: string | null = null
+// Save queueing is per node: a late conflict response or a retry for one
+// node must never tear down or overwrite another node's queued save. The
+// maps are module-level because editor instances are rebuilt on every node
+// switch while in-flight requests outlive them.
+const autoSaveTimers = new Map<string, number>()
+const pendingSaves = new Map<string, SaveTarget>()
 let saveInFlight = false
-let pendingSave: SaveTarget | null = null
 let retryCount = 0
 
-// Memo for draft validation: identical content does not need a re-parse.
-let lastValidation: { content: string; ok: boolean } | null = null
+// Memo for draft validation. The verdict depends on the serialized content
+// AND the editor document it came from, so the memo keys on the document
+// identity (state.doc changes on every transaction) — keying on the output
+// string alone would reuse a stale verdict after the document changed.
+let lastValidation: { content: string; docNode: unknown; ok: boolean } | null = null
 
 export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
-  function clearAutoSaveTimer(): void {
-    if (autoSaveTimer !== null) {
-      window.clearTimeout(autoSaveTimer)
-      autoSaveTimer = null
+  function clearTimerFor(nodeId: string): void {
+    const timer = autoSaveTimers.get(nodeId)
+    if (timer !== undefined) {
+      window.clearTimeout(timer)
+      autoSaveTimers.delete(nodeId)
     }
-    autoSaveTimerNode = null
+  }
+
+  function clearAllTimers(): void {
+    for (const timer of autoSaveTimers.values()) {
+      window.clearTimeout(timer)
+    }
+    autoSaveTimers.clear()
   }
 
   /**
@@ -53,9 +63,12 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
    */
   function validateContent(content: string): boolean {
     if (ctx.isParseDegraded.value) return false
-    if (lastValidation?.content === content) return lastValidation.ok
     const editor = ctx.editor.value
     if (!editor) return false
+    const docNode = (editor as { state?: { doc?: unknown } }).state?.doc ?? null
+    if (lastValidation && lastValidation.content === content && lastValidation.docNode === docNode) {
+      return lastValidation.ok
+    }
     const { doc, integrity } = parseMarkdownWithIntegrity(editor, content)
     let ok = doc !== null && integrity.ok
     if (ok && content === editor.getMarkdown()) {
@@ -65,7 +78,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         ok = false
       }
     }
-    lastValidation = { content, ok }
+    lastValidation = { content, ok, docNode }
     return ok
   }
 
@@ -102,13 +115,14 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     }
 
     if (saveInFlight) {
-      pendingSave = { nodeId, content, validated }
+      pendingSaves.set(nodeId, { nodeId, content, validated })
       return true
     }
 
     saveInFlight = true
+    let saved = false
     try {
-      const saved = await ctx.store.saveActiveNodeContent(nodeId, content, {
+      saved = await ctx.store.saveActiveNodeContent(nodeId, content, {
         keepalive: options?.keepalive,
         force: options?.force,
         revision: options?.revision,
@@ -132,18 +146,28 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         // Pause only this node: queued work and the timer may belong to
         // another node the user has moved on to, and must survive this
         // response.
-        if (pendingSave?.nodeId === nodeId) pendingSave = null
-        if (autoSaveTimerNode === nodeId) clearAutoSaveTimer()
+        pendingSaves.delete(nodeId)
+        clearTimerFor(nodeId)
         return false
       }
       scheduleRetry({ nodeId, content, validated })
       return false
     } finally {
       saveInFlight = false
-      const queued = pendingSave
-      pendingSave = null
-      if (queued && queued.content !== content) {
-        void enqueueSave(queued.nodeId, queued.content, { force: true, validated: queued.validated })
+      // Drop this node's queued duplicate only when the save succeeded with
+      // the same content; anything else still needs to go out.
+      const queued = pendingSaves.get(nodeId)
+      if (queued && saved && queued.content === content) {
+        pendingSaves.delete(nodeId)
+      }
+      // Kick the next queued save that has no timer of its own — a save that
+      // went stale while this one was in flight. Entries armed with a timer
+      // (debounce or retry backoff) fire on their own schedule.
+      const nextId = [...pendingSaves.keys()].find((id) => !autoSaveTimers.has(id))
+      if (nextId !== undefined) {
+        const nextTarget = pendingSaves.get(nextId)!
+        pendingSaves.delete(nextId)
+        void enqueueSave(nextId, nextTarget.content, { force: true, validated: nextTarget.validated })
       }
     }
   }
@@ -158,7 +182,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     // Pause per node: an open conflict holds back only its own node's
     // autosave; another node's conflict must not block this schedule.
     if (ctx.saveConflict.value?.nodeId === nodeId) return
-    clearAutoSaveTimer()
+    clearTimerFor(nodeId)
 
     let validated = options?.validated
     if (validated === undefined || options?.forceValidate) {
@@ -172,30 +196,30 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       return
     }
 
-    pendingSave = { nodeId, content, validated }
-    autoSaveTimerNode = nodeId
-    autoSaveTimer = window.setTimeout(() => {
-      pendingSave = null
-      autoSaveTimerNode = null
+    pendingSaves.set(nodeId, { nodeId, content, validated })
+    autoSaveTimers.set(nodeId, window.setTimeout(() => {
+      autoSaveTimers.delete(nodeId)
       void enqueueSave(nodeId, content, { validated })
-    }, delayMs)
+    }, delayMs))
   }
 
-  // Writes out whatever is still pending. Call before tearing down a node.
+  // Writes out whatever is still pending, for every node. Call before
+  // tearing down a node or the page.
   function flushPendingSave(options?: { keepalive?: boolean }): void {
-    clearAutoSaveTimer()
-    const target = pendingSave
-    pendingSave = null
-    if (!target) return
-    if (!target.validated) {
-      console.error('[MarkdownEditor] flush suppressed: pending content failed the integrity check')
-      return
+    const entries = [...pendingSaves.entries()]
+    pendingSaves.clear()
+    if (entries.length === 0) return
+    for (const [nodeId, target] of entries) {
+      if (!target.validated) {
+        console.error('[MarkdownEditor] flush suppressed: pending content failed the integrity check')
+        continue
+      }
+      void enqueueSave(nodeId, target.content, { ...options, force: true, validated: target.validated })
     }
-    void enqueueSave(target.nodeId, target.content, { ...options, force: true, validated: target.validated })
   }
 
   function resetAutoSave(): void {
-    clearAutoSaveTimer()
+    clearAllTimers()
     retryCount = 0
     lastValidation = null
   }
@@ -286,7 +310,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
   return {
     syncEditorContent,
     resetAutoSave,
-    clearAutoSaveTimer,
+    clearAutoSaveTimer: clearAllTimers,
     scheduleAutoSave,
     enqueueSave,
     flushPendingSave,

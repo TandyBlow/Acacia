@@ -422,4 +422,76 @@ describe('checkParseIntegrity', () => {
     );
     expect(inOrder.ok).toBe(true);
   });
+
+  // ── Round-3 acceptance fixes ───────────────────────────────────────────
+
+  it('accepts inline math appearing before a block formula', () => {
+    // Source extraction must keep document order in a single pass; pulling
+    // all block math first reported this normal document as reordered.
+    const source = 'first $x$ then block:\n\n$$\ny\n$$\n\ndone';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'first ' },
+            { type: 'inlineMath', attrs: { latex: 'x' } },
+            { type: 'text', text: ' then block:' },
+          ],
+        },
+        { type: 'blockMath', attrs: { latex: 'y' } },
+        paragraph('done'),
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  it('flags text moving into a neighboring empty cell', () => {
+    const cell = (text: string) => ({
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    const emptyCell = { type: 'tableCell', content: [{ type: 'paragraph' }] };
+    const report = checkParseIntegrity(
+      '| a | |\n| --- | --- |',
+      doc([
+        {
+          type: 'table',
+          content: [{ type: 'tableRow', content: [emptyCell, cell('a')] }],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(false);
+  });
+
+  it('accepts bold text directly followed by plain text inside a cell', () => {
+    const source = '| **ab**cd |\n| --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  content: [{
+                    type: 'paragraph',
+                    content: [
+                      { type: 'text', text: 'ab', marks: [{ type: 'bold' }] },
+                      { type: 'text', text: 'cd' },
+                    ],
+                  }],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
 });
