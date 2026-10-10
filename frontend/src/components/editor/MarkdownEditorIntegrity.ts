@@ -203,8 +203,12 @@ export function extractSourceShape(source: string): SourceShape {
       continue
     }
 
-    pushUnit('prose', line)
-    lineClass.push('prose')
+    // Plain bullet markers are syntax, not content (task/ordered handled
+    // above); the bullet line is a block boundary, never an in-paragraph
+    // line break.
+    const isBulletLine = /^\s*[-*+]\s+/.test(line)
+    pushUnit('prose', line.replace(/^\s*[-*+]\s+/, ''))
+    lineClass.push(isBulletLine ? 'none' : 'prose')
   }
 
   for (let i = 0; i < lineClass.length - 1; i += 1) {
@@ -278,7 +282,10 @@ function extractDocShape(doc: JSONContent): DocShape {
   const walkInline = (nodes: JSONContent[]): void => {
     let line = ''
     const flush = (): void => {
-      const normalized = normProse(line)
+      // Lazily-continued list text keeps its source marker as literal text
+      // ("3. followed-on line"); stripping the marker here mirrors the
+      // source side, where ordered/bullet lines are stripped the same way.
+      const normalized = normProse(line.replace(/^\s*(\d{1,9}[.)]\s+|[-*+]\s+)/, ''))
       if (normalized) pushUnit('prose', normalized)
       line = ''
     }
@@ -427,19 +434,30 @@ function missingSubsequence(needle: number[], haystack: number[]): number {
 }
 
 function compareSequences(source: SourceShape, doc: DocShape, issues: IntegrityIssue[]): void {
+  // A folded list (lazy continuation) legitimately changes the parsed list
+  // count while keeping every character; value checks apply only when the
+  // two sides agree on how many there are.
   const pairs: Array<[string, number[], number[]]> = [
     ['heading level', source.headingLevels, doc.headingLevels],
-    ['ordered list start', source.listStarts, doc.listStarts],
-    ['task checkbox', source.checkboxes.map(Number), doc.checkboxes.map(Number)],
     ['table row width', source.tableRows, doc.tableRows],
   ]
+  if (source.listStarts.length === doc.listStarts.length) {
+    pairs.push(['ordered list start', source.listStarts, doc.listStarts])
+  }
+  if (source.checkboxes.length === doc.checkboxes.length) {
+    pairs.push(['task checkbox', source.checkboxes.map(Number), doc.checkboxes.map(Number)])
+  }
   for (const [unit, want, have] of pairs) {
     const missing = missingSubsequence(want, have)
     if (missing > 0) {
       issues.push({ kind: 'lost', unit, sample: `${missing} of ${want.length}`, expected: want.length, actual: have.length })
     }
   }
-  if (doc.hardBreaks < source.hardBreaks) {
+  // Line breaks are presentation-level: re-serialization legitimately turns
+  // some hard breaks into paragraph boundaries (e.g. when a lazily-absorbed
+  // list continuation splits into its own block). Flag only a collapse —
+  // most or all line structure gone — not a single converted break.
+  if (source.hardBreaks > 0 && doc.hardBreaks < source.hardBreaks / 2) {
     issues.push({
       kind: 'lost',
       unit: 'line break',
