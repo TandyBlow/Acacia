@@ -168,7 +168,7 @@ describe('checkParseIntegrity', () => {
       ]),
     );
     expect(emptied.ok).toBe(false);
-    expect(emptied.issues.some((i) => i.kind === 'lost' && i.sample.includes('1 2'))).toBe(true);
+    expect(emptied.issues.some((i) => i.kind === 'lost' && i.unit === 'prose' && (i.sample === '1' || i.sample === '2'))).toBe(true);
   });
 
   it('preserves code block whitespace exactly', () => {
@@ -287,5 +287,139 @@ describe('checkParseIntegrity', () => {
   it('accepts a real plus sign that round-trips', () => {
     const report = checkParseIntegrity('1+1=2 is arithmetic', doc([paragraph('1+1=2 is arithmetic')]));
     expect(report.ok).toBe(true);
+  });
+
+  // ── Round-2 acceptance: false positives fixed ──────────────────────────
+
+  it('accepts a normal inline link with its text', () => {
+    const source = 'see [the docs](https://example.com) for details';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'see ' },
+            { type: 'text', text: 'the docs', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }] },
+            { type: 'text', text: ' for details' },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  it('accepts a bare autolink', () => {
+    const report = checkParseIntegrity(
+      'visit <https://example.com> now',
+      doc([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'visit ' },
+            { type: 'text', text: 'https://example.com', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }] },
+            { type: 'text', text: ' now' },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  it('accepts a fenced code block whose first line is indented', () => {
+    const report = checkParseIntegrity(
+      'run this:\n\n```\n    return 1\n```\n\ndone',
+      doc([
+        paragraph('run this:'),
+        { type: 'codeBlock', content: [{ type: 'text', text: '    return 1' }] },
+        paragraph('done'),
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  it('accepts a standalone block-level image with alt text', () => {
+    const report = checkParseIntegrity(
+      'before\n\n![a diagram](https://example.com/d.png)\n\nafter',
+      doc([
+        paragraph('before'),
+        { type: 'image', attrs: { src: 'https://example.com/d.png', alt: 'a diagram' } },
+        paragraph('after'),
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  // ── Round-2 acceptance: comparison gaps closed ─────────────────────────
+
+  it('flags table text moving between columns within a row', () => {
+    const cell = (text: string) => ({
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    // Source row "x | y z"; parsed row merged the cells differently.
+    const report = checkParseIntegrity(
+      '| x | y z |\n| --- | --- |',
+      doc([
+        {
+          type: 'table',
+          content: [{ type: 'tableRow', content: [cell('x y'), cell('z')] }],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(false);
+  });
+
+  it('flags two table cells swapping places', () => {
+    const cell = (text: string) => ({
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    const report = checkParseIntegrity(
+      '| a | b |\n| --- | --- |',
+      doc([
+        {
+          type: 'table',
+          content: [{ type: 'tableRow', content: [cell('b'), cell('a')] }],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(false);
+  });
+
+  it('flags two formulas swapping places', () => {
+    const source = 'first $a^2$ then $b^2$';
+    const swapped = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'first ' },
+            { type: 'inlineMath', attrs: { latex: 'b^2' } },
+            { type: 'text', text: ' then ' },
+            { type: 'inlineMath', attrs: { latex: 'a^2' } },
+          ],
+        },
+      ]),
+    );
+    expect(swapped.ok).toBe(false);
+    expect(swapped.issues.some((i) => i.kind === 'reordered' && i.unit === 'math order')).toBe(true);
+
+    const inOrder = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'first ' },
+            { type: 'inlineMath', attrs: { latex: 'a^2' } },
+            { type: 'text', text: ' then ' },
+            { type: 'inlineMath', attrs: { latex: 'b^2' } },
+          ],
+        },
+      ]),
+    );
+    expect(inOrder.ok).toBe(true);
   });
 });

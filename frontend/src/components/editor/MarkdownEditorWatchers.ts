@@ -92,9 +92,9 @@ export function useMarkdownEditorWatchers(
       return
     }
 
-    // An open conflict pauses autosave: the user must choose keep-mine or
-    // take-server before anything else is sent for this node.
-    if (ctx.saveConflict.value) {
+    // An open conflict pauses autosave for its own node only: the user must
+    // choose keep-mine or take-server before anything else is sent there.
+    if (ctx.saveConflict.value?.nodeId === nodeId) {
       return
     }
 

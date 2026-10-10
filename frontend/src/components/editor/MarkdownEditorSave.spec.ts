@@ -36,6 +36,8 @@ function makeEditor(overrides: Record<string, unknown> = {}) {
   return {
     commands: { setContent: vi.fn() },
     setEditable: vi.fn(),
+    getMarkdown: vi.fn(() => ''),
+    getJSON: vi.fn(() => ({ type: 'doc', content: [] })),
     ...overrides,
   };
 }
@@ -43,20 +45,34 @@ function makeEditor(overrides: Record<string, unknown> = {}) {
 /**
  * Mock editor whose manager echoes the markdown back as a single plain
  * paragraph — the parse-integrity check passes for plain-paragraph content.
+ * The editor document (getJSON) and its serialization (getMarkdown) are
+ * driven separately, so tests can model serialization-stage loss.
  */
 function makeEchoEditor() {
-  return makeEditor({
+  const current = { docMd: '', outMd: '' };
+  const echoDoc = (md: string) => ({
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: md }] }],
+  });
+  const editor = makeEditor({
     markdown: {
-      parse: vi.fn((md: string) => ({
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: md }] }],
-      })),
+      parse: vi.fn((md: string) => echoDoc(md)),
     },
     schema: {
       nodes: { doc: {}, paragraph: {}, text: {} },
       nodeFromJSON: () => ({ check: vi.fn() }),
     },
+    getMarkdown: vi.fn(() => current.outMd),
+    getJSON: vi.fn(() => echoDoc(current.docMd)),
   });
+  (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent = (
+    docMd: string,
+    outMd: string = docMd,
+  ) => {
+    current.docMd = docMd;
+    current.outMd = outMd;
+  };
+  return editor;
 }
 
 async function loadSave(ctx: ReturnType<typeof makeCtx>) {
@@ -398,5 +414,96 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.draft.value).toBe('node B draft');
     expect(ctx.activeNode.value?.content).toBe('node B content');
     expect(ctx.editor.value.commands.setContent).not.toHaveBeenCalled();
+  });
+
+  // ── Round-2 acceptance fixes ───────────────────────────────────────────
+
+  it('a conflict for node A leaves node B pending save and timer intact', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    // Node B autosave is scheduled and ticking; then the in-flight request
+    // for node A comes back with a version conflict.
+    ctx.activeNode.value = { id: 'n2', content: '' };
+    const save = await loadSave(ctx);
+
+    save.scheduleAutoSave('nB', 'node B content');
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      ctx.store.lastSaveConflict = { nodeId: 'nA', draftContent: 'A draft', serverContent: 'A server', serverRevision: 9 };
+      return false;
+    });
+
+    await save.enqueueSave('nA', 'A content');
+
+    // The conflict response must not tear down node B's queued save.
+    await vi.runAllTimersAsync();
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'nB',
+      'node B content',
+      expect.anything(),
+    );
+    // No banner either: node B is on screen, the conflict belongs to nA.
+    expect(ctx.saveConflict.value).toBeNull();
+  });
+
+  it('an open conflict pauses autosave only for its own node', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = {
+      nodeId: 'nA',
+      draftContent: 'A draft',
+      serverContent: 'A server',
+      serverRevision: 9,
+      draftValidated: true,
+    };
+
+    save.scheduleAutoSave('nA', 'node A retry');
+    await vi.runAllTimersAsync();
+    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+
+    save.scheduleAutoSave('nB', 'node B content');
+    await vi.runAllTimersAsync();
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'nB',
+      'node B content',
+      expect.anything(),
+    );
+  });
+
+  it('serialization loss between editor doc and draft blocks the save', async () => {
+    const ctx = makeCtx();
+    const editor = makeEchoEditor();
+    // The document holds "a+b"; serializing it drops the plus.
+    (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent(
+      'the sum is a+b here',
+      'the sum is ab here',
+    );
+    ctx.editor.value = editor;
+    const save = await loadSave(ctx);
+
+    save.scheduleAutoSave('n1', 'the sum is ab here');
+    await vi.runAllTimersAsync();
+
+    // String roundtrip alone would pass (parse of the draft is self-consistent);
+    // the doc-equivalence leg catches the lost "+" and refuses to persist.
+    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.integrityIssueText.value).not.toBe('');
+  });
+
+  it('a faithful serialization passes the doc-equivalence leg and saves', async () => {
+    const ctx = makeCtx();
+    const editor = makeEchoEditor();
+    (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent('the sum is a+b here');
+    ctx.editor.value = editor;
+    const save = await loadSave(ctx);
+
+    save.scheduleAutoSave('n1', 'the sum is a+b here');
+    await vi.runAllTimersAsync();
+
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'n1',
+      'the sum is a+b here',
+      expect.anything(),
+    );
   });
 });

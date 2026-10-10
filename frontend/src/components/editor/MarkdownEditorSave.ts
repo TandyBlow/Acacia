@@ -1,6 +1,7 @@
 import { migrateMathStrings } from '@tiptap/extension-mathematics'
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app'
 import { parseMarkdownWithIntegrity } from './MarkdownEditorMarkdown'
+import { checkDocEquivalence } from './MarkdownEditorIntegrity'
 import { buildPlainTextDoc, normalizePastedText, sanitizeMarkdownSource } from './MarkdownEditorMarkdownUtil'
 import type { MarkdownEditorContext } from './MarkdownEditorContext'
 
@@ -20,6 +21,10 @@ export interface SaveTarget {
 }
 
 let autoSaveTimer: number | null = null
+// The timer is module-level and shared across editor instances, so it is
+// bound to the node it was scheduled for: a conflict response for one node
+// must not tear down another node's scheduled save.
+let autoSaveTimerNode: string | null = null
 let saveInFlight = false
 let pendingSave: SaveTarget | null = null
 let retryCount = 0
@@ -33,12 +38,18 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       window.clearTimeout(autoSaveTimer)
       autoSaveTimer = null
     }
+    autoSaveTimerNode = null
   }
 
   /**
    * Round-trip check of serialized content: parse it back and compare per
    * content unit. Covers load-time corruption, serialization loss, and any
    * doc state that would not survive the next open.
+   *
+   * When the content is the editor's own serialization, the editor document
+   * itself is compared against the re-parsed draft (checkDocEquivalence):
+   * a string roundtrip cannot see serialization-stage loss, since both of
+   * its sides share it.
    */
   function validateContent(content: string): boolean {
     if (ctx.isParseDegraded.value) return false
@@ -46,7 +57,14 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     const editor = ctx.editor.value
     if (!editor) return false
     const { doc, integrity } = parseMarkdownWithIntegrity(editor, content)
-    const ok = doc !== null && integrity.ok
+    let ok = doc !== null && integrity.ok
+    if (ok && content === editor.getMarkdown()) {
+      const equivalence = checkDocEquivalence(editor.getJSON(), doc!)
+      if (!equivalence.ok) {
+        console.error('[MarkdownEditor] draft failed doc equivalence:', equivalence.issues)
+        ok = false
+      }
+    }
     lastValidation = { content, ok }
     return ok
   }
@@ -111,8 +129,11 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         if (ctx.activeNode.value?.id === nodeId) {
           ctx.saveConflict.value = { ...conflict, draftValidated: validated }
         }
-        pendingSave = null
-        clearAutoSaveTimer()
+        // Pause only this node: queued work and the timer may belong to
+        // another node the user has moved on to, and must survive this
+        // response.
+        if (pendingSave?.nodeId === nodeId) pendingSave = null
+        if (autoSaveTimerNode === nodeId) clearAutoSaveTimer()
         return false
       }
       scheduleRetry({ nodeId, content, validated })
@@ -134,7 +155,9 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     options?: { validated?: boolean; forceValidate?: boolean },
   ): void {
     if (ctx.isParseDegraded.value) return
-    if (ctx.saveConflict.value) return
+    // Pause per node: an open conflict holds back only its own node's
+    // autosave; another node's conflict must not block this schedule.
+    if (ctx.saveConflict.value?.nodeId === nodeId) return
     clearAutoSaveTimer()
 
     let validated = options?.validated
@@ -150,8 +173,10 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     }
 
     pendingSave = { nodeId, content, validated }
+    autoSaveTimerNode = nodeId
     autoSaveTimer = window.setTimeout(() => {
       pendingSave = null
+      autoSaveTimerNode = null
       void enqueueSave(nodeId, content, { validated })
     }, delayMs)
   }

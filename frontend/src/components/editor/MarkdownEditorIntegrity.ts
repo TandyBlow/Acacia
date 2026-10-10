@@ -43,6 +43,8 @@ interface SourceShape {
   counts: Map<CountKey, { type: string; sample: string; count: number }>
   /** Normalized prose units in document order, repeats included. */
   proseSeq: string[]
+  /** Math latex units in document order, repeats included. */
+  mathSeq: string[]
   headingLevels: number[]
   listStarts: number[]
   checkboxes: boolean[]
@@ -81,14 +83,21 @@ function normMath(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Code keeps its internal whitespace exactly (fenced blocks preserve
+ * indentation on both sides); only line endings are normalized. Trimming
+ * here would desynchronize the sides whenever a fenced block starts or ends
+ * with an indented line.
+ */
 function normCode(text: string): string {
-  return text.replace(/\r\n?/g, '\n').trim()
+  return text.replace(/\r\n?/g, '\n')
 }
 
 /**
  * Strip the fence/backtick markers from a masked code region so the unit
  * matches the doc side, whose code text never carries them: fenced blocks
- * lose their opening/closing lines, inline spans their backticks.
+ * lose their opening/closing lines, inline spans their backticks plus the
+ * single CommonMark padding space on each side when present.
  */
 function stripCodeFence(region: string): string {
   const withoutBlock = region
@@ -96,7 +105,12 @@ function stripCodeFence(region: string): string {
     .replace(/\n\s*(`{3,}|~{3,})\s*$/, '')
   if (withoutBlock !== region) return withoutBlock
   const inline = /^(`+)([\s\S]*)\1$/.exec(region.trim())
-  return inline ? inline[2] ?? '' : region
+  if (!inline) return region
+  let content = inline[2] ?? ''
+  if (content.length >= 2 && content.startsWith(' ') && content.endsWith(' ')) {
+    content = content.slice(1, -1)
+  }
+  return content
 }
 
 // ── Source-side extraction ─────────────────────────────────────────────
@@ -105,6 +119,7 @@ export function extractSourceShape(source: string): SourceShape {
   const shape: SourceShape = {
     counts: new Map(),
     proseSeq: [],
+    mathSeq: [],
     headingLevels: [],
     listStarts: [],
     checkboxes: [],
@@ -116,16 +131,19 @@ export function extractSourceShape(source: string): SourceShape {
     const value = type === 'prose' ? normProse(raw) : type === 'math' ? normMath(raw) : type === 'code' ? normCode(raw) : raw.trim()
     if (!value) return
     if (type === 'prose') shape.proseSeq.push(value)
+    if (type === 'math') shape.mathSeq.push(value)
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
     else shape.counts.set(key, { type, sample: value.slice(0, 60), count: 1 })
   }
 
-  // 1. Pull autolinks out as hrefs before code masking hides them.
+  // 1. Pull autolinks out as hrefs before code masking hides them. The URL
+  // text stays in the prose flow: the doc side renders an autolink as link
+  // text, so it must appear on both sides.
   let text = source.replace(/<([A-Za-z][A-Za-z0-9+.-]*:\/\/[^<>\s]*)>/g, (_m, url: string) => {
     pushUnit('href', url)
-    return ' '
+    return url
   })
 
   // 2. Mask fences and inline code spans; their content becomes code units.
@@ -150,17 +168,21 @@ export function extractSourceShape(source: string): SourceShape {
       return ' '
     })
 
-  // 4. Images: src is a unit; the alt text stays in the prose flow, exactly
-  // like the doc side keeps it inline in the paragraph.
+  // 4. Images: src is a unit. The alt text becomes its own prose line:
+  // TipTap images are block-level nodes, and the production parse lifts an
+  // inline image out of its paragraph, so the doc side never carries an
+  // image mid-line — splitting the source the same way keeps the sides
+  // aligned for standalone and lifted images alike.
   text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_m, alt: string, src: string) => {
     pushUnit('image', src)
-    return alt
+    return alt ? `\n${alt}\n` : '\n'
   })
 
-  // 5. Inline links: href is a unit, link text stays in the prose flow.
-  text = text.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_m, _label: string, href: string) => {
+  // 5. Inline links: href is a unit, the link text stays in the prose flow —
+  // dropping it would flag every normal link as injected content.
+  text = text.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_m, label: string, href: string) => {
     pushUnit('href', href)
-    return ' '
+    return label
   })
 
   // 5b. Reference-style links [text][ref]: the label stays in prose, the
@@ -221,9 +243,12 @@ export function extractSourceShape(source: string): SourceShape {
       if (!/^\s*\|?\s*:?-{3,}[-| :]*$/.test(line)) {
         const inner = line.trim().replace(/^\|/, '').replace(/\|$/, '')
         shape.tableRows.push(inner.split('|').length)
-        // Cell text participates in the prose checks (counts + order), so a
-        // row whose cells were emptied is reported as lost content.
-        pushUnit('prose', inner.replace(/\|/g, ' '))
+        // Each cell is its own prose unit, preserving cell boundaries: a
+        // row-merged unit would let text move between columns of the same
+        // row unnoticed ("x | y z" rearranged to "x y | z" joins equally).
+        for (const cell of inner.split('|')) {
+          pushUnit('prose', cell)
+        }
       }
       lineClass.push('none')
       continue
@@ -281,6 +306,8 @@ interface DocShape {
   counts: Map<CountKey, { type: string; sample: string; count: number }>
   /** Normalized prose units in document order, repeats included. */
   proseSeq: string[]
+  /** Math latex units in document order, repeats included. */
+  mathSeq: string[]
   headingLevels: number[]
   listStarts: number[]
   checkboxes: boolean[]
@@ -292,6 +319,7 @@ function extractDocShape(doc: JSONContent): DocShape {
   const shape: DocShape = {
     counts: new Map(),
     proseSeq: [],
+    mathSeq: [],
     headingLevels: [],
     listStarts: [],
     checkboxes: [],
@@ -302,6 +330,7 @@ function extractDocShape(doc: JSONContent): DocShape {
   const pushUnit = (type: string, value: string): void => {
     if (!value) return
     if (type === 'prose') shape.proseSeq.push(value)
+    if (type === 'math') shape.mathSeq.push(value)
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
@@ -326,10 +355,12 @@ function extractDocShape(doc: JSONContent): DocShape {
         continue
       }
       if (node.type === 'image') {
-        // Transparent for line merging: the alt text flows in place, matching
-        // the source side where the alt replaced the image syntax.
+        // The alt text becomes its own prose unit, mirroring the source
+        // side where image syntax splits into its own line.
+        flush()
         pushUnit('image', String(node.attrs?.src ?? ''))
-        if (node.attrs?.alt) line += String(node.attrs.alt)
+        const alt = String(node.attrs?.alt ?? '')
+        if (alt) pushUnit('prose', normProse(alt))
         continue
       }
       if (node.type === 'inlineMath') {
@@ -359,6 +390,14 @@ function extractDocShape(doc: JSONContent): DocShape {
 
   const walkBlock = (node: JSONContent): void => {
     switch (node.type) {
+      case 'image': {
+        // TipTap images are block-level by default: a standalone image line
+        // is a direct doc child and must be extracted here.
+        pushUnit('image', String(node.attrs?.src ?? ''))
+        const alt = String(node.attrs?.alt ?? '')
+        if (alt) pushUnit('prose', normProse(alt))
+        return
+      }
       case 'paragraph':
       case 'heading': {
         if (node.type === 'heading') shape.headingLevels.push(Number(node.attrs?.level ?? 1))
@@ -389,14 +428,12 @@ function extractDocShape(doc: JSONContent): DocShape {
           if (row.type === 'tableRow') {
             const cells = (row.content ?? []).filter(c => c.type === 'tableCell' || c.type === 'tableHeader')
             shape.tableRows.push(cells.length)
-            // Cell text joins into one prose unit per row, matching the
-            // source side where a table row is one stripped line — emptied
-            // cells then surface as lost prose.
-            const cellText = cells
-              .map(cell => collectCellText(cell))
-              .filter(t => t.trim())
-              .join(' ')
-            pushUnit('prose', normProse(cellText))
+            // Each cell is its own prose unit, preserving cell boundaries —
+            // a row-merged unit would let text move between columns of the
+            // same row unnoticed. Emptied cells surface as lost prose.
+            for (const cell of cells) {
+              pushUnit('prose', normProse(collectCellText(cell)))
+            }
           }
         }
         return
@@ -539,22 +576,48 @@ function compareSequences(source: SourceShape, doc: DocShape, issues: IntegrityI
     source.counts.size === doc.counts.size &&
     [...source.counts.entries()].every(([key, expected]) => doc.counts.get(key)?.count === expected.count)
   if (countsMatch) {
-    let at = 0
-    for (const unit of source.proseSeq) {
-      const found = doc.proseSeq.indexOf(unit, at)
-      if (found === -1) {
-        issues.push({
-          kind: 'reordered',
-          unit: 'paragraph order',
-          sample: unit.slice(0, 60),
-          expected: source.proseSeq.length,
-          actual: doc.proseSeq.length,
-        })
-        break
-      }
-      at = found + 1
+    if (sequenceReordered(source.proseSeq, doc.proseSeq)) {
+      issues.push({
+        kind: 'reordered',
+        unit: 'paragraph order',
+        sample: firstOutOfOrder(source.proseSeq, doc.proseSeq),
+        expected: source.proseSeq.length,
+        actual: doc.proseSeq.length,
+      })
+    }
+    // Math participates in ordering too: two formulas swapping places keeps
+    // every count intact and must not pass on counts alone.
+    if (sequenceReordered(source.mathSeq, doc.mathSeq)) {
+      issues.push({
+        kind: 'reordered',
+        unit: 'math order',
+        sample: firstOutOfOrder(source.mathSeq, doc.mathSeq),
+        expected: source.mathSeq.length,
+        actual: doc.mathSeq.length,
+      })
     }
   }
+}
+
+/** True when needle's units no longer appear in haystack in the same order. */
+function sequenceReordered(needle: string[], haystack: string[]): boolean {
+  let at = 0
+  for (const unit of needle) {
+    const found = haystack.indexOf(unit, at)
+    if (found === -1) return true
+    at = found + 1
+  }
+  return false
+}
+
+function firstOutOfOrder(needle: string[], haystack: string[]): string {
+  let at = 0
+  for (const unit of needle) {
+    const found = haystack.indexOf(unit, at)
+    if (found === -1) return unit.slice(0, 60)
+    at = found + 1
+  }
+  return ''
 }
 
 export function checkParseIntegrity(source: string, doc: JSONContent | null): IntegrityReport {
