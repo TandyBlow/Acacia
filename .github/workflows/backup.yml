@@ -41,17 +41,6 @@ jobs:
           # snapshot must land in the artifact so nothing is lost.
           scp $SSH_OPTS root@67.230.171.167:/tmp/acacia-snapshot.db ./acacia.db
 
-          # TEMPORARY diagnostics: compare the exact same snapshot bytes on
-          # both sides (md5), count real NULLs in the difficulty column, and
-          # run integrity_check on the runner's sqlite as a cross-version
-          # reference. Remove once the gate disagreement is resolved.
-          echo "runner sqlite3: $(sqlite3 --version)"
-          echo "runner md5: $(md5sum ./acacia.db)"
-          echo "runner NULL(difficulty): $(sqlite3 ./acacia.db 'SELECT COUNT(*) - COUNT(difficulty) FROM nodes')"
-          echo "runner integrity: $(sqlite3 ./acacia.db 'PRAGMA integrity_check')"
-          ssh $SSH_OPTS root@67.230.171.167 \
-            "md5sum /tmp/acacia-snapshot.db; sqlite3 --version; sqlite3 /tmp/acacia-snapshot.db 'SELECT COUNT(*) - COUNT(difficulty) FROM nodes'; sqlite3 /tmp/acacia-snapshot.db 'PRAGMA quick_check'"
-
           # Gate: integrity_check must return exactly one row, ok. Any other
           # output means the database violates its own schema — the artifact
           # above still preserves the data, but the job fails loudly.

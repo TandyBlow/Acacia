@@ -25,6 +25,7 @@ from middleware.rate_limit_middleware import RateLimitMiddleware
 from routers.auth_routes import router as auth_router
 from routers.node_routes import router as node_router
 from routers.node_mutation_routes import router as node_mutation_router
+from routers.node_history_routes import router as node_history_router
 from routers.tree_routes import router as tree_router
 from routers.upload_routes import router as upload_router
 from routers.upload_status_routes import router as upload_status_router
@@ -55,6 +56,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["ETag"],
 )
 
 DEFAULT_WELCOME_CONTENT = """# 欢迎来到 Acacia
@@ -117,6 +119,7 @@ def health():
 app.include_router(auth_router)
 app.include_router(node_router)
 app.include_router(node_mutation_router)
+app.include_router(node_history_router)
 app.include_router(tree_router)
 app.include_router(upload_router)
 app.include_router(upload_status_router)

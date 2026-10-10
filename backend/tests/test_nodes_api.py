@@ -113,10 +113,11 @@ async def test_update_node_content():
         patch_resp = await client.patch(
             f"/nodes/{node_id}/content",
             json={"content": "updated content"},
-            headers=_auth(token),
+            headers={**_auth(token), "If-Match": '"1"'},
         )
         assert patch_resp.status_code == 200
         assert patch_resp.json()["ok"] is True
+        assert patch_resp.headers["etag"] == '"2"'
 
 
 @pytest.mark.asyncio

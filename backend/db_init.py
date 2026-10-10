@@ -121,6 +121,18 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_node_chat_memories ON node_chat_memories(owner_id, node_id, compressed_at DESC);
 
+            CREATE TABLE IF NOT EXISTS node_content_history (
+                id TEXT PRIMARY KEY,
+                node_id TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'save',
+                pinned INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_node_content_history_node ON node_content_history(node_id, pinned, created_at);
+
             CREATE TABLE IF NOT EXISTS user_styles (
                 owner_id TEXT PRIMARY KEY,
                 profile_hash TEXT NOT NULL,
@@ -185,6 +197,18 @@ def init_db():
             conn.execute("ALTER TABLE official_nodes ADD COLUMN title_en TEXT NOT NULL DEFAULT ''")
         if "content_en" not in off_cols:
             conn.execute("ALTER TABLE official_nodes ADD COLUMN content_en TEXT NOT NULL DEFAULT ''")
+
+        # Optimistic-concurrency version for content updates (ETag/If-Match).
+        # The trailing UPDATE materializes the default into every physical
+        # record: rows written before this ALTER carry short records that some
+        # sqlite3 integrity_check builds report as NOT NULL violations.
+        node_cols = [row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()]
+        if "revision" not in node_cols:
+            conn.execute("ALTER TABLE nodes ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
+            conn.execute("UPDATE nodes SET revision = revision WHERE true")
+            # The UPDATE opened an implicit transaction; commit so the WAL
+            # pragma below is not issued inside one.
+            conn.commit()
 
         # WAL mode for concurrent reads on low-memory VPS
         conn.execute("PRAGMA journal_mode=WAL")

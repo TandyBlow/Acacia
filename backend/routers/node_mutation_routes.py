@@ -1,10 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel
 
 from database import get_db_ctx
 from routers.auth_deps import get_current_user
+from routers.versioning import ensure_matches, require_if_match, set_etag
 
 router = APIRouter()
+
+# Non-pinned history entries kept per node; pinned entries (e.g. pre-restore
+# snapshots) are exempt from pruning.
+HISTORY_KEEP_PER_NODE = 50
 
 
 class ContentUpdateRequest(BaseModel):
@@ -15,23 +22,65 @@ class MoveRequest(BaseModel):
     new_parent_id: str | None = None
 
 
+def _prune_history(conn, node_id: str) -> None:
+    conn.execute(
+        """
+        DELETE FROM node_content_history
+        WHERE node_id = ? AND pinned = 0
+          AND id NOT IN (
+              SELECT id FROM node_content_history
+              WHERE node_id = ? AND pinned = 0
+              ORDER BY created_at DESC, rowid DESC
+              LIMIT ?
+          )
+        """,
+        (node_id, node_id, HISTORY_KEEP_PER_NODE),
+    )
+
+
 @router.patch("/nodes/{node_id}/content")
-def update_content(node_id: str, payload: ContentUpdateRequest, user: dict = Depends(get_current_user)):
+def update_content(
+    node_id: str,
+    payload: ContentUpdateRequest,
+    response: Response,
+    user: dict = Depends(get_current_user),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+):
     owner_id = user["sub"]
+    expected = require_if_match(if_match)
+
     with get_db_ctx() as conn:
-        row = conn.execute(
-            "SELECT id FROM nodes WHERE id = ? AND owner_id = ? AND is_deleted = 0",
+        # Serialize version check + history write + update into one write
+        # transaction so two racing saves cannot both pass the version check.
+        conn.execute("BEGIN IMMEDIATE")
+        node = conn.execute(
+            "SELECT content, revision FROM nodes WHERE id = ? AND owner_id = ? AND is_deleted = 0",
             (node_id, owner_id),
         ).fetchone()
-        if not row:
+        if not node:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
 
-        conn.execute(
-            "UPDATE nodes SET content = ?, updated_at = datetime('now') WHERE id = ?",
-            (payload.content, node_id),
-        )
+        current = node["revision"]
+        ensure_matches(expected, current)
 
-    return {"ok": True}
+        if payload.content == node["content"]:
+            set_etag(response, current)
+            return {"ok": True, "revision": current, "unchanged": True}
+
+        conn.execute(
+            "INSERT INTO node_content_history (id, node_id, owner_id, content, source) "
+            "VALUES (?, ?, ?, ?, 'save')",
+            (str(uuid4()), node_id, owner_id, node["content"]),
+        )
+        new_revision = current + 1
+        conn.execute(
+            "UPDATE nodes SET content = ?, revision = ?, updated_at = datetime('now') WHERE id = ?",
+            (payload.content, new_revision, node_id),
+        )
+        _prune_history(conn, node_id)
+
+    set_etag(response, new_revision)
+    return {"ok": True, "revision": new_revision}
 
 
 @router.delete("/nodes/{node_id}")

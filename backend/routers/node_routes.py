@@ -1,10 +1,11 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from database import get_db_ctx
 from routers.auth_deps import get_current_user
+from routers.versioning import set_etag
 
 router = APIRouter()
 
@@ -44,17 +45,25 @@ def _build_path(conn, node_id: str) -> list[dict]:
 
 
 def _node_to_dict(row) -> dict:
+    keys = row.keys()
     return {
         "id": row["id"],
         "name": row["name"],
         "content": row["content"] or "",
         "parentId": row["parent_id"],
         "sortOrder": row["sort_order"],
+        # Present on rows selected from nodes after the revision backfill;
+        # older narrow selects (path building) simply omit it.
+        "revision": row["revision"] if "revision" in keys else None,
     }
 
 
 @router.get("/nodes/context/{node_id}")
-def get_node_context(node_id: str | None = None, user: dict = Depends(get_current_user)):
+def get_node_context(
+    node_id: str | None = None,
+    response: Response = None,
+    user: dict = Depends(get_current_user),
+):
     owner_id = user["sub"]
     with get_db_ctx() as conn:
         if not node_id or node_id == "null":
@@ -88,6 +97,9 @@ def get_node_context(node_id: str | None = None, user: dict = Depends(get_curren
             "SELECT * FROM nodes WHERE owner_id = ? AND parent_id = ? AND is_deleted = 0 ORDER BY sort_order",
             (owner_id, node_id),
         ).fetchall()
+
+        if response is not None and node["revision"] is not None:
+            set_etag(response, node["revision"])
 
         return {
             "nodeInfo": _node_to_dict(node),
