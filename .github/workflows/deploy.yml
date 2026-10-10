@@ -58,12 +58,22 @@ jobs:
             sleep 2
 
             echo ">>> health check" | tee -a "$LOG"
-            if curl -sf http://127.0.0.1:7860/health; then
-              echo " BACKEND OK" | tee -a "$LOG"
-            else
+            # The backend imports heavy OCR dependencies before listening;
+            # give it up to 60s. A failed health check fails the deploy.
+            HEALTH=failed
+            for i in $(seq 1 30); do
+              if curl -sf http://127.0.0.1:7860/health > /dev/null; then
+                HEALTH=ok
+                echo " BACKEND OK (attempt $i)" | tee -a "$LOG"
+                break
+              fi
+              sleep 2
+            done
+            if [ "$HEALTH" != "ok" ]; then
               echo " BACKEND FAILED" | tee -a "$LOG"
               echo "=== Backend journal (last 20 lines) ===" | tee -a "$LOG"
               sudo journalctl -u acacia --no-pager -n 20 2>&1 | tee -a "$LOG"
+              exit 1
             fi
 
             echo ">>> update nginx config" | tee -a "$LOG"

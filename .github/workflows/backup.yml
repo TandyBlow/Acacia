@@ -23,17 +23,11 @@ jobs:
           ssh $SSH_OPTS root@67.230.171.167 \
             "command -v sqlite3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq sqlite3)"
 
-          # Rows written before the FSRS columns were added via ALTER TABLE
-          # (nodes rowids 7-10) physically store fewer columns; reads
-          # synthesize the DEFAULT, but sqlite3 3.45.x integrity_check flags
-          # them as NOT NULL violations. UPDATE rewrites each record with the
-          # full column set, materializing the defaults. Idempotent no-op
-          # once every row is physically complete.
-          ssh $SSH_OPTS root@67.230.171.167 \
-            "sqlite3 /opt/acacia/data/acacia.db 'PRAGMA busy_timeout=5000; UPDATE nodes SET difficulty = COALESCE(difficulty, 0.3) WHERE true;'"
-
           # Consistent snapshot of the live database; safe while writers are
-          # active, unlike copying the db file directly.
+          # active, unlike copying the db file directly. (The old nodes
+          # short-record materialization UPDATE ran here daily; it finished
+          # its one-time job and now lives only in db_init's revision
+          # backfill, which materializes whenever it adds the column.)
           ssh $SSH_OPTS root@67.230.171.167 \
             "sqlite3 /opt/acacia/data/acacia.db \".backup '/tmp/acacia-snapshot.db'\""
 
