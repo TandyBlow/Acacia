@@ -23,6 +23,14 @@ jobs:
           ssh $SSH_OPTS root@67.230.171.167 \
             "command -v sqlite3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq sqlite3)"
 
+          # VACUUM physically rewrites every row, materializing DEFAULT values
+          # for rows that predate ALTER TABLE ADD COLUMN (nodes.difficulty).
+          # Older sqlite3 builds (3.45.x) flag those rows as NOT NULL
+          # violations in integrity_check even though reads synthesize the
+          # default; the rebuild makes the gate version-independent.
+          ssh $SSH_OPTS root@67.230.171.167 \
+            "sqlite3 /opt/acacia/data/acacia.db 'PRAGMA busy_timeout=5000; VACUUM;'"
+
           # Consistent snapshot of the live database; safe while writers are
           # active, unlike copying the db file directly.
           ssh $SSH_OPTS root@67.230.171.167 \
