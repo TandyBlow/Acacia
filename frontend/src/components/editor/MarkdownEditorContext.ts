@@ -109,6 +109,14 @@ export function createMarkdownEditorContext() {
   // markdown failed to parse. While set, every save path is blocked so the
   // degraded flat version can never overwrite the intact server copy.
   const isParseDegraded = ref(false)
+  // Parse-integrity problems in the content currently displayed (lost or
+  // duplicated units). Blocks saving exactly like isParseDegraded and drives
+  // the visible warning banner.
+  const integrityIssueText = ref('')
+  // A save was rejected because the server holds a newer version (412/428).
+  // The local draft is kept untouched; the user chooses keep-mine or
+  // take-server. Pauses autosave for the node until resolved.
+  const saveConflict = ref<{ nodeId: string; serverContent: string; serverRevision: number } | null>(null)
   // Reassigned by createMarkdownEditorEditor later; composables must always
   // read ctx.editor.value at call time, never capture the initial ref.
   // Use shallowRef so Vue's UnwrapRef doesn't strip Editor's private members
@@ -175,6 +183,8 @@ export function createMarkdownEditorContext() {
     isApplyingExternalContent,
     isMigratingMath,
     isParseDegraded,
+    integrityIssueText,
+    saveConflict,
     editor,
     showBottomBar,
     canSend,

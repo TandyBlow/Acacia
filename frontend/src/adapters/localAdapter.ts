@@ -69,7 +69,11 @@ export const localAdapter: CoreDataAdapter = {
     return cloneNode(newNode);
   },
 
-  async updateNodeContent(nodeId: string, content: string): Promise<void> {
+  async updateNodeContent(
+    nodeId: string,
+    content: string,
+    _options?: { keepalive?: boolean; revision?: number },
+  ): Promise<{ revision?: number }> {
     const nodes = readLocalNodes();
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) {
@@ -77,6 +81,7 @@ export const localAdapter: CoreDataAdapter = {
     }
     node.content = content;
     writeLocalNodes(nodes);
+    return {};
   },
 
   async deleteNode(nodeId: string, deleteChildren: boolean): Promise<void> {

@@ -101,7 +101,7 @@ export function createNodeStoreActions(
   async function saveActiveNodeContent(
     nodeId: string,
     content: string,
-    options?: { force?: boolean; keepalive?: boolean },
+    options?: { force?: boolean; keepalive?: boolean; revision?: number },
   ): Promise<boolean> {
     // force lets a flushed save land after navigation already moved on.
     if (!options?.force && (!state.activeNode.value || state.activeNode.value.id !== nodeId)) {
@@ -110,18 +110,63 @@ export function createNodeStoreActions(
 
     state.errorMessage.value = null;
     try {
-      await getDataAdapter().updateNodeContent(nodeId, content, { keepalive: options?.keepalive });
+      // The version this content was edited against; a mismatch answers 412
+      // and the conflict handler below takes over (never a blind retry).
+      let revision = options?.revision ?? nodeCache.getCachedRevision(nodeId);
+      if (revision == null) {
+        try {
+          const context = await getDataAdapter().getNodeContext(nodeId);
+          revision = context.nodeInfo?.revision;
+          nodeCache.setCache(nodeId, context);
+        } catch {
+          // Proceed without a version; the server answers 428 and the
+          // conflict path preserves the draft.
+        }
+      }
+      const result = await getDataAdapter().updateNodeContent(nodeId, content, {
+        keepalive: options?.keepalive,
+        revision,
+      });
+      if (result?.revision != null) {
+        nodeCache.updateCachedRevision(nodeId, result.revision);
+      }
       if (state.activeNode.value?.id === nodeId) {
         state.activeNode.value = { ...state.activeNode.value, content };
       }
       nodeCache.updateCachedContent(nodeId, content);
+      state.lastSaveConflict.value = null;
       deps.triggerStyleCheck();
       return true;
     } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 412 || status === 428) {
+        // Version conflict: keep the local draft untouched, pull the server
+        // copy, and let the user choose keep-mine or take-server.
+        state.lastSaveConflict.value = await _captureConflict(nodeId);
+        console.error('[nodeStore] save conflict, autosave paused for node:', nodeId, status);
+        return false;
+      }
       state.errorMessage.value = formatError(error);
       console.error('[nodeStore] saveActiveNodeContent failed:', nodeId, error);
       return false;
     }
+  }
+
+  async function _captureConflict(nodeId: string) {
+    let serverContent = '';
+    let serverRevision = 0;
+    try {
+      const context = await getDataAdapter().getNodeContext(nodeId);
+      nodeCache.setCache(nodeId, context);
+      serverContent = context.nodeInfo?.content ?? '';
+      serverRevision = context.nodeInfo?.revision ?? 0;
+    } catch {
+      // Surface the conflict with whatever the cache still holds.
+      const cached = nodeCache.getCached(nodeId);
+      serverContent = cached?.nodeInfo?.content ?? '';
+      serverRevision = cached?.nodeInfo?.revision ?? 0;
+    }
+    return { nodeId, serverContent, serverRevision };
   }
 
   function resetAfterLogout(): void {

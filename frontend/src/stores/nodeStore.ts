@@ -143,6 +143,7 @@ export const useNodeStore = defineStore('node', () => {
     blockedParentIds: state.blockedParentIds,
     isBusy: state.isBusy,
     errorMessage: state.errorMessage,
+    lastSaveConflict: state.lastSaveConflict,
     isEditState,
     isTreeState,
     isTreeOverviewState,

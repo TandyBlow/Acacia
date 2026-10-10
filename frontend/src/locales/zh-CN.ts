@@ -156,6 +156,11 @@ export default {
     ocrFailed: '文字识别失败',
     conceptNamePrompt: '输入概念名称：',
     sameNamePathsTitle: '当前知识点还存在于以下路径：',
+    integrityLoadIssue: '此文档存在无法安全解析的内容，为保护服务器原文，自动保存已暂停，编辑器已设为只读。',
+    integrityDraftIssue: '当前内容未通过安全校验，已暂停自动保存以保护服务器内容。',
+    conflictTitle: '服务器上存在更新的版本，自动保存已暂停。你的草稿已保留，请选择：',
+    conflictKeepMine: '保留我的版本',
+    conflictTakeServer: '采用服务器版本',
   },
 
   upload: {

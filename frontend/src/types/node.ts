@@ -25,6 +25,13 @@ export interface NodeRecord {
   content: string;
   parentId: string | null;
   sortOrder: number;
+  /** Server-side content version; sent back as If-Match on saves. */
+  revision?: number;
+}
+
+/** Result of a content save; revision is the server's new ETag version. */
+export interface ContentSaveResult {
+  revision?: number;
 }
 
 export interface NodeContext {
@@ -56,7 +63,11 @@ export interface StyleResult {
 export interface CoreDataAdapter {
   getNodeContext(nodeId: string | null): Promise<NodeContext>;
   createNode(parentId: string | null, name: string): Promise<NodeRecord>;
-  updateNodeContent(nodeId: string, content: string, options?: { keepalive?: boolean }): Promise<void>;
+  updateNodeContent(
+    nodeId: string,
+    content: string,
+    options?: { keepalive?: boolean; revision?: number },
+  ): Promise<ContentSaveResult>;
   deleteNode(nodeId: string, deleteChildren: boolean): Promise<void>;
   moveNode(nodeId: string, newParentId: string | null): Promise<void>;
   getTree(): Promise<TreeNode[]>;

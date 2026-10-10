@@ -5,6 +5,26 @@
       <div class="activity-glass-host">
         <GlassWrapper>
           <div class="activity-scroll">
+            <!-- Save-protection banners: parse-integrity and version conflict -->
+            <div v-if="integrityIssueText" class="editor-alert editor-alert-integrity" aria-live="polite">
+              {{ integrityIssueText }}
+            </div>
+            <div v-if="saveConflict" class="editor-alert editor-alert-conflict" aria-live="polite">
+              <div class="editor-alert-text">{{ t('editor.conflictTitle') }}</div>
+              <div class="editor-alert-actions">
+                <button
+                  type="button"
+                  class="editor-alert-btn editor-alert-btn-primary"
+                  @click="resolveConflictKeepMine()"
+                >{{ t('editor.conflictKeepMine') }}</button>
+                <button
+                  type="button"
+                  class="editor-alert-btn"
+                  @click="resolveConflictTakeServer()"
+                >{{ t('editor.conflictTakeServer') }}</button>
+              </div>
+            </div>
+
             <div v-if="activeNode && sameNameNodePaths.length > 1" class="same-name-paths" aria-live="polite">
               <div class="same-name-paths-title">{{ t('editor.sameNamePathsTitle') }}</div>
               <div class="same-name-paths-list">
@@ -161,12 +181,15 @@ const {
   currentSubTopic,
   markedConceptNames,
   mentionedConcepts,
+  integrityIssueText,
+  saveConflict,
 } = ctx
 
 const { onFileUploaded, onFileRemoved, fillContentFromFile, startLineByLineChat, cancelFileUpload } = file
 const { onConceptClick, onRegenerate, onMarkConcept } = concept
 const { toggleChat, startChatFile } = toggle
 const { onSkipTurn, onEndConversation, sendAnswer, onConvKeydown } = chat
+const { resolveConflictKeepMine, resolveConflictTakeServer } = save
 </script>
 
 <style scoped src="./MarkdownEditor.1.css"></style>

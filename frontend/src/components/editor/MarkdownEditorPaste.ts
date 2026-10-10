@@ -2,7 +2,7 @@ import DOMPurify from 'dompurify'
 import { mathMigrationRegex, migrateMathStrings } from '@tiptap/extension-mathematics'
 import type { Editor } from '@tiptap/core'
 import type { EditorView } from 'prosemirror-view'
-import { parseMarkdownDoc } from './MarkdownEditorMarkdown'
+import { parseMarkdownWithIntegrity } from './MarkdownEditorMarkdown'
 import { buildPlainTextDoc, normalizePastedText, sanitizeMarkdownSource } from './MarkdownEditorMarkdownUtil'
 import type { MarkdownEditorContext } from './MarkdownEditorContext'
 
@@ -47,8 +47,11 @@ export function createMarkdownEditorHandlers(
         return false
       }
 
-      const parsedDoc = parseMarkdownDoc(ctx.editor.value, source) ?? buildPlainTextDoc(source)
-      const insertContent = Array.isArray(parsedDoc.content) ? parsedDoc.content : []
+      const { doc: parsedDoc, integrity } = parseMarkdownWithIntegrity(ctx.editor.value, source)
+      // A parse that dropped or duplicated units falls back to plain text:
+      // silent loss never enters the document through paste either.
+      const safeDoc = parsedDoc !== null && integrity.ok ? parsedDoc : buildPlainTextDoc(source)
+      const insertContent = Array.isArray(safeDoc.content) ? safeDoc.content : []
 
       event.preventDefault()
       if (insertContent.length === 0) {

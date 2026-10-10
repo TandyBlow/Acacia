@@ -15,6 +15,12 @@ export interface PendingNodeContext {
   children: NodeRecord[];
 }
 
+export interface SaveConflict {
+  nodeId: string;
+  serverContent: string;
+  serverRevision: number;
+}
+
 export interface NodeStoreState {
   viewState: Ref<ViewState>;
   activeNode: Ref<NodeRecord | null>;
@@ -30,6 +36,8 @@ export interface NodeStoreState {
   blockedParentIds: Ref<string[]>;
   isBusy: Ref<boolean>;
   errorMessage: Ref<string | null>;
+  /** Set when a save was rejected with 412/428 — the server holds a newer version. */
+  lastSaveConflict: Ref<SaveConflict | null>;
   hasAnyNodes: Ref<boolean>;
   dailyQuizVisible: Ref<boolean>;
   dailyQuizDueCount: Ref<number>;
@@ -56,6 +64,7 @@ export function createNodeStoreState(): NodeStoreState {
 
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
+  const lastSaveConflict = ref<SaveConflict | null>(null);
 
   // 账号是否有任何知识点（乐观默认为 true，加载后确定）
   const hasAnyNodes = ref(true);
@@ -84,6 +93,7 @@ export function createNodeStoreState(): NodeStoreState {
     blockedParentIds,
     isBusy,
     errorMessage,
+    lastSaveConflict,
     hasAnyNodes,
     dailyQuizVisible,
     dailyQuizDueCount,

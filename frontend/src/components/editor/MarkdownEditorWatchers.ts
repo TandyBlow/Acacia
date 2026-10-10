@@ -37,6 +37,12 @@ export function useMarkdownEditorWatchers(
       ctx.lastSavedContent.value = content
       ctx.draft.value = content
 
+      // Node switch abandons any pending conflict or integrity state; the
+      // next syncEditorContent decides afresh for the new node.
+      ctx.saveConflict.value = null
+      ctx.store.lastSaveConflict = null
+      ctx.integrityIssueText.value = ''
+
       ctx.hasUserEdited.value = false
       ctx.isChatSunk.value = false
       ctx.isFileSunk.value = false
@@ -83,6 +89,12 @@ export function useMarkdownEditorWatchers(
 
     if (value === ctx.lastSavedContent.value) {
       deps.save.clearAutoSaveTimer()
+      return
+    }
+
+    // An open conflict pauses autosave: the user must choose keep-mine or
+    // take-server before anything else is sent for this node.
+    if (ctx.saveConflict.value) {
       return
     }
 

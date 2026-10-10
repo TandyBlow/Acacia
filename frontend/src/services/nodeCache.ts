@@ -38,3 +38,15 @@ export function updateCachedContent(nodeId: string | null, content: string): voi
     entry.context.nodeInfo = { ...entry.context.nodeInfo, content };
   }
 }
+
+export function getCachedRevision(nodeId: string | null): number | undefined {
+  const entry = cache.get(nodeId);
+  return entry?.context.nodeInfo?.revision;
+}
+
+export function updateCachedRevision(nodeId: string | null, revision: number): void {
+  const entry = cache.get(nodeId);
+  if (entry && entry.context.nodeInfo) {
+    entry.context.nodeInfo = { ...entry.context.nodeInfo, revision };
+  }
+}

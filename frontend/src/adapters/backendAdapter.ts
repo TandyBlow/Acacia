@@ -15,12 +15,27 @@ export const backendAdapter: DataAdapter = {
     });
   },
 
-  async updateNodeContent(nodeId: string, content: string, options?: { keepalive?: boolean }): Promise<void> {
-    await apiFetch(`/nodes/${nodeId}/content`, {
-      method: 'PATCH',
-      body: JSON.stringify({ content }),
-      keepalive: options?.keepalive,
-    });
+  async updateNodeContent(
+    nodeId: string,
+    content: string,
+    options?: { keepalive?: boolean; revision?: number },
+  ): Promise<{ revision?: number }> {
+    // The version the caller last read/saved; a mismatch answers 412 so a
+    // stale page can never overwrite newer server content.
+    const headers: Record<string, string> = {};
+    if (options?.revision != null) {
+      headers['If-Match'] = `"${options.revision}"`;
+    }
+    const result = await apiFetch<{ ok: boolean; revision: number; unchanged?: boolean }>(
+      `/nodes/${nodeId}/content`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ content }),
+        headers,
+        keepalive: options?.keepalive,
+      },
+    );
+    return { revision: result?.revision };
   },
 
   async deleteNode(nodeId: string, deleteChildren: boolean): Promise<void> {

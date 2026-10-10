@@ -2,6 +2,7 @@ import type { Editor, JSONContent } from '@tiptap/core'
 import type { MarkdownManager } from '@tiptap/markdown'
 import { marked } from 'marked'
 import { liftBlockNodesFromInlineContainers, maskCodeRegions, stripUnknownNodes, wrapBareInlineContent } from './MarkdownEditorMarkdownUtil'
+import { checkParseIntegrity, type IntegrityReport } from './MarkdownEditorIntegrity'
 
 export function getMarkdownManager(instance: Editor): MarkdownManager | null {
   return instance.markdown ?? instance.storage?.markdown?.manager ?? null;
@@ -156,8 +157,26 @@ function restoreShieldedCurrency(json: JSONContent, spans: string[]): void {
 const CURRENCY_PLACEHOLDER = '\x00CUR';
 
 export function parseMarkdownContent(instance: Editor, content: string): JSONContent | null {
-  const mgr = getMarkdownManager(instance);
-  if (!mgr) return null;
+  return parseMarkdownWithIntegrity(instance, content).doc
+}
+
+/**
+ * Parse plus a parse-integrity verdict: the checker compares the pre-parse
+ * markdown with the parsed doc per content unit, so a parse that silently
+ * dropped or duplicated blocks is reported instead of sailing through as a
+ * schema-valid "success".
+ */
+export function parseMarkdownWithIntegrity(
+  instance: Editor,
+  content: string,
+): { doc: JSONContent | null; integrity: IntegrityReport } {
+  const mgr = getMarkdownManager(instance)
+  if (!mgr) {
+    return {
+      doc: null,
+      integrity: { ok: false, issues: [{ kind: 'lost', unit: 'document', sample: content.slice(0, 60), expected: 1, actual: 0 }] },
+    }
+  }
   try {
     // Strip control characters that would break HTML/XML parsing
     content = sanitizeControlChars(content);
@@ -201,10 +220,21 @@ export function parseMarkdownContent(instance: Editor, content: string): JSONCon
     repairEmptyBlocks(lifted, mgr, content, instance.schema);
 
     instance.schema.nodeFromJSON(lifted).check();
-    return lifted;
+
+    // `content` at this point is the exact markdown that reached mgr.parse
+    // (sanitized, angle-escaped, math restored); the currency shield was
+    // already substituted back into the doc, so the two sides line up.
+    const integrity = checkParseIntegrity(content, lifted);
+    if (!integrity.ok) {
+      console.error('[MarkdownEditor] parse integrity check failed:', integrity.issues);
+    }
+    return { doc: lifted, integrity };
   } catch (err) {
     console.error('[MarkdownEditor] parseMarkdownContent failed:', err, 'content preview:', content.slice(0, 200));
-    return null;
+    return {
+      doc: null,
+      integrity: { ok: false, issues: [{ kind: 'lost', unit: 'document', sample: content.slice(0, 60), expected: 1, actual: 0 }] },
+    };
   }
 }
 function protectMathDollarSyntax(text: string): { protected: string; restore: (s: string) => string } {

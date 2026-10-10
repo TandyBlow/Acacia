@@ -65,3 +65,46 @@
   flex-shrink: 0;
   line-height: 1;
 }
+
+/* Save-protection banners: parse-integrity and version conflict */
+.editor-alert {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.editor-alert-integrity {
+  background: rgba(255, 176, 32, 0.14);
+  border: 1px solid rgba(255, 176, 32, 0.45);
+  color: inherit;
+}
+
+.editor-alert-conflict {
+  background: rgba(255, 96, 64, 0.12);
+  border: 1px solid rgba(255, 96, 64, 0.45);
+}
+
+.editor-alert-text {
+  margin-bottom: 8px;
+}
+
+.editor-alert-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-alert-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.editor-alert-btn-primary {
+  background: rgba(255, 255, 255, 0.14);
+}

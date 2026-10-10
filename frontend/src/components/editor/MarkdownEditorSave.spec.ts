@@ -14,14 +14,20 @@ function makeCtx() {
     lastSavedContent: ref('old'),
     draft: ref(''),
     isParseDegraded: ref(false),
+    integrityIssueText: ref(''),
+    saveConflict: ref<{ nodeId: string; serverContent: string; serverRevision: number } | null>(null),
+    t: (key: string) => key,
     isApplyingExternalContent: ref(false),
-    editor: ref<{
-      commands: { setContent: ReturnType<typeof vi.fn> };
-      setEditable: ReturnType<typeof vi.fn>;
-      markdown?: unknown;
-      schema?: unknown;
-    }>({ commands: { setContent: vi.fn() }, setEditable: vi.fn() }),
-    store: { saveActiveNodeContent: vi.fn().mockResolvedValue(true) },
+    editor: ref<{ commands: { setContent: ReturnType<typeof vi.fn> }; setEditable: ReturnType<typeof vi.fn> }>({
+      commands: { setContent: vi.fn() },
+      setEditable: vi.fn(),
+    }),
+    // Plain object mirrors the pinia store, whose setup-store refs arrive
+    // unwrapped on the instance.
+    store: {
+      saveActiveNodeContent: vi.fn().mockResolvedValue(true),
+      lastSaveConflict: null as { nodeId: string; serverContent: string; serverRevision: number } | null,
+    },
   };
 }
 
@@ -34,10 +40,18 @@ function makeEditor(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Mock editor whose markdown manager parses to a fixed valid doc. */
-function makeParsingEditor(parsedDoc: unknown) {
+/**
+ * Mock editor whose manager echoes the markdown back as a single plain
+ * paragraph — the parse-integrity check passes for plain-paragraph content.
+ */
+function makeEchoEditor() {
   return makeEditor({
-    markdown: { parse: vi.fn(() => parsedDoc) },
+    markdown: {
+      parse: vi.fn((md: string) => ({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: md }] }],
+      })),
+    },
     schema: {
       nodes: { doc: {}, paragraph: {}, text: {} },
       nodeFromJSON: () => ({ check: vi.fn() }),
@@ -58,6 +72,7 @@ describe('MarkdownEditorSave', () => {
 
   it('flushes content that is still inside the debounce window', async () => {
     const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
 
     save.scheduleAutoSave('n1', 'typed content');
@@ -78,6 +93,7 @@ describe('MarkdownEditorSave', () => {
 
   it('forwards keepalive so the flush can outlive the page', async () => {
     const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
 
     save.scheduleAutoSave('n1', 'typed content');
@@ -103,6 +119,7 @@ describe('MarkdownEditorSave', () => {
 
   it('keeps the content pending when the write fails, and retries', async () => {
     const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
     ctx.store.saveActiveNodeContent.mockResolvedValue(false);
     const save = await loadSave(ctx);
 
@@ -120,6 +137,7 @@ describe('MarkdownEditorSave', () => {
 
   it('does not advance lastSavedContent when the store rejects the write', async () => {
     const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
     ctx.store.saveActiveNodeContent.mockResolvedValue(false);
     const save = await loadSave(ctx);
 
@@ -135,6 +153,7 @@ describe('MarkdownEditorSave', () => {
     save.syncEditorContent('# Title\n\nSome **bold** text with $E=mc^2$.');
 
     expect(ctx.isParseDegraded.value).toBe(true);
+    expect(ctx.integrityIssueText.value).not.toBe('');
     expect(ctx.editor.value.setEditable).toHaveBeenCalledWith(false);
     // The flat fallback is still shown so the user can see the content.
     expect(ctx.editor.value.commands.setContent).toHaveBeenCalledWith(
@@ -162,25 +181,133 @@ describe('MarkdownEditorSave', () => {
   it('recovers saving when a later load parses successfully', async () => {
     const ctx = makeCtx();
     const save = await loadSave(ctx);
-    save.syncEditorContent('# Title');
-    expect(ctx.isParseDegraded.value).toBe(true);
+    ctx.editor.value = makeEchoEditor();
 
-    const parsedDoc = {
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hello' }] }],
-    };
-    ctx.editor.value = makeParsingEditor(parsedDoc);
-    save.syncEditorContent('# Title');
+    // A manager-less editor first: parse fails, degraded read-only.
+    save.syncEditorContent('plain paragraph text');
+    ctx.editor.value = makeEditor();
+    save.syncEditorContent('plain paragraph text');
+    expect(ctx.isParseDegraded.value).toBe(true);
+    expect(ctx.editor.value.setEditable).toHaveBeenLastCalledWith(false);
+
+    // Then a healthy parse: editable again, saves resume.
+    ctx.editor.value = makeEchoEditor();
+    save.syncEditorContent('plain paragraph text');
 
     expect(ctx.isParseDegraded.value).toBe(false);
+    expect(ctx.integrityIssueText.value).toBe('');
     expect(ctx.editor.value.setEditable).toHaveBeenLastCalledWith(true);
     expect(ctx.editor.value.commands.setContent).toHaveBeenLastCalledWith(
-      parsedDoc,
+      expect.objectContaining({ type: 'doc' }),
       expect.objectContaining({ emitUpdate: false }),
     );
 
     save.scheduleAutoSave('n1', 'parsed content');
     await vi.runAllTimersAsync();
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith('n1', 'parsed content', undefined);
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith('n1', 'parsed content', expect.anything());
+  });
+
+  it('suppresses autosave and raises the banner when the draft fails integrity', async () => {
+    const ctx = makeCtx();
+    // Manager-less editor: every validation fails.
+    const save = await loadSave(ctx);
+
+    save.scheduleAutoSave('n1', 'typed content');
+    await vi.runAllTimersAsync();
+
+    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.integrityIssueText.value).not.toBe('');
+  });
+
+  it('on 412 keeps the draft, pauses autosave, and never retries blindly', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
+    ctx.store.lastSaveConflict = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+    const save = await loadSave(ctx);
+
+    ctx.draft.value = 'typed content';
+    save.scheduleAutoSave('n1', 'typed content');
+    await vi.runAllTimersAsync();
+
+    // Exactly one attempt: no retry storm against a version conflict.
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    // The local draft is preserved for the user to decide on.
+    expect(ctx.draft.value).toBe('typed content');
+    expect(ctx.saveConflict.value?.serverRevision).toBe(5);
+
+    // Further edits stay unsent while the conflict is open.
+    ctx.draft.value = 'typed content v2';
+    save.scheduleAutoSave('n1', 'typed content v2');
+    await vi.runAllTimersAsync();
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('keep-mine re-saves the draft against the server version and clears the conflict', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+
+    ctx.draft.value = 'my draft';
+    await save.resolveConflictKeepMine();
+
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'n1',
+      'my draft',
+      expect.objectContaining({ force: true, revision: 5 }),
+    );
+    expect(ctx.saveConflict.value).toBeNull();
+    expect(ctx.lastSavedContent.value).toBe('my draft');
+  });
+
+  it('keep-mine saves the latest draft when typing continued during the failed request', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    // The first request fails with a version conflict — but only after the
+    // user has already kept typing. The retried keep-mine save succeeds.
+    let rejectWithConflict: (() => void) | null = null;
+    let calls = 0;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        await new Promise<void>((resolve) => { rejectWithConflict = resolve; });
+        ctx.store.lastSaveConflict = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+        return false;
+      }
+      return true;
+    });
+    const save = await loadSave(ctx);
+
+    ctx.draft.value = 'older draft';
+    const inFlight = save.enqueueSave('n1', 'older draft');
+    ctx.draft.value = 'newer draft typed while request was in flight';
+    rejectWithConflict!();
+    await inFlight;
+    expect(ctx.saveConflict.value).not.toBeNull();
+    // The in-flight content and the newer typing both survive untouched.
+    expect(ctx.draft.value).toBe('newer draft typed while request was in flight');
+
+    await save.resolveConflictKeepMine();
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenLastCalledWith(
+      'n1',
+      'newer draft typed while request was in flight',
+      expect.objectContaining({ force: true, revision: 5 }),
+    );
+    expect(ctx.saveConflict.value).toBeNull();
+  });
+
+  it('take-server adopts the server content and drops the local draft', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = { nodeId: 'n1', serverContent: 'server text', serverRevision: 5 };
+
+    save.resolveConflictTakeServer();
+
+    expect(ctx.draft.value).toBe('server text');
+    expect(ctx.lastSavedContent.value).toBe('server text');
+    expect(ctx.saveConflict.value).toBeNull();
+    expect(ctx.editor.value.commands.setContent).toHaveBeenCalled();
   });
 });

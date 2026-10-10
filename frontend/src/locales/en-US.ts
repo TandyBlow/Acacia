@@ -156,6 +156,11 @@ export default {
     ocrFailed: 'OCR failed',
     conceptNamePrompt: 'Enter concept name:',
     sameNamePathsTitle: 'This knowledge point also exists in the following paths:',
+    integrityLoadIssue: 'This document contains content that cannot be parsed safely. Autosave is paused and the editor is read-only to protect the server copy.',
+    integrityDraftIssue: 'The current content failed the safety check. Autosave is paused to protect the server copy.',
+    conflictTitle: 'A newer version exists on the server. Autosave is paused — your draft is kept, please choose:',
+    conflictKeepMine: 'Keep my version',
+    conflictTakeServer: 'Use server version',
   },
 
   upload: {
