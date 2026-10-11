@@ -82,13 +82,15 @@ export function useMarkdownEditorWatchers(
 
   watch(ctx.draft, (value) => {
     const nodeId = ctx.activeNode.value?.id
-    if (!nodeId) {
-      deps.save.clearAutoSaveTimer()
-      return
-    }
+    // No active node: this watcher manages no timers at all — other nodes'
+    // queued retries must survive.
+    if (!nodeId) return
 
     if (value === ctx.lastSavedContent.value) {
-      deps.save.clearAutoSaveTimer()
+      // The draft reverted to the saved content: only this node's queued
+      // work is stale (timer and bucket entry). Clearing globally here would
+      // cancel another node's armed retry.
+      deps.save.cancelQueuedSave(nodeId)
       return
     }
 

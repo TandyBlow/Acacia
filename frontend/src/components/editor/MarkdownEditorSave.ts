@@ -44,6 +44,16 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     }
   }
 
+  /**
+   * Cancels this node's queued save: timer and bucket entry. Used when the
+   * draft has reverted to the saved content — anything queued for the node
+   * is stale, while other nodes' queued work and retries must survive.
+   */
+  function cancelQueuedSave(nodeId: string): void {
+    clearTimerFor(nodeId)
+    pendingSaves.delete(nodeId)
+  }
+
   function clearAllTimers(): void {
     for (const timer of autoSaveTimers.values()) {
       window.clearTimeout(timer)
@@ -97,7 +107,10 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       retryTarget.nodeId,
       retryTarget.content,
       delayMs ?? SAVE_RETRY_BASE_MS * 2 ** (retryCount - 1),
-      { validated: retryTarget.validated, forceValidate: true },
+      // The verdict was decided for this exact content string when it was
+      // scheduled. Re-running it against the editor's current state — which
+      // may show another node, possibly degraded — would leak across nodes.
+      { validated: retryTarget.validated },
     )
   }
 
@@ -181,16 +194,18 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     nodeId: string,
     content: string,
     delayMs: number = AUTO_SAVE_DELAY_MS,
-    options?: { validated?: boolean; forceValidate?: boolean },
+    options?: { validated?: boolean },
   ): void {
-    if (ctx.isParseDegraded.value) return
+    // Parse degradation belongs to the node the editor is showing: it holds
+    // back that node's saves, never another node's queued retries.
+    if (nodeId === ctx.activeNode.value?.id && ctx.isParseDegraded.value) return
     // Pause per node: an open conflict holds back only its own node's
     // autosave; another node's conflict must not block this schedule.
     if (ctx.saveConflict.value?.nodeId === nodeId) return
     clearTimerFor(nodeId)
 
     let validated = options?.validated
-    if (validated === undefined || options?.forceValidate) {
+    if (validated === undefined) {
       validated = validateContent(content)
     }
     if (!validated) {
@@ -316,6 +331,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     syncEditorContent,
     resetAutoSave,
     clearAutoSaveTimer: clearAllTimers,
+    cancelQueuedSave,
     scheduleAutoSave,
     enqueueSave,
     flushPendingSave,

@@ -614,4 +614,46 @@ describe('MarkdownEditorSave', () => {
     expect(savedContents.filter((content) => content === 'old draft')).toHaveLength(1);
     expect(savedContents).toContain('new draft typed while request was in flight');
   });
+
+  it('cancelling one node\'s queued save leaves another node\'s retry armed', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
+    const save = await loadSave(ctx);
+
+    // Node A's first attempt just failed; its retry is armed (timer + queue).
+    await save.enqueueSave('nA', 'A content');
+
+    // Node B's draft reverted to its saved content: cancel B only.
+    save.cancelQueuedSave('nB');
+
+    await vi.runAllTimersAsync();
+    const callsForA = ctx.store.saveActiveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
+    expect(callsForA.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a retry schedules for node A while the editor is degraded on node B', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    let release: (() => void) | null = null;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return false;
+    });
+    const save = await loadSave(ctx);
+
+    const inFlight = save.enqueueSave('nA', 'A content');
+    // While that request is in flight the user switches to node B, whose
+    // content fails to parse (read-only degraded editor).
+    ctx.activeNode.value = { id: 'nB', content: '' };
+    ctx.isParseDegraded.value = true;
+    release!();
+    await inFlight;
+
+    // The failed attempt schedules a retry for A: B's degradation must not
+    // swallow it, and A's content must not be re-validated against B's editor.
+    await vi.runAllTimersAsync();
+    const callsForA = ctx.store.saveActiveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
+    expect(callsForA.length).toBeGreaterThanOrEqual(2);
+  });
 });
