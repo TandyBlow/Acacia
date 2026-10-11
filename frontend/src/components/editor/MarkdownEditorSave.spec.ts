@@ -582,4 +582,36 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
     expect(ctx.saveConflict.value).not.toBeNull();
   });
+
+  // ── Round-4 acceptance fixes ───────────────────────────────────────────
+
+  it('a failed stale save does not clobber a newer draft queued for the same node', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    // The first request hangs; the newer draft is queued behind it; then the
+    // first request fails with a plain (non-conflict) error.
+    let releaseFirst: (() => void) | null = null;
+    let calls = 0;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        return false;
+      }
+      return true;
+    });
+    const save = await loadSave(ctx);
+
+    const inFlight = save.enqueueSave('n1', 'old draft');
+    save.scheduleAutoSave('n1', 'new draft typed while request was in flight');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
+    releaseFirst!();
+    await inFlight;
+    await vi.runAllTimersAsync();
+
+    // The stale content went out exactly once; the retry carries the newer draft.
+    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    expect(savedContents.filter((content) => content === 'old draft')).toHaveLength(1);
+    expect(savedContents).toContain('new draft typed while request was in flight');
+  });
 });

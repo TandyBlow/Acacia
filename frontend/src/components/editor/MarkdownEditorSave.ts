@@ -87,12 +87,17 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       console.error('[MarkdownEditor] save gave up after retries:', target.nodeId)
       return
     }
+    // A newer draft may have been queued for this node while the failed save
+    // was in flight. Retry that one: it supersedes the stale content, and
+    // re-queueing the stale content would clobber the newer draft and its
+    // timer (stale text sent twice, newer draft never).
+    const retryTarget = pendingSaves.get(target.nodeId) ?? target
     retryCount += 1
     scheduleAutoSave(
-      target.nodeId,
-      target.content,
+      retryTarget.nodeId,
+      retryTarget.content,
       delayMs ?? SAVE_RETRY_BASE_MS * 2 ** (retryCount - 1),
-      { validated: target.validated, forceValidate: true },
+      { validated: retryTarget.validated, forceValidate: true },
     )
   }
 
