@@ -72,4 +72,63 @@ describe('upgrade regression samples (3.20.4 → 3.21.0)', () => {
     }
     expect(failures).toEqual([]);
   });
+
+  it('parses link-shaped table samples without loss or duplication (round-6)', () => {
+    // The production parse resolves reference links inside cells and
+    // linkifies bare URLs — none of that may read as content loss or
+    // injection.
+    const editor = makeEditor();
+    const failures: string[] = [];
+    const samples: Array<{ name: string; md: string }> = [
+      {
+        name: 'reference link inside a table cell',
+        md: 'top:\n\n[ref]: https://def.example\n\n| see [text][ref] here | x |\n| --- | --- |',
+      },
+      {
+        name: 'bare URL inside a table cell',
+        md: '| bare https://bare.example url | x |\n| --- | --- |',
+      },
+    ];
+    for (const sample of samples) {
+      const parsed = parseDoc(editor, sample.md);
+      if (!parsed) {
+        failures.push(`${sample.name}: parse returned null`);
+        continue;
+      }
+      const report = checkParseIntegrity(sample.md, parsed);
+      if (!report.ok) {
+        failures.push(`${sample.name}: ${JSON.stringify(report.issues)}`);
+      }
+      editor.commands.setContent(parsed, { emitUpdate: false });
+      const reserialized = editor.getMarkdown();
+      const reparsed = parseDoc(editor, reserialized);
+      if (!reparsed) {
+        failures.push(`${sample.name} (reserialized): re-parse returned null`);
+        continue;
+      }
+      const equivalence = checkDocEquivalence(parsed, reparsed);
+      if (!equivalence.ok) {
+        failures.push(`${sample.name} (doc roundtrip): ${JSON.stringify(equivalence.issues)}`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('parses a bold span inside a table cell link without checker false positives (round-6)', () => {
+    // The production parse splits "[**ab**cd](url)" into a bold and a plain
+    // text node, both carrying the link mark. The source side records one
+    // href, the doc side set-valued per cell — no false loss or injection.
+    //
+    // NOTE, separate defect: the @tiptap/markdown serializer renders the
+    // combination as "**[ab**cd](url)", which re-parses with the link
+    // degraded (bold text + linkified bare URL). The doc-vs-doc leg
+    // legitimately reports that as a loss — a serializer mark-ordering bug
+    // outside this checker round.
+    const editor = makeEditor();
+    const md = '| [**ab**cd](https://example.org) | x |\n| --- | --- |';
+    const parsed = parseDoc(editor, md);
+    const report = parsed ? checkParseIntegrity(md, parsed) : { ok: false, issues: [] };
+    expect(parsed).not.toBeNull();
+    expect(report.ok).toBe(true);
+  });
 });

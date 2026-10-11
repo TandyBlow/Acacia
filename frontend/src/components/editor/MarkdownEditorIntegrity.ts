@@ -149,8 +149,17 @@ function stripCodeFence(region: string): string {
  * with every unit's slot rewritten — code and block constructs as a line
  * split, inline math as a space — so the remaining prose keeps its run
  * structure and mirrors what the doc side flushes.
+ *
+ * `referenceDefs` carries the document's link definitions: the production
+ * parse resolves reference-style links (also inside table cells), so a
+ * resolved `[text][ref]` yields an href unit and keeps its label in the
+ * prose, while an unresolved one stays literal text on both sides.
  */
-function extractInlineUnits(input: string, pushUnit: (type: string, raw: string) => void): string {
+function extractInlineUnits(
+  input: string,
+  pushUnit: (type: string, raw: string) => void,
+  referenceDefs?: Map<string, string>,
+): string {
   // 1. Pull autolinks out as hrefs before code masking hides them. The URL
   // text stays in the prose flow: the doc side renders an autolink as link
   // text, so it must appear on both sides.
@@ -202,11 +211,52 @@ function extractInlineUnits(input: string, pushUnit: (type: string, raw: string)
     return label
   })
 
-  // 5b. Reference-style links [text][ref]: the label stays in prose, the
-  // [ref] marker disappears (its URL resolves doc-side into a link mark).
-  text = text.replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')
+  // 5b. Reference-style links [text][ref], collapsed [text] and [text][]:
+  // resolved against the document's definitions — the production parse
+  // resolves them doc-side (also inside table cells), so a resolved
+  // reference yields an href unit and keeps its label in the prose.
+  // Unresolved ones stay literal text: marked leaves them as-is, and
+  // stripping the marker would misreport the prose. A definition line
+  // ([label]: url at line start) is left for stage 6 to drop — resolving
+  // its label would turn the definition into prose.
+  text = text.replace(
+    /\[([^\]]+)\](?:\[([^\]]*)\])?/g,
+    (match, label: string, ref: string | undefined, offset: number, full: string) => {
+      const lineStart = full.lastIndexOf('\n', offset) + 1
+      const atLineStart = full.slice(lineStart, offset).trim() === ''
+      if (atLineStart && full[offset + match.length] === ':') return match
+      const key = ref ? ref : label
+      const url = referenceDefs?.get(`${key.trim().toLowerCase().replace(/\s+/g, ' ')}`)
+      if (!url) return match
+      pushUnit('href', url)
+      return label
+    },
+  )
 
   return text
+}
+
+/** Reference-link definitions of the document: label → destination URL.
+ * Collected from the masked source so fence/code-span content cannot fake
+ * one, with markdown's block rules — the line starts with at most three
+ * spaces of indentation (four would be a code block), the same shape the
+ * main flow drops as definitions. Keys are lowercased and
+ * whitespace-collapsed, the way markdown matches reference labels. */
+function collectReferenceDefs(masked: { protected: string; restore: (s: string) => string }): Map<string, string> {
+  const defs = new Map<string, string>()
+  const pattern = /^ {0,3}\[([^\]]+)\]:\s*<?([^\s>]+)>?(?:\s+["'(].*["')])?\s*$/gm
+  for (const match of masked.protected.matchAll(pattern)) {
+    const label = match[1] ?? ''
+    const urlToken = match[2] ?? ''
+    if (!label || !urlToken) continue
+    // A definition URL wrapped in <...> was masked as an autolink; restore
+    // the token back to the URL.
+    defs.set(
+      `${label.trim().toLowerCase().replace(/\s+/g, ' ')}`,
+      masked.restore(urlToken),
+    )
+  }
+  return defs
 }
 
 export function extractSourceShape(source: string): SourceShape {
@@ -237,6 +287,12 @@ export function extractSourceShape(source: string): SourceShape {
     if (type === 'math') shape.mathSeq.push(value)
     pushCount(type, value)
   }
+
+  // The production parse resolves reference-style links (also inside table
+  // cells); collect the document's definitions once, from fenced and
+  // code-span-masked text so code content cannot fake one.
+  const maskedForDefs = maskCodeRegions(source)
+  const referenceDefs = collectReferenceDefs(maskedForDefs)
 
   // Table rows are extracted from the raw lines up front — the inline stages
   // below would otherwise split a row containing a code span or formula.
@@ -280,13 +336,30 @@ export function extractSourceShape(source: string): SourceShape {
     const rowCellUnits: CellUnit[][] = []
     for (const cell of cells) {
       const cellUnits: CellUnit[] = []
+      const cellHrefSet = new Set<string>()
       const residual = extractInlineUnits(cell, (type, raw) => {
         const value = type === 'math' ? normMath(raw) : type === 'code' ? normCode(raw) : raw.trim()
         if (!value) return
-        if (type === 'math') pushCount('math', value)
-        else pushUnit(type, raw)
+        if (type === 'math') {
+          pushCount('math', value)
+        } else {
+          pushUnit(type, raw)
+        }
+        // Cell href records are set-valued: the production parse merges
+        // adjacent fragments of one link into a single mark (a bold span
+        // inside "[**ab**cd](url)" splits the link into two text nodes)
+        // and linkifies bare URLs — occurrence counts there are parse
+        // artifacts, while the addresses present and their cell placement
+        // are content.
+        if (type === 'href') {
+          if (!cellHrefSet.has(value)) {
+            cellHrefSet.add(value)
+            cellUnits.push({ type, value })
+          }
+          return
+        }
         cellUnits.push({ type, value })
-      })
+      }, referenceDefs)
       let hasProse = false
       for (const sub of residual.split('\n')) {
         // List markers are syntax: the doc side strips them from every
@@ -313,7 +386,7 @@ export function extractSourceShape(source: string): SourceShape {
     cellCheckboxBuffers.push(checkboxEntries)
     placeholderLines[rowLine] = `\u0001TBL${cellProseBuffers.length - 1}\u0001`
   }
-  let text = extractInlineUnits(placeholderLines.join('\n'), pushUnit)
+  let text = extractInlineUnits(placeholderLines.join('\n'), pushUnit, referenceDefs)
 
   // 6. Reference-style definitions resolve doc-side only; drop the lines so
   // they do not masquerade as lost prose.
@@ -595,7 +668,10 @@ function extractDocShape(doc: JSONContent): DocShape {
           if (mark.type === 'link' && mark.attrs?.href) {
             const href = String(mark.attrs.href)
             pushUnit('href', href)
-            if (cellUnits) cellUnits.push({ type: 'href', value: href })
+            if (cellUnits && !cellUnits.some(u => u.type === 'href' && u.value === href)) {
+              // Cell href records are set-valued — see the source side.
+              cellUnits.push({ type: 'href', value: href })
+            }
           }
         }
         continue
@@ -890,7 +966,6 @@ function compareTableCells(source: SourceShape, doc: DocShape, issues: Integrity
     }
   }
 }
-
 function compareCellUnitMultisets(src: CellUnit[], doc: CellUnit[], row: number, cell: number, issues: IntegrityIssue[]): void {
   const where = `row ${row + 1} cell ${cell + 1}`
   const tally = new Map<string, { type: string; value: string; src: number; doc: number }>()
@@ -906,7 +981,10 @@ function compareCellUnitMultisets(src: CellUnit[], doc: CellUnit[], row: number,
     const sample = `${where} ${type} "${value.slice(0, 30)}"`
     if (doc < src) {
       issues.push({ kind: 'lost', unit: 'table cell', sample, expected: src, actual: doc })
-    } else if (doc > src) {
+    } else if (doc > src && type !== 'href') {
+      // A doc-side href surplus is parse-level (linkified bare URLs,
+      // resolved reference definitions, merged link fragments), mirroring
+      // the global comparison's exemption — a href LOSS is still reported.
       issues.push({ kind: 'injected', unit: 'table cell', sample, expected: src, actual: doc })
     }
   }

@@ -704,4 +704,77 @@ describe('checkParseIntegrity', () => {
     expect(report.ok).toBe(true);
     expect(report.issues).toEqual([]);
   });
+
+  // ── Round-6 acceptance fixes ───────────────────────────────────────────
+
+  it('accepts a bare-URL href surplus inside a cell (parse-level linkify)', () => {
+    // The production parse linkifies the bare URL into a link mark; the
+    // source side keeps it as plain text. The doc-side href surplus is
+    // parse-level, like the global comparison's exemption.
+    const source = '| see https://x.example now | z |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([table([[
+        {
+          type: 'tableCell',
+          content: [{
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'see ' },
+              { type: 'text', text: 'https://x.example', marks: [{ type: 'link', attrs: { href: 'https://x.example' } }] },
+              { type: 'text', text: ' now' },
+            ],
+          }],
+        },
+        plainCell('z'),
+      ]])]),
+    );
+    expect(report.ok).toBe(true);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('accepts a resolved reference link inside a cell', () => {
+    const source = 'top\n\n[ref]: https://def.example\n\n| see [text][ref] here | z |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        paragraph('top'),
+        table([[
+          {
+            type: 'tableCell',
+            content: [{
+              type: 'paragraph',
+              content: [
+                { type: 'text', text: 'see ' },
+                { type: 'text', text: 'text', marks: [{ type: 'link', attrs: { href: 'https://def.example' } }] },
+                { type: 'text', text: ' here' },
+              ],
+            }],
+          },
+          plainCell('z'),
+        ]]),
+      ]),
+    );
+    expect(report.ok).toBe(true);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('flags a reference link dropped from a cell', () => {
+    // The source side resolves the reference and records the href; a parse
+    // that strips the link mark but keeps the text loses it.
+    const source = 'top\n\n[ref]: https://def.example\n\n| see [text][ref] here | z |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        paragraph('top'),
+        table([[
+          { type: 'tableCell', content: [paragraph('see text here')] },
+          plainCell('z'),
+        ]]),
+      ]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.kind === 'lost' && issue.unit === 'table cell' && issue.sample.includes('def.example'))).toBe(true);
+  });
+
 });
