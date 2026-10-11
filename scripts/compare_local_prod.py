@@ -75,12 +75,16 @@ def main() -> None:
 
     hits = []
     near_misses = []
+    compared = 0
+    skipped = 0
     for li, ln in enumerate(local):
         lc = ln["content"]
         for pi, pn in enumerate(prod):
             shared = local_sh[li] & prod_sh[pi]
             if not shared:
+                skipped += 1
                 continue
+            compared += 1
             matcher = SequenceMatcher(None, lc, pn["content"], autojunk=False)
             ratio = matcher.ratio()
             m = matcher.find_longest_match(0, len(lc), 0, len(pn["content"]))
@@ -90,6 +94,7 @@ def main() -> None:
             else:
                 near_misses.append(record)
 
+    print(f"\npairs compared: {compared}, skipped by prefilter: {skipped}")
     hits.sort(reverse=True)
     if hits:
         print("\nSIGNIFICANT OVERLAP (local node, prod node, ratio, longest common block, shared windows):")
@@ -103,7 +108,7 @@ def main() -> None:
         print("\nNEAR MISS (shared windows but below the significance bar; local node, prod node, ratio, longest common block, shared windows):")
         for r in near_misses[:15]:
             print(" ", r)
-    else:
+    elif not hits:
         print("\nno near misses: no pair shares even a single 24-character window")
 
     print("\nfragment search of production Notes/IDEA lines inside the local DB:")
