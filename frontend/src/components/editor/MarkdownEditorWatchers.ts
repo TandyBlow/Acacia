@@ -89,8 +89,10 @@ export function useMarkdownEditorWatchers(
     if (value === ctx.lastSavedContent.value) {
       // The draft reverted to the saved content: only this node's queued
       // work is stale (timer and bucket entry). Clearing globally here would
-      // cancel another node's armed retry.
-      deps.save.cancelQueuedSave(nodeId)
+      // cancel another node's armed retry; dropping the node's in-flight
+      // save without recording the revert would leave the server on
+      // content the user took back.
+      deps.save.cancelQueuedSave(nodeId, value)
       return
     }
 

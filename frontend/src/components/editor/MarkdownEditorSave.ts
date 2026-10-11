@@ -27,6 +27,7 @@ export interface SaveTarget {
 const autoSaveTimers = new Map<string, number>()
 const pendingSaves = new Map<string, SaveTarget>()
 let saveInFlight = false
+let saveInFlightNode: string | null = null
 let retryCount = 0
 
 // Memo for draft validation. The verdict depends on the serialized content
@@ -48,10 +49,23 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
    * Cancels this node's queued save: timer and bucket entry. Used when the
    * draft has reverted to the saved content — anything queued for the node
    * is stale, while other nodes' queued work and retries must survive.
+   *
+   * When a save for this very node is in flight, the revert must not be
+   * forgotten: the desired content goes back into the bucket (no timer), so
+   * a successful response is followed by the kick re-saving it, and a
+   * failed one retries it — the server must not be left on content the
+   * user took back. Without an in-flight save the revert needs nothing:
+   * the server already holds this content.
    */
-  function cancelQueuedSave(nodeId: string): void {
+  function cancelQueuedSave(nodeId: string, desired?: string): void {
     clearTimerFor(nodeId)
     pendingSaves.delete(nodeId)
+    if (desired === undefined || saveInFlightNode !== nodeId) return
+    if (validateContent(desired)) {
+      pendingSaves.set(nodeId, { nodeId, content: desired, validated: true })
+    } else {
+      console.error('[MarkdownEditor] revert reconcile suppressed: content failed the parse-integrity check')
+    }
   }
 
   function clearAllTimers(): void {
@@ -138,6 +152,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     }
 
     saveInFlight = true
+    saveInFlightNode = nodeId
     let saved = false
     try {
       saved = await ctx.store.saveActiveNodeContent(nodeId, content, {
@@ -172,6 +187,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       return false
     } finally {
       saveInFlight = false
+      saveInFlightNode = null
       // Drop this node's queued duplicate only when the save succeeded with
       // the same content; anything else still needs to go out.
       const queued = pendingSaves.get(nodeId)

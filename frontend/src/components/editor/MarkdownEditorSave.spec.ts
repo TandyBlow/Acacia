@@ -685,4 +685,74 @@ describe('MarkdownEditorSave', () => {
     );
     expect(ctx.lastSavedContent.value).toBe('B content');
   });
+
+  // ── Round-5 acceptance fixes ───────────────────────────────────────────
+
+  it('a revert while the node save is in flight re-saves the revert after the response', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    let calls = 0;
+    let releaseFirst: (() => void) | null = null;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      }
+      return true;
+    });
+    const save = await loadSave(ctx);
+
+    ctx.lastSavedContent.value = 'A';
+    save.scheduleAutoSave('n1', 'B');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
+    // Before B's response lands, the user reverts the draft to A.
+    save.cancelQueuedSave('n1', 'A');
+    releaseFirst!();
+    await vi.runAllTimersAsync();
+
+    // B went out once; the revert result A followed it, and the saved
+    // pointer ended on A — the editor shows A and the server holds A.
+    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    expect(savedContents).toEqual(['B', 'A']);
+    expect(ctx.lastSavedContent.value).toBe('A');
+  });
+
+  it('a failed in-flight save does not retry the reverted-away content', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    let calls = 0;
+    let releaseFirst: (() => void) | null = null;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      }
+      return false;
+    });
+    const save = await loadSave(ctx);
+
+    ctx.lastSavedContent.value = 'A';
+    save.scheduleAutoSave('n1', 'B');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
+    save.cancelQueuedSave('n1', 'A');
+    releaseFirst!();
+    await vi.runAllTimersAsync();
+
+    // B failed, so the server still holds A — the same content the draft
+    // reverted to. Retrying B (or re-sending A) would both be wrong.
+    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    expect(savedContents).toEqual(['B']);
+    expect(ctx.lastSavedContent.value).toBe('A');
+  });
+
+  it('a revert with no save in flight queues nothing', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+
+    save.cancelQueuedSave('n1', 'A');
+    await vi.runAllTimersAsync();
+
+    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+  });
 });
