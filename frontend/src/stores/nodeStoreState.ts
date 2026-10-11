@@ -22,6 +22,10 @@ export interface SaveConflict {
   draftContent: string;
   serverContent: string;
   serverRevision: number;
+  /** True when serverContent/serverRevision come from a live GET. A failed
+   * GET falls back to the cache, which may predate the conflicting write —
+   * taking that "server copy" could revert the node. */
+  serverVerified: boolean;
 }
 
 export interface NodeStoreState {

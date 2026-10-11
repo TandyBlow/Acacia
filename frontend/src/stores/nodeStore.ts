@@ -100,6 +100,7 @@ export const useNodeStore = defineStore('node', () => {
     applyPendingData,
     refreshCurrentNode,
     saveActiveNodeContent,
+    refreshConflictCopy,
     resetAfterLogout,
     confirmOperation,
   } = createNodeStoreActions(state, {
@@ -174,6 +175,7 @@ export const useNodeStore = defineStore('node', () => {
     setMoveTargetParent,
     cancelOperation,
     saveActiveNodeContent,
+    refreshConflictCopy,
     refreshTree,
     refreshCurrentNode,
     resetAfterLogout,

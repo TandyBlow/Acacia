@@ -16,7 +16,7 @@ function makeCtx() {
     draft: ref(''),
     isParseDegraded: ref(false),
     integrityIssueText: ref(''),
-    saveConflict: ref<{ nodeId: string; serverContent: string; serverRevision: number } | null>(null),
+    saveConflict: ref<{ nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean } | null>(null),
     t: (key: string) => key,
     isApplyingExternalContent: ref(false),
     editor: ref<{ commands: { setContent: ReturnType<typeof vi.fn> }; setEditable: ReturnType<typeof vi.fn> }>({
@@ -27,7 +27,8 @@ function makeCtx() {
     // unwrapped on the instance.
     store: {
       saveActiveNodeContent: vi.fn().mockResolvedValue(true),
-      lastSaveConflict: null as { nodeId: string; serverContent: string; serverRevision: number } | null,
+      refreshConflictCopy: vi.fn().mockResolvedValue(false),
+      lastSaveConflict: null as { nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean } | null,
     },
   };
 }
@@ -247,7 +248,7 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5 };
+    ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5, serverVerified: true };
     const save = await loadSave(ctx);
 
     ctx.draft.value = 'typed content';
@@ -271,7 +272,7 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true };
+    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true, serverVerified: true };
 
     ctx.draft.value = 'my draft';
     await save.resolveConflictKeepMine();
@@ -296,7 +297,7 @@ describe('MarkdownEditorSave', () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { rejectWithConflict = resolve; });
-        ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5 };
+        ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5, serverVerified: true };
         return false;
       }
       return true;
@@ -325,7 +326,7 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true };
+    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true, serverVerified: true };
 
     save.resolveConflictTakeServer();
 
@@ -344,7 +345,7 @@ describe('MarkdownEditorSave', () => {
     // Request for node A goes out; the user switches to node B; then the
     // conflict response for A arrives.
     ctx.activeNode.value = { id: 'n2', content: '' };
-    ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'a draft', serverContent: 'a server', serverRevision: 5 };
+    ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'a draft', serverContent: 'a server', serverRevision: 5, serverVerified: true };
 
     await save.enqueueSave('n1', 'a draft');
 
@@ -367,6 +368,7 @@ describe('MarkdownEditorSave', () => {
       serverContent: 'node A server',
       serverRevision: 5,
       draftValidated: true,
+      serverVerified: true,
     };
     ctx.activeNode.value = { id: 'n2', content: '' };
     ctx.draft.value = 'node B draft';
@@ -393,6 +395,7 @@ describe('MarkdownEditorSave', () => {
       serverContent: 'server text',
       serverRevision: 5,
       draftValidated: false,
+      serverVerified: true,
     };
     ctx.activeNode.value = { id: 'n2', content: '' };
 
@@ -412,6 +415,7 @@ describe('MarkdownEditorSave', () => {
       serverContent: 'node A server',
       serverRevision: 5,
       draftValidated: true,
+      serverVerified: true,
     };
     ctx.activeNode.value = { id: 'n2', content: 'node B content' };
     ctx.draft.value = 'node B draft';
@@ -436,7 +440,7 @@ describe('MarkdownEditorSave', () => {
 
     save.scheduleAutoSave('nB', 'node B content');
     ctx.store.saveActiveNodeContent.mockImplementation(async () => {
-      ctx.store.lastSaveConflict = { nodeId: 'nA', draftContent: 'A draft', serverContent: 'A server', serverRevision: 9 };
+      ctx.store.lastSaveConflict = { nodeId: 'nA', draftContent: 'A draft', serverContent: 'A server', serverRevision: 9, serverVerified: true };
       return false;
     });
 
@@ -463,6 +467,7 @@ describe('MarkdownEditorSave', () => {
       serverContent: 'A server',
       serverRevision: 9,
       draftValidated: true,
+      serverVerified: true,
     };
 
     save.scheduleAutoSave('nA', 'node A retry');
@@ -574,6 +579,7 @@ describe('MarkdownEditorSave', () => {
       serverContent: 'server',
       serverRevision: 5,
       draftValidated: true,
+      serverVerified: true,
     };
 
     const saved = await save.resolveConflictKeepMine();
@@ -666,7 +672,7 @@ describe('MarkdownEditorSave', () => {
       return true;
     });
     const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'A draft', serverContent: 'A server', serverRevision: 5, draftValidated: true };
+    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'A draft', serverContent: 'A server', serverRevision: 5, draftValidated: true, serverVerified: true };
     ctx.draft.value = 'A draft latest';
 
     const pending = save.resolveConflictKeepMine();
@@ -779,7 +785,7 @@ describe('MarkdownEditorSave', () => {
         return false;
       }
       // The revert write carries the stale revision: 412, server has B.
-      ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'A', serverContent: 'B', serverRevision: 6 };
+      ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'A', serverContent: 'B', serverRevision: 6, serverVerified: true };
       return false;
     });
     const save = await loadSave(ctx);
@@ -831,5 +837,86 @@ describe('MarkdownEditorSave', () => {
     const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
     expect(savedContents).toEqual(['B', 'A']);
     expect(ctx.lastSavedContent.value).toBe('A');
+  });
+
+  // ── Round-7 acceptance fixes ───────────────────────────────────────────
+
+  it('take-server on an unverified conflict re-reads and adopts the fresh copy', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    // The original conflict capture failed: the server fields hold a stale
+    // cache, flagged unverified.
+    ctx.saveConflict.value = {
+      nodeId: 'n1',
+      draftContent: 'my draft',
+      serverContent: 'stale cache copy',
+      serverRevision: 0,
+      draftValidated: true,
+      serverVerified: false,
+    };
+    // The re-read succeeds and lands the fresh server copy in the store.
+    ctx.store.refreshConflictCopy.mockImplementation(async () => {
+      ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'fresh server copy', serverRevision: 2, serverVerified: true };
+      ctx.saveConflict.value = { ...ctx.store.lastSaveConflict, draftValidated: true };
+      return true;
+    });
+
+    const taken = await save.resolveConflictTakeServer();
+
+    expect(taken).toBe(true);
+    expect(ctx.draft.value).toBe('fresh server copy');
+    expect(ctx.lastSavedContent.value).toBe('fresh server copy');
+    expect(ctx.saveConflict.value).toBeNull();
+    expect(ctx.editor.value.commands.setContent).toHaveBeenCalled();
+  });
+
+  it('take-server keeps the banner and draft when the re-read fails', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = {
+      nodeId: 'n1',
+      draftContent: 'my draft',
+      serverContent: 'stale cache copy',
+      serverRevision: 0,
+      draftValidated: true,
+      serverVerified: false,
+    };
+    ctx.store.refreshConflictCopy.mockResolvedValue(false);
+
+    const taken = await save.resolveConflictTakeServer();
+
+    // Nothing was adopted and the conflict stays open for a retry.
+    expect(taken).toBe(false);
+    expect(ctx.saveConflict.value?.nodeId).toBe('n1');
+    expect(ctx.draft.value).toBe('');
+    expect(ctx.lastSavedContent.value).toBe('old');
+    expect(ctx.editor.value.commands.setContent).not.toHaveBeenCalled();
+  });
+
+  it('an unverified conflict keeps the node outcome uncertain for the dedup', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    // Write fails, then answers 412 with a conflict whose server copy was
+    // NOT verified (the capture GET failed). The real server state stays
+    // unknown, so the same-content dedup must not re-enable.
+    let calls = 0;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'cached copy', serverRevision: 0, serverVerified: false };
+        return false;
+      }
+      return true;
+    });
+    const save = await loadSave(ctx);
+
+    await save.enqueueSave('n1', 'typed content');
+    ctx.lastSavedContent.value = 'typed content';
+
+    // Not skipped as "already saved": the server state is unproven.
+    expect(await save.enqueueSave('n1', 'typed content')).toBe(true);
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(2);
   });
 });

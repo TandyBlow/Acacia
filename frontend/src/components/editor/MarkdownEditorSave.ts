@@ -182,9 +182,14 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       }
       const conflict = ctx.store.lastSaveConflict
       if (conflict?.nodeId === nodeId) {
-        // The store captured the server content and revision: the outcome
-        // is known again, from the server's side.
-        uncertainOutcomeNodes.delete(nodeId)
+        // The server copy is known only when the store's conflict capture
+        // actually read it; a failed read fell back to a cache that may
+        // predate the write, so the node's real state stays uncertain.
+        if (conflict.serverVerified) {
+          uncertainOutcomeNodes.delete(nodeId)
+        } else {
+          uncertainOutcomeNodes.add(nodeId)
+        }
         // 412/428: keep the conflicting draft, pause autosave, let the user
         // decide. The banner only goes up while the conflicted node is still
         // on screen — a late response after switching nodes stays in the
@@ -353,20 +358,31 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
   }
 
   /** Conflict resolution: discard the local draft, adopt the server copy. */
-  function resolveConflictTakeServer(): void {
-    const conflict = ctx.saveConflict.value
-    if (!conflict) return
+  async function resolveConflictTakeServer(): Promise<boolean> {
+    let conflict = ctx.saveConflict.value
+    if (!conflict) return false
+    // The server copy must be from a live read: the original capture may
+    // have failed and fallen back to a cache that predates the conflicting
+    // write. Re-read once; if that also fails, keep the banner and the
+    // draft — the user can retry or choose keep-mine instead.
+    if (!conflict.serverVerified) {
+      const refreshed = await ctx.store.refreshConflictCopy(conflict.nodeId)
+      conflict = ctx.saveConflict.value
+      if (!refreshed || !conflict || !conflict.serverVerified) return false
+    }
+    const serverContent = conflict.serverContent
     ctx.store.lastSaveConflict = null
     ctx.saveConflict.value = null
     // Every editor mutation is bound to the conflicted node: by the time the
     // user clicks, the editor may be showing a different node whose draft
     // and content must stay untouched.
     if (ctx.activeNode.value?.id === conflict.nodeId) {
-      ctx.activeNode.value = { ...ctx.activeNode.value, content: conflict.serverContent }
-      ctx.draft.value = conflict.serverContent
-      ctx.lastSavedContent.value = conflict.serverContent
-      syncEditorContent(conflict.serverContent)
+      ctx.activeNode.value = { ...ctx.activeNode.value, content: serverContent }
+      ctx.draft.value = serverContent
+      ctx.lastSavedContent.value = serverContent
+      syncEditorContent(serverContent)
     }
+    return true
   }
 
   return {

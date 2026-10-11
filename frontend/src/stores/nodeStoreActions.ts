@@ -145,8 +145,8 @@ export function createNodeStoreActions(
       if (status === 412 || status === 428) {
         // Version conflict: keep the draft that was being saved, pull the
         // server copy, and let the user choose keep-mine or take-server.
-        const { serverContent, serverRevision } = await _captureConflict(nodeId);
-        state.lastSaveConflict.value = { nodeId, draftContent: content, serverContent, serverRevision };
+        const { serverContent, serverRevision, serverVerified } = await _captureConflict(nodeId);
+        state.lastSaveConflict.value = { nodeId, draftContent: content, serverContent, serverRevision, serverVerified };
         console.error('[nodeStore] save conflict, autosave paused for node:', nodeId, status);
         return false;
       }
@@ -157,20 +157,52 @@ export function createNodeStoreActions(
   }
 
   async function _captureConflict(nodeId: string) {
-    let serverContent = '';
-    let serverRevision = 0;
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
       nodeCache.setCache(nodeId, context);
-      serverContent = context.nodeInfo?.content ?? '';
-      serverRevision = context.nodeInfo?.revision ?? 0;
+      return {
+        serverContent: context.nodeInfo?.content ?? '',
+        serverRevision: context.nodeInfo?.revision ?? 0,
+        serverVerified: true,
+      };
     } catch {
-      // Surface the conflict with whatever the cache still holds.
+      // Surface the conflict with whatever the cache still holds — which may
+      // predate the conflicting write. Verified stays false so taking the
+      // "server copy" waits for a live re-read (refreshConflictCopy).
       const cached = nodeCache.getCached(nodeId);
-      serverContent = cached?.nodeInfo?.content ?? '';
-      serverRevision = cached?.nodeInfo?.revision ?? 0;
+      return {
+        serverContent: cached?.nodeInfo?.content ?? '',
+        serverRevision: cached?.nodeInfo?.revision ?? 0,
+        serverVerified: false,
+      };
     }
-    return { serverContent, serverRevision };
+  }
+
+  /**
+   * Re-reads the server copy for an open conflict. Resolves false without
+   * touching the conflict when the read fails — the banner and the draft
+   * stay, and taking the server copy can be retried.
+   */
+  async function refreshConflictCopy(nodeId: string): Promise<boolean> {
+    const conflict = state.lastSaveConflict.value;
+    if (!conflict || conflict.nodeId !== nodeId) return false;
+    try {
+      const context = await getDataAdapter().getNodeContext(nodeId);
+      nodeCache.setCache(nodeId, context);
+      const current = state.lastSaveConflict.value;
+      // The conflict may have been replaced or cleared while reading.
+      if (!current || current.nodeId !== nodeId) return false;
+      state.lastSaveConflict.value = {
+        ...current,
+        serverContent: context.nodeInfo?.content ?? '',
+        serverRevision: context.nodeInfo?.revision ?? 0,
+        serverVerified: true,
+      };
+      return true;
+    } catch (error) {
+      console.error('[nodeStore] conflict copy re-read failed:', nodeId, error);
+      return false;
+    }
   }
 
   function resetAfterLogout(): void {
@@ -243,6 +275,7 @@ export function createNodeStoreActions(
     applyPendingData,
     refreshCurrentNode,
     saveActiveNodeContent,
+    refreshConflictCopy,
     resetAfterLogout,
     confirmOperation,
   };
