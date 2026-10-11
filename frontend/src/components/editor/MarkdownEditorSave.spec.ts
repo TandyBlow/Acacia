@@ -717,7 +717,57 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.lastSavedContent.value).toBe('A');
   });
 
-  it('a failed in-flight save does not retry the reverted-away content', async () => {
+  it('a failed in-flight save still sends the reverted content — the outcome is unknown', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    let calls = 0;
+    let releaseFirst: (() => void) | null = null;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        // Network error: the client cannot know whether the server committed.
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        return false;
+      }
+      return true;
+    });
+    const save = await loadSave(ctx);
+
+    ctx.lastSavedContent.value = 'A';
+    save.scheduleAutoSave('n1', 'B');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
+    save.cancelQueuedSave('n1', 'A');
+    releaseFirst!();
+    await vi.runAllTimersAsync();
+
+    // The failed save leaves the server state unknown, so the revert result
+    // A must go out even though it equals the stale lastSavedContent — a
+    // true failure lands it again, a false failure reaches the conflict path.
+    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    expect(savedContents).toEqual(['B', 'A']);
+    expect(ctx.lastSavedContent.value).toBe('A');
+  });
+
+  it('a failed save disables the lastSavedContent dedup for its node until a save succeeds', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    ctx.store.saveActiveNodeContent.mockResolvedValueOnce(false).mockResolvedValue(true);
+    const save = await loadSave(ctx);
+
+    // First write fails without a conflict — the server may or may not have it.
+    await save.enqueueSave('n1', 'typed content');
+    ctx.lastSavedContent.value = 'typed content';
+
+    // The same content must not be skipped as "already saved".
+    expect(await save.enqueueSave('n1', 'typed content')).toBe(true);
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(2);
+
+    // The confirming write clears the uncertainty: dedup applies again.
+    await save.enqueueSave('n1', 'typed content');
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('a false failure surfaces the server truth through the conflict banner when the revert is written', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     let calls = 0;
@@ -726,7 +776,10 @@ describe('MarkdownEditorSave', () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        return false;
       }
+      // The revert write carries the stale revision: 412, server has B.
+      ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'A', serverContent: 'B', serverRevision: 6 };
       return false;
     });
     const save = await loadSave(ctx);
@@ -738,11 +791,11 @@ describe('MarkdownEditorSave', () => {
     releaseFirst!();
     await vi.runAllTimersAsync();
 
-    // B failed, so the server still holds A — the same content the draft
-    // reverted to. Retrying B (or re-sending A) would both be wrong.
-    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
-    expect(savedContents).toEqual(['B']);
-    expect(ctx.lastSavedContent.value).toBe('A');
+    // The server committed B while the client saw a network error; the
+    // resent revert hits 412 and the banner shows the server copy.
+    expect(ctx.saveConflict.value?.serverContent).toBe('B');
+    expect(ctx.saveConflict.value?.serverRevision).toBe(6);
+    expect(ctx.saveConflict.value?.nodeId).toBe('n1');
   });
 
   it('a revert with no save in flight queues nothing', async () => {

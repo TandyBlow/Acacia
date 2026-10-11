@@ -30,6 +30,14 @@ let saveInFlight = false
 let saveInFlightNode: string | null = null
 let retryCount = 0
 
+// A save that failed without a version conflict leaves the outcome
+// unknowable: the request may have committed before the connection dropped.
+// Until a later save for the node confirms, lastSavedContent cannot prove
+// the server state, and the same-content dedup must not skip — the store's
+// conflict capture surfaces the truth when the resent draft hits a moved
+// server (412), and a genuinely failed save simply lands again.
+const uncertainOutcomeNodes = new Set<string>()
+
 // Memo for draft validation. The verdict depends on the serialized content
 // AND the editor document it came from, so the memo keys on the document
 // identity (state.doc changes on every transaction) — keying on the output
@@ -142,7 +150,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       return false
     }
 
-    if (!options?.force && content === ctx.lastSavedContent.value) {
+    if (!options?.force && !uncertainOutcomeNodes.has(nodeId) && content === ctx.lastSavedContent.value) {
       return true
     }
 
@@ -162,6 +170,8 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       })
       if (saved) {
         retryCount = 0
+        // The write is confirmed: the node's server state is known again.
+        uncertainOutcomeNodes.delete(nodeId)
         if (ctx.activeNode.value?.id === nodeId) {
           ctx.lastSavedContent.value = content
         }
@@ -169,6 +179,9 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       }
       const conflict = ctx.store.lastSaveConflict
       if (conflict?.nodeId === nodeId) {
+        // The store captured the server content and revision: the outcome
+        // is known again, from the server's side.
+        uncertainOutcomeNodes.delete(nodeId)
         // 412/428: keep the conflicting draft, pause autosave, let the user
         // decide. The banner only goes up while the conflicted node is still
         // on screen — a late response after switching nodes stays in the
@@ -183,6 +196,8 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         clearTimerFor(nodeId)
         return false
       }
+      // No conflict information: the write outcome is unknown.
+      uncertainOutcomeNodes.add(nodeId)
       scheduleRetry({ nodeId, content, validated })
       return false
     } finally {
