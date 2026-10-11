@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JSONContent } from '@tiptap/core';
-import { checkParseIntegrity } from './MarkdownEditorIntegrity';
+import { checkDocEquivalence, checkParseIntegrity } from './MarkdownEditorIntegrity';
 
 function doc(blocks: JSONContent[]): JSONContent {
   return { type: 'doc', content: blocks };
@@ -486,6 +486,125 @@ describe('checkParseIntegrity', () => {
                     ],
                   }],
                 },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  // ── Round-4 acceptance fixes ───────────────────────────────────────────
+
+  it('accepts a formula preserved inside a table cell', () => {
+    const source = '| 文本 | $x^2$ |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                { type: 'tableCell', content: [paragraph('文本')] },
+                {
+                  type: 'tableCell',
+                  content: [{ type: 'paragraph', content: [{ type: 'inlineMath', attrs: { latex: 'x^2' } }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  it('flags a formula deleted from a table cell (doc-vs-doc)', () => {
+    const cellWithMath = {
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'inlineMath', attrs: { latex: 'x^2' } }] }],
+    };
+    const emptyCell = { type: 'tableCell', content: [{ type: 'paragraph' }] };
+    const report = checkDocEquivalence(
+      doc([{ type: 'table', content: [{ type: 'tableRow', content: [cellWithMath, emptyCell] }] }]),
+      doc([{ type: 'table', content: [{ type: 'tableRow', content: [emptyCell, emptyCell] }] }]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.unit === 'math')).toBe(true);
+  });
+
+  it('flags a cell link address changed (doc-vs-doc)', () => {
+    const linkCell = (href: string) => ({
+      type: 'tableCell',
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'docs', marks: [{ type: 'link', attrs: { href } }] }],
+      }],
+    });
+    const report = checkDocEquivalence(
+      doc([{ type: 'table', content: [{ type: 'tableRow', content: [linkCell('https://old.example')] }] }]),
+      doc([{ type: 'table', content: [{ type: 'tableRow', content: [linkCell('https://new.example')] }] }]),
+    );
+    expect(report.ok).toBe(false);
+  });
+
+  it('accepts inline code inside a table cell without splitting the row', () => {
+    const source = '| a `c` b | d |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  content: [{
+                    type: 'paragraph',
+                    content: [
+                      { type: 'text', text: 'a ' },
+                      { type: 'text', text: 'c', marks: [{ type: 'code' }] },
+                      { type: 'text', text: ' b' },
+                    ],
+                  }],
+                },
+                { type: 'tableCell', content: [paragraph('d')] },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  it('accepts a link inside a table cell', () => {
+    const source = '| see [docs](https://example.com) | x |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  content: [{
+                    type: 'paragraph',
+                    content: [
+                      { type: 'text', text: 'see ' },
+                      { type: 'text', text: 'docs', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }] },
+                    ],
+                  }],
+                },
+                { type: 'tableCell', content: [paragraph('x')] },
               ],
             },
           ],

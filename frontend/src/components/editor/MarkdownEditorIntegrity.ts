@@ -14,6 +14,10 @@ import { maskCodeRegions } from './MarkdownEditorMarkdownUtil'
  *   missing unit is a loss; an extra occurrence is duplication (the
  *   mis-repair signature). Pre-existing repeats in the source are expected
  *   on both sides and never flagged.
+ * - table cells keep their boundaries: each cell runs the same unit
+ *   pipeline as the main text (math, code, link hrefs, images become units;
+ *   the residual text emits as the cell's prose, an empty cell as a
+ *   sentinel), so a formula or link address lost inside a cell is caught.
  * - href: loss only (reference-style definitions resolve doc-side, so a
  *   doc-side href surplus is legal).
  * - heading levels, ordered-list start numbers, task checkbox states, table
@@ -126,33 +130,19 @@ function stripCodeFence(region: string): string {
 
 // ── Source-side extraction ─────────────────────────────────────────────
 
-export function extractSourceShape(source: string): SourceShape {
-  const shape: SourceShape = {
-    counts: new Map(),
-    proseSeq: [],
-    mathSeq: [],
-    headingLevels: [],
-    listStarts: [],
-    checkboxes: [],
-    tableRows: [],
-    hardBreaks: 0,
-  }
-
-  const pushUnit = (type: string, raw: string): void => {
-    const value = type === 'prose' ? normProse(raw) : type === 'math' ? normMath(raw) : type === 'code' ? normCode(raw) : raw.trim()
-    if (!value) return
-    if (type === 'prose') shape.proseSeq.push(value)
-    if (type === 'math') shape.mathSeq.push(value)
-    const key = `${type}\u0000${value}`
-    const existing = shape.counts.get(key)
-    if (existing) existing.count += 1
-    else shape.counts.set(key, { type, sample: unitSample(value), count: 1 })
-  }
-
+/**
+ * Inline unit pipeline shared by the main text flow and per-cell table
+ * extraction: pulls autolink, code, math, image, and link content units out
+ * of the text (pushing each via pushUnit) and returns the residual text
+ * with every unit's slot rewritten — code and block constructs as a line
+ * split, inline math as a space — so the remaining prose keeps its run
+ * structure and mirrors what the doc side flushes.
+ */
+function extractInlineUnits(input: string, pushUnit: (type: string, raw: string) => void): string {
   // 1. Pull autolinks out as hrefs before code masking hides them. The URL
   // text stays in the prose flow: the doc side renders an autolink as link
   // text, so it must appear on both sides.
-  let text = source.replace(/<([A-Za-z][A-Za-z0-9+.-]*:\/\/[^<>\s]*)>/g, (_m, url: string) => {
+  let text = input.replace(/<([A-Za-z][A-Za-z0-9+.-]*:\/\/[^<>\s]*)>/g, (_m, url: string) => {
     pushUnit('href', url)
     return url
   })
@@ -204,22 +194,121 @@ export function extractSourceShape(source: string): SourceShape {
   // [ref] marker disappears (its URL resolves doc-side into a link mark).
   text = text.replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')
 
+  return text
+}
+
+export function extractSourceShape(source: string): SourceShape {
+  const shape: SourceShape = {
+    counts: new Map(),
+    proseSeq: [],
+    mathSeq: [],
+    headingLevels: [],
+    listStarts: [],
+    checkboxes: [],
+    tableRows: [],
+    hardBreaks: 0,
+  }
+
+  const pushCount = (type: string, value: string): void => {
+    if (!value) return
+    const key = `${type}\u0000${value}`
+    const existing = shape.counts.get(key)
+    if (existing) existing.count += 1
+    else shape.counts.set(key, { type, sample: unitSample(value), count: 1 })
+  }
+
+  const pushUnit = (type: string, raw: string): void => {
+    const value = type === 'prose' ? normProse(raw) : type === 'math' ? normMath(raw) : type === 'code' ? normCode(raw) : raw.trim()
+    if (!value) return
+    if (type === 'prose') shape.proseSeq.push(value)
+    if (type === 'math') shape.mathSeq.push(value)
+    pushCount(type, value)
+  }
+
+  // Table rows are extracted from the raw lines up front — the inline stages
+  // below would otherwise split a row containing a code span or formula.
+  // Each cell runs the shared inline pipeline: math, code, link, and image
+  // units land in the counts immediately, while the cell's prose and task
+  // entries are parked in a buffer flushed by the stage-7 loop at the row's
+  // document position (the row line itself becomes a placeholder that no
+  // stage 1-6 rewrite can touch). Cell math joins the counts but not the
+  // math order sequence — the global math pass runs before the loop, so
+  // interleaving by position would need a second positioning scheme; both
+  // sides exclude cell math from ordering alike (a formula swap between
+  // cells stays invisible to the order check; loss and duplication do not).
+  const cellProseBuffers: string[][] = []
+  const cellCheckboxBuffers: boolean[][] = []
+  const tablePlaceholder = /\u0001TBL(\d+)\u0001/
+  const rawLines = source.split('\n')
+  const fenced = fencedLineSet(rawLines)
+  const tableLines = detectTableRows(rawLines.map((line, i) => (fenced.has(i) ? '' : line)))
+  const placeholderLines = rawLines.slice()
+  for (const rowLine of tableLines) {
+    const line = rawLines[rowLine] ?? ''
+    // The delimiter row marks the table but produces no row node doc-side.
+    if (/^\s*\|?\s*:?-{3,}[-| :]*$/.test(line)) {
+      placeholderLines[rowLine] = ''
+      continue
+    }
+    const cells = splitTableRowCells(line)
+    shape.tableRows.push(cells.length)
+    const proseEntries: string[] = []
+    const checkboxEntries: boolean[] = []
+    for (const cell of cells) {
+      const proseBefore = proseEntries.length
+      const residual = extractInlineUnits(cell, (type, raw) => {
+        if (type === 'math') {
+          pushCount('math', normMath(raw))
+          return
+        }
+        pushUnit(type, raw)
+      })
+      for (const sub of residual.split('\n')) {
+        // List markers are syntax: the doc side strips them from every
+        // flushed inline run. A task box counts as a checkbox unit.
+        const task = /^ {0,3}[-*+]\s+\[([xX ])\]\s*/.exec(sub)
+        const stripped = task
+          ? sub.replace(/^ {0,3}[-*+]\s+\[[xX ]\]\s*/, '')
+          : sub.replace(/^\s*(\d{1,9}[.)]\s+|[-*+]\s+)/, '')
+        if (task) checkboxEntries.push((task[1] ?? ' ') !== ' ')
+        const normalized = normProse(stripped)
+        if (normalized) proseEntries.push(normalized)
+      }
+      // A cell whose content all went into units keeps its position as a
+      // sentinel, mirroring the doc side.
+      if (proseEntries.length === proseBefore) proseEntries.push(EMPTY_CELL)
+    }
+    cellProseBuffers.push(proseEntries)
+    cellCheckboxBuffers.push(checkboxEntries)
+    placeholderLines[rowLine] = `\u0001TBL${cellProseBuffers.length - 1}\u0001`
+  }
+  let text = extractInlineUnits(placeholderLines.join('\n'), pushUnit)
+
   // 6. Reference-style definitions resolve doc-side only; drop the lines so
   // they do not masquerade as lost prose.
   text = text.replace(/^\s*\[[^\]]+\]:\s*\S+.*$/gm, '')
 
-  // 7. Line-level structure: headings, ordered starts, task boxes, tables.
-  // `breaks: true` turns a newline between two prose lines into a hardBreak
-  // node, while block boundaries (headings, list items, blank lines) do not
-  // produce one — count only prose-to-prose adjacencies.
+  // 7. Line-level structure: headings, ordered starts, task boxes; table
+  // rows arrive as placeholders and flush their prose and task entries at
+  // this position. `breaks: true` turns a newline between two prose lines
+  // into a hardBreak node, while block boundaries (headings, list items,
+  // blank lines) do not produce one — count only prose-to-prose adjacencies.
   const lines = text.split('\n')
-  const isTableRow = detectTableRows(lines)
   const lineClass: Array<'prose' | 'none'> = []
 
   let previousWasOrderedItem = false
   for (let i = 0; i < lines.length; i += 1) {
     const rawLine = lines[i] ?? ''
     const line = rawLine.replace(/^ {0,3}>\s?/, '')
+
+    const placeholder = tablePlaceholder.exec(line)
+    if (placeholder) {
+      const row = Number(placeholder[1])
+      for (const entry of cellProseBuffers[row] ?? []) pushUnit('prose', entry)
+      for (const checked of cellCheckboxBuffers[row] ?? []) shape.checkboxes.push(checked)
+      lineClass.push('none')
+      continue
+    }
 
     if (!line.trim() || /^\s*(=+|-{2,}|\*{3,}|_{3,})\s*$/.test(line)) {
       // Blank, setext underline, or thematic-break line: no prose unit either side.
@@ -252,25 +341,6 @@ export function extractSourceShape(source: string): SourceShape {
       continue
     }
     previousWasOrderedItem = false
-
-    if (isTableRow.has(i)) {
-      // The delimiter row marks the table but produces no row node doc-side.
-      if (!/^\s*\|?\s*:?-{3,}[-| :]*$/.test(line)) {
-        const inner = line.trim().replace(/^\|/, '').replace(/\|$/, '')
-        shape.tableRows.push(inner.split('|').length)
-        // Each cell is its own prose unit, preserving cell boundaries: a
-        // row-merged unit would let text move between columns of the same
-        // row unnoticed ("x | y z" rearranged to "x y | z" joins equally).
-        for (const cell of inner.split('|')) {
-          // Empty cells keep their position as sentinel units, so text
-          // moving into a neighboring empty cell is still detected.
-          if (normProse(cell)) pushUnit('prose', cell)
-          else pushUnit('prose', EMPTY_CELL)
-        }
-      }
-      lineClass.push('none')
-      continue
-    }
 
     // Plain bullet markers are syntax, not content (task/ordered handled
     // above); the bullet line is a block boundary, never an in-paragraph
@@ -318,6 +388,64 @@ function detectTableRows(lines: string[]): Set<number> {
   return rows
 }
 
+/** Lines inside a fenced code block (opener to closer; unterminated to EOF),
+ * mirroring maskFencedBlocks' fence semantics. Table detection must skip
+ * them: a delimiter row inside a fence is code content, not a table. */
+function fencedLineSet(lines: string[]): Set<number> {
+  const fenced = new Set<number>()
+  let fence: { char: string; len: number } | null = null
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? ''
+    if (fence) {
+      fenced.add(i)
+      if (new RegExp(`^ {0,3}\\${fence.char}{${fence.len},}\\s*$`).test(line)) fence = null
+      continue
+    }
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (opening) {
+      const run = opening[1] ?? '`'
+      fence = { char: run[0] ?? '`', len: run.length }
+      fenced.add(i)
+    }
+  }
+  return fenced
+}
+
+/**
+ * Split a table row into its cell texts. Pipes inside code spans, math
+ * spans, and link/image syntax stay literal, as do GFM-escaped `\|` pipes:
+ * each construct is parked under a placeholder for the split and restored
+ * afterwards, before the per-cell unit pipeline re-extracts it.
+ */
+function splitTableRowCells(line: string): string[] {
+  const spans: string[] = []
+  const mathSpans: string[] = []
+  const links: string[] = []
+  const protectedLine = line
+    .replace(/(`+)[^`]*?\1/g, (m) => {
+      spans.push(m)
+      return `\u0002${spans.length - 1}\u0002`
+    })
+    .replace(/\$\$[^$]*\$\$|\$[^$\n]*\$/g, (m) => {
+      mathSpans.push(m)
+      return `\u0003${mathSpans.length - 1}\u0003`
+    })
+    .replace(/!?\[[^\]]*\]\([^)]*\)/g, (m) => {
+      links.push(m)
+      return `\u0004${links.length - 1}\u0004`
+    })
+    .replace(/\\\|/g, '\u0001')
+  const inner = protectedLine.trim().replace(/^\|/, '').replace(/\|$/, '')
+  return inner.split('|').map((cell) =>
+    cell
+      .replace(/\u0001/g, '|')
+      .replace(/\u0002(\d+)\u0002/g, (_m, i) => spans[Number(i)] ?? '')
+      .replace(/\u0003(\d+)\u0003/g, (_m, i) => mathSpans[Number(i)] ?? '')
+      .replace(/\u0004(\d+)\u0004/g, (_m, i) => links[Number(i)] ?? '')
+      .trim(),
+  )
+}
+
 // ── Doc-side extraction ────────────────────────────────────────────────
 
 interface DocShape {
@@ -345,29 +473,47 @@ function extractDocShape(doc: JSONContent): DocShape {
     hardBreaks: 0,
   }
 
-  const pushUnit = (type: string, value: string): void => {
+  const pushCount = (type: string, value: string): void => {
     if (!value) return
-    if (type === 'prose') shape.proseSeq.push(value)
-    if (type === 'math') shape.mathSeq.push(value)
     const key = `${type}\u0000${value}`
     const existing = shape.counts.get(key)
     if (existing) existing.count += 1
     else shape.counts.set(key, { type, sample: unitSample(value), count: 1 })
   }
 
-  /** Inline runs between hardBreaks become one prose line each. */
-  const walkInline = (nodes: JSONContent[]): void => {
+  const pushUnit = (type: string, value: string): void => {
+    if (!value) return
+    if (type === 'prose') shape.proseSeq.push(value)
+    if (type === 'math') shape.mathSeq.push(value)
+    pushCount(type, value)
+  }
+
+  /**
+   * Inline runs between hardBreaks become one prose line each. When `sink`
+   * is given (table-cell mode), flushed prose lines collect into the sink —
+   * the caller emits them for the cell — and a hard break degrades to a
+   * space: the source side reads a cell as one line and keeps no break
+   * count for it.
+   */
+  const walkInline = (nodes: JSONContent[], sink?: string[]): void => {
     let line = ''
     const flush = (): void => {
       // Lazily-continued list text keeps its source marker as literal text
       // ("3. followed-on line"); stripping the marker here mirrors the
       // source side, where ordered/bullet lines are stripped the same way.
       const normalized = normProse(line.replace(/^\s*(\d{1,9}[.)]\s+|[-*+]\s+)/, ''))
-      if (normalized) pushUnit('prose', normalized)
+      if (normalized) {
+        if (sink) sink.push(normalized)
+        else pushUnit('prose', normalized)
+      }
       line = ''
     }
     for (const node of nodes) {
       if (node.type === 'hardBreak') {
+        if (sink) {
+          line += ' '
+          continue
+        }
         shape.hardBreaks += 1
         flush()
         continue
@@ -378,13 +524,19 @@ function extractDocShape(doc: JSONContent): DocShape {
         flush()
         pushUnit('image', String(node.attrs?.src ?? ''))
         const alt = String(node.attrs?.alt ?? '')
-        if (alt) pushUnit('prose', normProse(alt))
+        if (alt) {
+          if (sink) sink.push(normProse(alt))
+          else pushUnit('prose', normProse(alt))
+        }
         continue
       }
       if (node.type === 'inlineMath') {
         // Transparent: the latex is its own unit; surrounding text stays one line.
+        // Inside a cell the latex joins the counts only — mirroring the
+        // source side, which excludes cell math from the order sequence.
         const latex = String(node.attrs?.latex ?? inlineText(node))
-        pushUnit('math', latex)
+        if (sink) pushCount('math', latex)
+        else pushUnit('math', latex)
         continue
       }
       if (node.type === 'text' && typeof node.text === 'string') {
@@ -401,9 +553,43 @@ function extractDocShape(doc: JSONContent): DocShape {
         }
         continue
       }
-      if (Array.isArray(node.content)) walkInline(node.content)
+      if (Array.isArray(node.content)) walkInline(node.content, sink)
     }
     flush()
+  }
+
+  /**
+   * Block walk scoped to one table cell: math, code, images, and link
+   * marks become their own units, while the residual prose collects into
+   * the sink so the caller can emit the cell's boundary — or its
+   * empty-cell sentinel — mirroring the source side's per-cell pipeline.
+   */
+  const walkCellBlock = (node: JSONContent, sink: string[]): void => {
+    switch (node.type) {
+      case 'paragraph':
+      case 'heading':
+        walkInline(Array.isArray(node.content) ? node.content : [], sink)
+        return
+      case 'codeBlock':
+        pushUnit('code', codeBlockText(node))
+        return
+      case 'blockMath':
+        // Cell math counts only — see walkInline's sink branch.
+        pushCount('math', String(node.attrs?.latex ?? inlineText(node)))
+        return
+      case 'image': {
+        pushUnit('image', String(node.attrs?.src ?? ''))
+        const alt = String(node.attrs?.alt ?? '')
+        if (alt) sink.push(normProse(alt))
+        return
+      }
+      case 'taskItem':
+        shape.checkboxes.push(node.attrs?.checked === true)
+        for (const child of node.content ?? []) walkCellBlock(child, sink)
+        return
+      default:
+        for (const child of node.content ?? []) walkCellBlock(child, sink)
+    }
   }
 
   const walkBlock = (node: JSONContent): void => {
@@ -446,14 +632,19 @@ function extractDocShape(doc: JSONContent): DocShape {
           if (row.type === 'tableRow') {
             const cells = (row.content ?? []).filter(c => c.type === 'tableCell' || c.type === 'tableHeader')
             shape.tableRows.push(cells.length)
-            // Each cell is its own prose unit, preserving cell boundaries —
-            // a row-merged unit would let text move between columns of the
-            // same row unnoticed. Empty cells keep their position as
-            // sentinel units, mirroring the source side.
+            // Each cell keeps its boundary: its prose sub-lines (or the
+            // empty-cell sentinel) emit in order, while math, code, link
+            // hrefs, and images inside the cell become their own units —
+            // mirroring the source side, which runs each cell through the
+            // same unit pipeline as the main text.
             for (const cell of cells) {
-              const text = normProse(collectCellText(cell))
-              if (text) pushUnit('prose', text)
-              else pushUnit('prose', EMPTY_CELL)
+              const proseUnits: string[] = []
+              for (const child of cell.content ?? []) walkCellBlock(child, proseUnits)
+              if (proseUnits.length > 0) {
+                for (const unit of proseUnits) pushUnit('prose', unit)
+              } else {
+                pushUnit('prose', EMPTY_CELL)
+              }
             }
           }
         }
@@ -471,20 +662,6 @@ function extractDocShape(doc: JSONContent): DocShape {
 
 function inlineText(node: JSONContent): string {
   return (node.content ?? []).map(c => c.text ?? '').join('')
-}
-
-/**
- * All text inside a table cell. Inline runs concatenate directly — a bold
- * span followed by plain text is "abcd", never "ab cd" — while separate
- * block children of the cell (multiple paragraphs) join with a space.
- */
-function collectCellText(node: JSONContent): string {
-  if (node.type === 'text') return typeof node.text === 'string' ? node.text : ''
-  if (node.type === 'hardBreak') return ' '
-  if (node.type === 'paragraph' || node.type === 'heading') {
-    return (node.content ?? []).map(collectCellText).join('')
-  }
-  return (node.content ?? []).map(collectCellText).join(' ')
 }
 
 function codeBlockText(node: JSONContent): string {
