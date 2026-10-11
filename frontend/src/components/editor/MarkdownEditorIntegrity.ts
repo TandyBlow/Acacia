@@ -18,6 +18,9 @@ import { maskCodeRegions } from './MarkdownEditorMarkdownUtil'
  *   pipeline as the main text (math, code, link hrefs, images become units;
  *   the residual text emits as the cell's prose, an empty cell as a
  *   sentinel), so a formula or link address lost inside a cell is caught.
+ *   When both sides agree on the table/row/cell structure, every cell's
+ *   unit multiset is compared positionally — global counts cannot see which
+ *   cell a unit landed in.
  * - href: loss only (reference-style definitions resolve doc-side, so a
  *   doc-side href surplus is legal).
  * - heading levels, ordered-list start numbers, task checkbox states, table
@@ -43,6 +46,13 @@ export interface IntegrityReport {
 
 type CountKey = string // e.g. `prose\u0000<normalized text>`
 
+/** One content unit inside a table cell, keyed the same way as the global
+ * counts — the value of the positional per-cell comparison. */
+interface CellUnit {
+  type: string
+  value: string
+}
+
 interface SourceShape {
   counts: Map<CountKey, { type: string; sample: string; count: number }>
   /** Normalized prose units in document order, repeats included. */
@@ -53,6 +63,8 @@ interface SourceShape {
   listStarts: number[]
   checkboxes: boolean[]
   tableRows: number[]
+  /** Per table → row → cell: the cell's content units in document order. */
+  tableCellUnits: CellUnit[][][][]
   hardBreaks: number
 }
 
@@ -206,6 +218,7 @@ export function extractSourceShape(source: string): SourceShape {
     listStarts: [],
     checkboxes: [],
     tableRows: [],
+    tableCellUnits: [],
     hardBreaks: 0,
   }
 
@@ -228,14 +241,14 @@ export function extractSourceShape(source: string): SourceShape {
   // Table rows are extracted from the raw lines up front — the inline stages
   // below would otherwise split a row containing a code span or formula.
   // Each cell runs the shared inline pipeline: math, code, link, and image
-  // units land in the counts immediately, while the cell's prose and task
-  // entries are parked in a buffer flushed by the stage-7 loop at the row's
-  // document position (the row line itself becomes a placeholder that no
-  // stage 1-6 rewrite can touch). Cell math joins the counts but not the
-  // math order sequence — the global math pass runs before the loop, so
-  // interleaving by position would need a second positioning scheme; both
-  // sides exclude cell math from ordering alike (a formula swap between
-  // cells stays invisible to the order check; loss and duplication do not).
+  // units land in the counts immediately and in the cell's positional
+  // record, while the cell's prose and task entries are parked in a buffer
+  // flushed by the stage-7 loop at the row's document position (the row
+  // line itself becomes a placeholder that no stage 1-6 rewrite can touch).
+  // Cell math joins the counts but not the math order sequence — the global
+  // math pass runs before the loop, so interleaving by position would need
+  // a second positioning scheme; both sides exclude cell math from ordering
+  // alike (loss, duplication, and per-cell placement are still checked).
   const cellProseBuffers: string[][] = []
   const cellCheckboxBuffers: boolean[][] = []
   const tablePlaceholder = /\u0001TBL(\d+)\u0001/
@@ -243,26 +256,38 @@ export function extractSourceShape(source: string): SourceShape {
   const fenced = fencedLineSet(rawLines)
   const tableLines = detectTableRows(rawLines.map((line, i) => (fenced.has(i) ? '' : line)))
   const placeholderLines = rawLines.slice()
+  // Contiguous table lines form one table; the positional comparison needs
+  // rows grouped per table (a blank line between tables starts a new one).
+  let currentTableRows: CellUnit[][][] | null = null
+  let lastTableLine = -2
   for (const rowLine of tableLines) {
     const line = rawLines[rowLine] ?? ''
     // The delimiter row marks the table but produces no row node doc-side.
     if (/^\s*\|?\s*:?-{3,}[-| :]*$/.test(line)) {
+      lastTableLine = rowLine
       placeholderLines[rowLine] = ''
       continue
     }
+    if (!currentTableRows || rowLine !== lastTableLine + 1) {
+      currentTableRows = []
+      shape.tableCellUnits.push(currentTableRows)
+    }
+    lastTableLine = rowLine
     const cells = splitTableRowCells(line)
     shape.tableRows.push(cells.length)
     const proseEntries: string[] = []
     const checkboxEntries: boolean[] = []
+    const rowCellUnits: CellUnit[][] = []
     for (const cell of cells) {
-      const proseBefore = proseEntries.length
+      const cellUnits: CellUnit[] = []
       const residual = extractInlineUnits(cell, (type, raw) => {
-        if (type === 'math') {
-          pushCount('math', normMath(raw))
-          return
-        }
-        pushUnit(type, raw)
+        const value = type === 'math' ? normMath(raw) : type === 'code' ? normCode(raw) : raw.trim()
+        if (!value) return
+        if (type === 'math') pushCount('math', value)
+        else pushUnit(type, raw)
+        cellUnits.push({ type, value })
       })
+      let hasProse = false
       for (const sub of residual.split('\n')) {
         // List markers are syntax: the doc side strips them from every
         // flushed inline run. A task box counts as a checkbox unit.
@@ -272,12 +297,18 @@ export function extractSourceShape(source: string): SourceShape {
           : sub.replace(/^\s*(\d{1,9}[.)]\s+|[-*+]\s+)/, '')
         if (task) checkboxEntries.push((task[1] ?? ' ') !== ' ')
         const normalized = normProse(stripped)
-        if (normalized) proseEntries.push(normalized)
+        if (normalized) {
+          proseEntries.push(normalized)
+          cellUnits.push({ type: 'prose', value: normalized })
+          hasProse = true
+        }
       }
       // A cell whose content all went into units keeps its position as a
       // sentinel, mirroring the doc side.
-      if (proseEntries.length === proseBefore) proseEntries.push(EMPTY_CELL)
+      if (!hasProse) proseEntries.push(EMPTY_CELL)
+      rowCellUnits.push(cellUnits)
     }
+    currentTableRows.push(rowCellUnits)
     cellProseBuffers.push(proseEntries)
     cellCheckboxBuffers.push(checkboxEntries)
     placeholderLines[rowLine] = `\u0001TBL${cellProseBuffers.length - 1}\u0001`
@@ -458,6 +489,8 @@ interface DocShape {
   listStarts: number[]
   checkboxes: boolean[]
   tableRows: number[]
+  /** Per table → row → cell: the cell's content units in document order. */
+  tableCellUnits: CellUnit[][][][]
   hardBreaks: number
 }
 
@@ -470,6 +503,7 @@ function extractDocShape(doc: JSONContent): DocShape {
     listStarts: [],
     checkboxes: [],
     tableRows: [],
+    tableCellUnits: [],
     hardBreaks: 0,
   }
 
@@ -489,13 +523,14 @@ function extractDocShape(doc: JSONContent): DocShape {
   }
 
   /**
-   * Inline runs between hardBreaks become one prose line each. When `sink`
-   * is given (table-cell mode), flushed prose lines collect into the sink —
-   * the caller emits them for the cell — and a hard break degrades to a
-   * space: the source side reads a cell as one line and keeps no break
-   * count for it.
+   * Inline runs between hardBreaks become one prose line each. When
+   * `cellUnits` is given (table-cell mode), flushed prose lines and the
+   * cell's other units collect there for the positional per-cell
+   * comparison — the caller emits them for the cell — and a hard break
+   * degrades to a space: the source side reads a cell as one line and
+   * keeps no break count for it.
    */
-  const walkInline = (nodes: JSONContent[], sink?: string[]): void => {
+  const walkInline = (nodes: JSONContent[], cellUnits?: CellUnit[]): void => {
     let line = ''
     const flush = (): void => {
       // Lazily-continued list text keeps its source marker as literal text
@@ -503,14 +538,14 @@ function extractDocShape(doc: JSONContent): DocShape {
       // source side, where ordered/bullet lines are stripped the same way.
       const normalized = normProse(line.replace(/^\s*(\d{1,9}[.)]\s+|[-*+]\s+)/, ''))
       if (normalized) {
-        if (sink) sink.push(normalized)
+        if (cellUnits) cellUnits.push({ type: 'prose', value: normalized })
         else pushUnit('prose', normalized)
       }
       line = ''
     }
     for (const node of nodes) {
       if (node.type === 'hardBreak') {
-        if (sink) {
+        if (cellUnits) {
           line += ' '
           continue
         }
@@ -522,21 +557,28 @@ function extractDocShape(doc: JSONContent): DocShape {
         // The alt text becomes its own prose unit, mirroring the source
         // side where image syntax splits into its own line.
         flush()
-        pushUnit('image', String(node.attrs?.src ?? ''))
+        const src = String(node.attrs?.src ?? '')
+        pushUnit('image', src)
+        if (cellUnits) cellUnits.push({ type: 'image', value: src })
         const alt = String(node.attrs?.alt ?? '')
         if (alt) {
-          if (sink) sink.push(normProse(alt))
+          if (cellUnits) cellUnits.push({ type: 'prose', value: normProse(alt) })
           else pushUnit('prose', normProse(alt))
         }
         continue
       }
       if (node.type === 'inlineMath') {
-        // Transparent: the latex is its own unit; surrounding text stays one line.
-        // Inside a cell the latex joins the counts only — mirroring the
-        // source side, which excludes cell math from the order sequence.
+        // Transparent: the latex is its own unit; surrounding text stays one
+        // line. Inside a cell the latex joins the counts and the cell record
+        // but not the order sequence — mirroring the source side, which
+        // excludes cell math from the order sequence.
         const latex = String(node.attrs?.latex ?? inlineText(node))
-        if (sink) pushCount('math', latex)
-        else pushUnit('math', latex)
+        if (cellUnits) {
+          pushCount('math', latex)
+          cellUnits.push({ type: 'math', value: latex })
+        } else {
+          pushUnit('math', latex)
+        }
         continue
       }
       if (node.type === 'text' && typeof node.text === 'string') {
@@ -545,15 +587,20 @@ function extractDocShape(doc: JSONContent): DocShape {
         if ((node.marks ?? []).some((m) => m.type === 'code')) {
           flush()
           pushUnit('code', node.text)
+          if (cellUnits) cellUnits.push({ type: 'code', value: node.text })
           continue
         }
         line += node.text
         for (const mark of node.marks ?? []) {
-          if (mark.type === 'link' && mark.attrs?.href) pushUnit('href', String(mark.attrs.href))
+          if (mark.type === 'link' && mark.attrs?.href) {
+            const href = String(mark.attrs.href)
+            pushUnit('href', href)
+            if (cellUnits) cellUnits.push({ type: 'href', value: href })
+          }
         }
         continue
       }
-      if (Array.isArray(node.content)) walkInline(node.content, sink)
+      if (Array.isArray(node.content)) walkInline(node.content, cellUnits)
     }
     flush()
   }
@@ -561,34 +608,42 @@ function extractDocShape(doc: JSONContent): DocShape {
   /**
    * Block walk scoped to one table cell: math, code, images, and link
    * marks become their own units, while the residual prose collects into
-   * the sink so the caller can emit the cell's boundary — or its
+   * the cell's record so the caller can emit the cell's boundary — or its
    * empty-cell sentinel — mirroring the source side's per-cell pipeline.
    */
-  const walkCellBlock = (node: JSONContent, sink: string[]): void => {
+  const walkCellBlock = (node: JSONContent, cellUnits: CellUnit[]): void => {
     switch (node.type) {
       case 'paragraph':
       case 'heading':
-        walkInline(Array.isArray(node.content) ? node.content : [], sink)
+        walkInline(Array.isArray(node.content) ? node.content : [], cellUnits)
         return
-      case 'codeBlock':
-        pushUnit('code', codeBlockText(node))
+      case 'codeBlock': {
+        const code = codeBlockText(node)
+        pushUnit('code', code)
+        cellUnits.push({ type: 'code', value: code })
         return
-      case 'blockMath':
-        // Cell math counts only — see walkInline's sink branch.
-        pushCount('math', String(node.attrs?.latex ?? inlineText(node)))
+      }
+      case 'blockMath': {
+        // Cell math counts only — see walkInline's cell branch.
+        const latex = String(node.attrs?.latex ?? inlineText(node))
+        pushCount('math', latex)
+        cellUnits.push({ type: 'math', value: latex })
         return
+      }
       case 'image': {
-        pushUnit('image', String(node.attrs?.src ?? ''))
+        const src = String(node.attrs?.src ?? '')
+        pushUnit('image', src)
+        cellUnits.push({ type: 'image', value: src })
         const alt = String(node.attrs?.alt ?? '')
-        if (alt) sink.push(normProse(alt))
+        if (alt) cellUnits.push({ type: 'prose', value: normProse(alt) })
         return
       }
       case 'taskItem':
         shape.checkboxes.push(node.attrs?.checked === true)
-        for (const child of node.content ?? []) walkCellBlock(child, sink)
+        for (const child of node.content ?? []) walkCellBlock(child, cellUnits)
         return
       default:
-        for (const child of node.content ?? []) walkCellBlock(child, sink)
+        for (const child of node.content ?? []) walkCellBlock(child, cellUnits)
     }
   }
 
@@ -628,26 +683,32 @@ function extractDocShape(doc: JSONContent): DocShape {
         return
       }
       case 'table': {
+        const tableRows: CellUnit[][][] = []
         for (const row of node.content ?? []) {
           if (row.type === 'tableRow') {
             const cells = (row.content ?? []).filter(c => c.type === 'tableCell' || c.type === 'tableHeader')
             shape.tableRows.push(cells.length)
+            const rowCellUnits: CellUnit[][] = []
             // Each cell keeps its boundary: its prose sub-lines (or the
             // empty-cell sentinel) emit in order, while math, code, link
             // hrefs, and images inside the cell become their own units —
             // mirroring the source side, which runs each cell through the
             // same unit pipeline as the main text.
             for (const cell of cells) {
-              const proseUnits: string[] = []
-              for (const child of cell.content ?? []) walkCellBlock(child, proseUnits)
+              const cellUnits: CellUnit[] = []
+              for (const child of cell.content ?? []) walkCellBlock(child, cellUnits)
+              rowCellUnits.push(cellUnits)
+              const proseUnits = cellUnits.filter(u => u.type === 'prose')
               if (proseUnits.length > 0) {
-                for (const unit of proseUnits) pushUnit('prose', unit)
+                for (const unit of proseUnits) pushUnit('prose', unit.value)
               } else {
                 pushUnit('prose', EMPTY_CELL)
               }
             }
+            tableRows.push(rowCellUnits)
           }
         }
+        shape.tableCellUnits.push(tableRows)
         return
       }
       default: {
@@ -804,6 +865,53 @@ function compareSequences(source: SourceShape, doc: DocShape, issues: IntegrityI
   }
 }
 
+/**
+ * Positional table comparison: when both sides agree on the table/row/cell
+ * structure, every cell's content multiset must match. Global counts cannot
+ * see which cell a unit landed in, so a formula moved into a neighboring
+ * empty cell, code moved between columns, or two swapped link addresses
+ * would otherwise pass. Structural damage (a lost row or column) is left to
+ * the row-width and prose checks; cell-internal unit order is not compared,
+ * since the source pipeline's extraction order is not source order.
+ */
+function compareTableCells(source: SourceShape, doc: DocShape, issues: IntegrityIssue[]): void {
+  if (source.tableCellUnits.length !== doc.tableCellUnits.length) return
+  for (let t = 0; t < source.tableCellUnits.length; t += 1) {
+    const srcRows = source.tableCellUnits[t] ?? []
+    const docRows = doc.tableCellUnits[t] ?? []
+    if (srcRows.length !== docRows.length) return
+    for (let r = 0; r < srcRows.length; r += 1) {
+      const srcCells = srcRows[r] ?? []
+      const docCells = docRows[r] ?? []
+      if (srcCells.length !== docCells.length) return
+      for (let c = 0; c < srcCells.length; c += 1) {
+        compareCellUnitMultisets(srcCells[c] ?? [], docCells[c] ?? [], r, c, issues)
+      }
+    }
+  }
+}
+
+function compareCellUnitMultisets(src: CellUnit[], doc: CellUnit[], row: number, cell: number, issues: IntegrityIssue[]): void {
+  const where = `row ${row + 1} cell ${cell + 1}`
+  const tally = new Map<string, { type: string; value: string; src: number; doc: number }>()
+  const bump = (unit: CellUnit, side: 'src' | 'doc'): void => {
+    const key = `${unit.type}\u0000${unit.value}`
+    const entry = tally.get(key) ?? { type: unit.type, value: unit.value, src: 0, doc: 0 }
+    entry[side] += 1
+    tally.set(key, entry)
+  }
+  for (const unit of src) bump(unit, 'src')
+  for (const unit of doc) bump(unit, 'doc')
+  for (const { type, value, src, doc } of tally.values()) {
+    const sample = `${where} ${type} "${value.slice(0, 30)}"`
+    if (doc < src) {
+      issues.push({ kind: 'lost', unit: 'table cell', sample, expected: src, actual: doc })
+    } else if (doc > src) {
+      issues.push({ kind: 'injected', unit: 'table cell', sample, expected: src, actual: doc })
+    }
+  }
+}
+
 /** True when needle's units no longer appear in haystack in the same order. */
 function sequenceReordered(needle: string[], haystack: string[]): boolean {
   let at = 0
@@ -835,6 +943,7 @@ export function checkParseIntegrity(source: string, doc: JSONContent | null): In
   const issues: IntegrityIssue[] = []
   compareCounts(sourceShape, docShape, issues, { loss: true, duplication: true })
   compareSequences(sourceShape, docShape, issues)
+  compareTableCells(sourceShape, docShape, issues)
 
   return { ok: issues.length === 0, issues }
 }
@@ -852,6 +961,7 @@ export function checkDocEquivalence(before: JSONContent, after: JSONContent): In
   const issues: IntegrityIssue[] = []
   compareCounts(beforeShape, afterShape, issues, { loss: true, duplication: true })
   compareSequences(beforeShape, afterShape, issues)
+  compareTableCells(beforeShape, afterShape, issues)
 
   return { ok: issues.length === 0, issues }
 }

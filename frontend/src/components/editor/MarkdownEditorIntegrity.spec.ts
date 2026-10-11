@@ -613,4 +613,95 @@ describe('checkParseIntegrity', () => {
     );
     expect(report.ok).toBe(true);
   });
+
+  // ── Round-5 acceptance fixes ───────────────────────────────────────────
+
+  const mathCell = (latex: string) => ({
+    type: 'tableCell',
+    content: [{ type: 'paragraph', content: [{ type: 'inlineMath', attrs: { latex } }] }],
+  });
+  const codeCell = (code: string) => ({
+    type: 'tableCell',
+    content: [{
+      type: 'paragraph',
+      content: [{ type: 'text', text: code, marks: [{ type: 'code' }] }],
+    }],
+  });
+  const plainCell = (text: string) => ({
+    type: 'tableCell',
+    content: [paragraph(text)],
+  });
+  const linkCell = (text: string, href: string) => ({
+    type: 'tableCell',
+    content: [{
+      type: 'paragraph',
+      content: [{ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] }],
+    }],
+  });
+  const emptyCellNode = { type: 'tableCell', content: [{ type: 'paragraph' }] };
+  const table = (rows: JSONContent[][]) => ({
+    type: 'table',
+    content: rows.map((cells) => ({ type: 'tableRow', content: cells })),
+  });
+
+  it('flags a formula moved into a neighboring empty cell', () => {
+    const source = '| $x^2$ | |\n| --- | --- |';
+    // Global counts and the prose sequence are identical on both sides —
+    // only the positional per-cell comparison can see the move.
+    const report = checkParseIntegrity(
+      source,
+      doc([table([[emptyCellNode, mathCell('x^2')]])]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.kind === 'lost' && issue.unit === 'table cell')).toBe(true);
+
+    const equivalent = checkDocEquivalence(
+      doc([table([[mathCell('x^2'), emptyCellNode]])]),
+      doc([table([[emptyCellNode, mathCell('x^2')]])]),
+    );
+    expect(equivalent.ok).toBe(false);
+    expect(equivalent.issues.some((issue) => issue.kind === 'lost' && issue.unit === 'table cell')).toBe(true);
+  });
+
+  it('flags code moved between columns', () => {
+    const source = '| `c` | d |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([table([[plainCell('d'), codeCell('c')]])]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.unit === 'table cell')).toBe(true);
+  });
+
+  it('flags two cell link addresses swapped with the text unchanged', () => {
+    const report = checkDocEquivalence(
+      doc([table([[linkCell('t', 'https://one.example'), linkCell('t', 'https://two.example')]])]),
+      doc([table([[linkCell('t', 'https://two.example'), linkCell('t', 'https://one.example')]])]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.unit === 'table cell')).toBe(true);
+  });
+
+  it('accepts cells whose content matches positionally', () => {
+    const source = '| `c` x | $y^2$ |\n| --- | --- |\n| z | |';
+    const codeAndTextCell = {
+      type: 'tableCell',
+      content: [{
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'c', marks: [{ type: 'code' }] },
+          { type: 'text', text: ' x' },
+        ],
+      }],
+    };
+    const report = checkParseIntegrity(
+      source,
+      doc([table([
+        [codeAndTextCell, mathCell('y^2')],
+        [plainCell('z'), emptyCellNode],
+      ])]),
+    );
+    expect(report.ok).toBe(true);
+    expect(report.issues).toEqual([]);
+  });
 });
