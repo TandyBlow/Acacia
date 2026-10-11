@@ -58,22 +58,25 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
    * draft has reverted to the saved content — anything queued for the node
    * is stale, while other nodes' queued work and retries must survive.
    *
-   * When a save for this very node is in flight, the revert must not be
-   * forgotten: the desired content goes back into the bucket (no timer), so
-   * a successful response is followed by the kick re-saving it, and a
-   * failed one retries it — the server must not be left on content the
-   * user took back. Without an in-flight save the revert needs nothing:
-   * the server already holds this content.
+   * The revert must not be forgotten when the node's server state is
+   * unresolved — a save is in flight, or a failed one left the outcome
+   * unknown and a retry was queued. The desired content goes back into the
+   * bucket on a short reconciliation write: while in flight, the response's
+   * kick or the timer carries it out; after an unknown-outcome failure, the
+   * uncertainty flag keeps the dedup from skipping it, and a write landing
+   * on a moved server answers 412 with the truth. Without either, the
+   * revert needs nothing: the server already holds this content.
    */
   function cancelQueuedSave(nodeId: string, desired?: string): void {
     clearTimerFor(nodeId)
     pendingSaves.delete(nodeId)
-    if (desired === undefined || saveInFlightNode !== nodeId) return
-    if (validateContent(desired)) {
-      pendingSaves.set(nodeId, { nodeId, content: desired, validated: true })
-    } else {
+    if (desired === undefined) return
+    if (saveInFlightNode !== nodeId && !uncertainOutcomeNodes.has(nodeId)) return
+    if (!validateContent(desired)) {
       console.error('[MarkdownEditor] revert reconcile suppressed: content failed the parse-integrity check')
+      return
     }
+    scheduleAutoSave(nodeId, desired, SAVE_RETRY_BASE_MS, { validated: true })
   }
 
   function clearAllTimers(): void {

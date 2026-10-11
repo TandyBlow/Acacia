@@ -808,4 +808,28 @@ describe('MarkdownEditorSave', () => {
 
     expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
   });
+
+  it('a revert after the failed response re-saves the revert despite the queued retry', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    let calls = 0;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      calls += 1;
+      return calls === 1 ? false : true;
+    });
+    const save = await loadSave(ctx);
+
+    ctx.lastSavedContent.value = 'A';
+    save.scheduleAutoSave('n1', 'B');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
+    // B's write failed with an unknown outcome and a retry is queued; the
+    // user reverts to A only now. The revert must cancel the B retry and
+    // schedule a reconciliation write of A.
+    save.cancelQueuedSave('n1', 'A');
+    await vi.runAllTimersAsync();
+
+    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    expect(savedContents).toEqual(['B', 'A']);
+    expect(ctx.lastSavedContent.value).toBe('A');
+  });
 });
