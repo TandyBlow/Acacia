@@ -656,4 +656,33 @@ describe('MarkdownEditorSave', () => {
     const callsForA = ctx.store.saveActiveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
     expect(callsForA.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('keep-mine response landing after a node switch does not stamp the other node', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    let release: (() => void) | null = null;
+    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return true;
+    });
+    const save = await loadSave(ctx);
+    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'A draft', serverContent: 'A server', serverRevision: 5, draftValidated: true };
+    ctx.draft.value = 'A draft latest';
+
+    const pending = save.resolveConflictKeepMine();
+    // The user switches to node B while the keep-mine request is in flight.
+    ctx.activeNode.value = { id: 'n2', content: 'B content' };
+    ctx.lastSavedContent.value = 'B content';
+    release!();
+    await pending;
+
+    // A's content was saved to node A — but node B's lastSavedContent is
+    // untouched: stamping it would make a later matching B edit look "saved".
+    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+      'n1',
+      'A draft latest',
+      expect.objectContaining({ force: true, revision: 5 }),
+    );
+    expect(ctx.lastSavedContent.value).toBe('B content');
+  });
 });

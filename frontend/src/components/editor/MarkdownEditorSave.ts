@@ -301,10 +301,18 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       revision: conflict.serverRevision,
     })
     if (saved) {
-      ctx.store.lastSaveConflict = null
-      ctx.saveConflict.value = null
-      if (onConflictedNode) {
+      // Re-check after the await: the user may have switched nodes while the
+      // request was in flight, so the pre-await onConflictedNode is stale —
+      // another node's lastSavedContent must never be stamped with this
+      // content (a later edit matching it would then be skipped as "saved").
+      if (ctx.activeNode.value?.id === conflict.nodeId) {
         ctx.lastSavedContent.value = content
+      }
+      // Only clear the conflict that was just resolved: a take-server click
+      // or a node switch may already have replaced or cleared the banner.
+      if (ctx.saveConflict.value === conflict) {
+        ctx.store.lastSaveConflict = null
+        ctx.saveConflict.value = null
       }
     }
     return saved
