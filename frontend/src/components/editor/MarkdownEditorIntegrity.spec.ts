@@ -777,4 +777,31 @@ describe('checkParseIntegrity', () => {
     expect(report.issues.some((issue) => issue.kind === 'lost' && issue.unit === 'table cell' && issue.sample.includes('def.example'))).toBe(true);
   });
 
+  it('flags two tables merged into one even with identical flattened content', () => {
+    // Two 2x2 tables merged into one 4-row table: global counts and the
+    // flattened widths are identical — only the table structure reveals it.
+    const cell = (text: string) => ({ type: 'tableCell', content: [paragraph(text)] });
+    const source = '| a | b |\n| --- | --- |\n| c | d |\n\n| e | f |\n| --- | --- |\n| g | h |';
+    const merged = doc([table([
+      [cell('a'), cell('b')],
+      [cell('c'), cell('d')],
+      [cell('e'), cell('f')],
+      [cell('g'), cell('h')],
+    ])]);
+    expect(checkParseIntegrity(source, merged).ok).toBe(false);
+    expect(checkDocEquivalence(
+      doc([table([[cell('a'), cell('b')], [cell('c'), cell('d')]]), table([[cell('e'), cell('f')], [cell('g'), cell('h')]])]),
+      merged,
+    ).ok).toBe(false);
+  });
+
+  it('flags a table row dropped even when its cells were empty', () => {
+    const source = '| a | |\n| --- | --- |\n| | |';
+    const report = checkParseIntegrity(
+      source,
+      doc([table([[plainCell('a'), emptyCellNode]])]),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.unit === 'table row count')).toBe(true);
+  });
 });

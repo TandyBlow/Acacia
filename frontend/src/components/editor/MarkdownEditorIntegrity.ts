@@ -942,30 +942,61 @@ function compareSequences(source: SourceShape, doc: DocShape, issues: IntegrityI
 }
 
 /**
- * Positional table comparison: when both sides agree on the table/row/cell
- * structure, every cell's content multiset must match. Global counts cannot
- * see which cell a unit landed in, so a formula moved into a neighboring
- * empty cell, code moved between columns, or two swapped link addresses
- * would otherwise pass. Structural damage (a lost row or column) is left to
- * the row-width and prose checks; cell-internal unit order is not compared,
- * since the source pipeline's extraction order is not source order.
+ * Positional table comparison. Structural agreement is itself a check:
+ * merging two tables into one, dropping a row, or merging columns keeps
+ * every global count and the flattened row widths identical — only the
+ * structure reveals it, so table, row, and column count changes are
+ * reported explicitly. When the structure agrees, every cell's content
+ * multiset must match: global counts cannot see which cell a unit landed
+ * in. Cell-internal unit order is not compared, since the source
+ * pipeline's extraction order is not source order.
  */
 function compareTableCells(source: SourceShape, doc: DocShape, issues: IntegrityIssue[]): void {
-  if (source.tableCellUnits.length !== doc.tableCellUnits.length) return
-  for (let t = 0; t < source.tableCellUnits.length; t += 1) {
+  const srcTables = source.tableCellUnits.length
+  const docTables = doc.tableCellUnits.length
+  if (srcTables !== docTables) {
+    issues.push({
+      kind: docTables < srcTables ? 'lost' : 'injected',
+      unit: 'table count',
+      sample: `${srcTables} tables in source, ${docTables} in doc`,
+      expected: srcTables,
+      actual: docTables,
+    })
+    return
+  }
+  for (let t = 0; t < srcTables; t += 1) {
     const srcRows = source.tableCellUnits[t] ?? []
     const docRows = doc.tableCellUnits[t] ?? []
-    if (srcRows.length !== docRows.length) return
+    if (srcRows.length !== docRows.length) {
+      issues.push({
+        kind: docRows.length < srcRows.length ? 'lost' : 'injected',
+        unit: 'table row count',
+        sample: `table ${t + 1}: ${srcRows.length} rows in source, ${docRows.length} in doc`,
+        expected: srcRows.length,
+        actual: docRows.length,
+      })
+      continue
+    }
     for (let r = 0; r < srcRows.length; r += 1) {
       const srcCells = srcRows[r] ?? []
       const docCells = docRows[r] ?? []
-      if (srcCells.length !== docCells.length) return
+      if (srcCells.length !== docCells.length) {
+        issues.push({
+          kind: docCells.length < srcCells.length ? 'lost' : 'injected',
+          unit: 'table column count',
+          sample: `table ${t + 1} row ${r + 1}: ${srcCells.length} cells in source, ${docCells.length} in doc`,
+          expected: srcCells.length,
+          actual: docCells.length,
+        })
+        continue
+      }
       for (let c = 0; c < srcCells.length; c += 1) {
         compareCellUnitMultisets(srcCells[c] ?? [], docCells[c] ?? [], r, c, issues)
       }
     }
   }
 }
+
 function compareCellUnitMultisets(src: CellUnit[], doc: CellUnit[], row: number, cell: number, issues: IntegrityIssue[]): void {
   const where = `row ${row + 1} cell ${cell + 1}`
   const tally = new Map<string, { type: string; value: string; src: number; doc: number }>()
