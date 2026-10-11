@@ -88,6 +88,10 @@ describe('upgrade regression samples (3.20.4 → 3.21.0)', () => {
         name: 'bare URL inside a table cell',
         md: '| bare https://bare.example url | x |\n| --- | --- |',
       },
+      {
+        name: 'angle-bracket reference definition used inside a table cell',
+        md: 'top:\n\n[r]: <https://example.org>\n\n| see [site][r] here | x |\n| --- | --- |',
+      },
     ];
     for (const sample of samples) {
       const parsed = parseDoc(editor, sample.md);

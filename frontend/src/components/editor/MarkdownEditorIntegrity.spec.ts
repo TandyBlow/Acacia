@@ -804,4 +804,55 @@ describe('checkParseIntegrity', () => {
     expect(report.ok).toBe(false);
     expect(report.issues.some((issue) => issue.unit === 'table row count')).toBe(true);
   });
+
+  it('accepts a cell reference link whose definition wraps the URL in angle brackets', () => {
+    const source = 'top\n\n[r]: <https://example.org>\n\n| see [site][r] here | z |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        paragraph('top'),
+        table([[
+          {
+            type: 'tableCell',
+            content: [{
+              type: 'paragraph',
+              content: [
+                { type: 'text', text: 'see ' },
+                { type: 'text', text: 'site', marks: [{ type: 'link', attrs: { href: 'https://example.org' } }] },
+                { type: 'text', text: ' here' },
+              ],
+            }],
+          },
+          plainCell('z'),
+        ]]),
+      ]),
+    );
+    expect(report.ok).toBe(true);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('resolves a duplicated reference label to its first definition, like marked', () => {
+    const source = 'top\n\n[r]: https://first.example\n\n[r]: https://second.example\n\n| see [site][r] | z |\n| --- | --- |';
+    const report = checkParseIntegrity(
+      source,
+      doc([
+        paragraph('top'),
+        table([[
+          {
+            type: 'tableCell',
+            content: [{
+              type: 'paragraph',
+              content: [
+                { type: 'text', text: 'see ' },
+                { type: 'text', text: 'site', marks: [{ type: 'link', attrs: { href: 'https://first.example' } }] },
+              ],
+            }],
+          },
+          plainCell('z'),
+        ]]),
+      ]),
+    );
+    expect(report.ok).toBe(true);
+    expect(report.issues).toEqual([]);
+  });
 });

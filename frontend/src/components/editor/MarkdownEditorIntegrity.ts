@@ -162,8 +162,13 @@ function extractInlineUnits(
 ): string {
   // 1. Pull autolinks out as hrefs before code masking hides them. The URL
   // text stays in the prose flow: the doc side renders an autolink as link
-  // text, so it must appear on both sides.
-  let text = input.replace(/<([A-Za-z][A-Za-z0-9+.-]*:\/\/[^<>\s]*)>/g, (_m, url: string) => {
+  // text, so it must appear on both sides. An autolink on a reference
+  // definition line is the definition's destination, not content — stage 6
+  // drops the whole line, so recording it here would double-count against
+  // links resolved through the definition.
+  let text = input.replace(/<([A-Za-z][A-Za-z0-9+.-]*:\/\/[^<>\s]*)>/g, (_m, url: string, offset: number) => {
+    const lineStart = input.lastIndexOf('\n', offset) + 1
+    if (/^ {0,3}\[[^\]]+\]:/.test(input.slice(lineStart, offset))) return url
     pushUnit('href', url)
     return url
   })
@@ -241,7 +246,10 @@ function extractInlineUnits(
  * one, with markdown's block rules — the line starts with at most three
  * spaces of indentation (four would be a code block), the same shape the
  * main flow drops as definitions. Keys are lowercased and
- * whitespace-collapsed, the way markdown matches reference labels. */
+ * whitespace-collapsed, the way markdown matches reference labels. The
+ * first definition of a label wins, matching marked's lexer; a destination
+ * wrapped in <...> restores through its autolink mask and is unwrapped, so
+ * the stored URL is bare like the doc-side href. */
 function collectReferenceDefs(masked: { protected: string; restore: (s: string) => string }): Map<string, string> {
   const defs = new Map<string, string>()
   const pattern = /^ {0,3}\[([^\]]+)\]:\s*<?([^\s>]+)>?(?:\s+["'(].*["')])?\s*$/gm
@@ -249,12 +257,14 @@ function collectReferenceDefs(masked: { protected: string; restore: (s: string) 
     const label = match[1] ?? ''
     const urlToken = match[2] ?? ''
     if (!label || !urlToken) continue
+    const key = `${label.trim().toLowerCase().replace(/\s+/g, ' ')}`
+    if (defs.has(key)) continue
     // A definition URL wrapped in <...> was masked as an autolink; restore
-    // the token back to the URL.
-    defs.set(
-      `${label.trim().toLowerCase().replace(/\s+/g, ' ')}`,
-      masked.restore(urlToken),
-    )
+    // the token back to the URL and strip the angle brackets.
+    let url = masked.restore(urlToken).trim()
+    if (url.startsWith('<') && url.endsWith('>')) url = url.slice(1, -1)
+    if (!url) continue
+    defs.set(key, url)
   }
   return defs
 }
