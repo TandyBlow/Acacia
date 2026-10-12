@@ -377,6 +377,9 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     const serverContent = conflict.serverContent
     ctx.store.lastSaveConflict = null
     ctx.saveConflict.value = null
+    // The node's pending conflict is resolved: retire it so a later re-read
+    // (or stale GET) no longer treats it as open.
+    ctx.store.pendingSaveConflicts?.delete(conflict.nodeId)
     // Every editor mutation is bound to the conflicted node: by the time the
     // user clicks, the editor may be showing a different node whose draft
     // and content must stay untouched.

@@ -29,6 +29,7 @@ function makeCtx() {
       saveActiveNodeContent: vi.fn().mockResolvedValue(true),
       refreshConflictCopy: vi.fn().mockResolvedValue(null),
       lastSaveConflict: null as { nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean } | null,
+      pendingSaveConflicts: new Map<string, { nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean }>(),
     },
   };
 }

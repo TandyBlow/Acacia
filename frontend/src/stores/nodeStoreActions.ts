@@ -111,6 +111,9 @@ export function createNodeStoreActions(
     state.errorMessage.value = null;
     // A conflict recorded by an earlier save must not be mistaken for this
     // one: after this call, a non-null lastSaveConflict is always fresh.
+    // Only THIS node's pending conflict retires — another node's open
+    // conflict keeps waiting for its user.
+    state.pendingSaveConflicts.delete(nodeId);
     state.lastSaveConflict.value = null;
     try {
       // The version this content was edited against; a mismatch answers 412
@@ -137,6 +140,7 @@ export function createNodeStoreActions(
         state.activeNode.value = { ...state.activeNode.value, content };
       }
       nodeCache.updateCachedContent(nodeId, content);
+      state.pendingSaveConflicts.delete(nodeId);
       state.lastSaveConflict.value = null;
       deps.triggerStyleCheck();
       return true;
@@ -146,7 +150,9 @@ export function createNodeStoreActions(
         // Version conflict: keep the draft that was being saved, pull the
         // server copy, and let the user choose keep-mine or take-server.
         const { serverContent, serverRevision, serverVerified } = await _captureConflict(nodeId);
-        state.lastSaveConflict.value = { nodeId, draftContent: content, serverContent, serverRevision, serverVerified };
+        const conflict: SaveConflict = { nodeId, draftContent: content, serverContent, serverRevision, serverVerified };
+        state.pendingSaveConflicts.set(nodeId, conflict);
+        state.lastSaveConflict.value = conflict;
         console.error('[nodeStore] save conflict, autosave paused for node:', nodeId, status);
         return false;
       }
@@ -182,30 +188,36 @@ export function createNodeStoreActions(
    * Re-reads the server copy for an open conflict. Returns the fresh,
    * verified conflict copy — the caller must sync its own view of the
    * conflict, the store's update does not propagate. Resolves null without
-   * touching anything when there is no open conflict for the node, the
-   * read fails, or the conflict was resolved or replaced while the read
-   * was in flight: a late response then belongs to a settled state and
-   * must not reach the cache either, where an older revision could roll
-   * back newer content.
+   * touching anything when the node has no pending conflict, the read
+   * fails, or the conflict was resolved or replaced while the read was in
+   * flight: a late response then belongs to a settled state and must not
+   * reach the cache either, where an older revision could roll back newer
+   * content. Per-node state is authoritative — another node's save
+   * settling must not retire this node's pending conflict.
    */
   async function refreshConflictCopy(nodeId: string): Promise<SaveConflict | null> {
-    const original = state.lastSaveConflict.value;
-    if (!original || original.nodeId !== nodeId) return null;
+    const original = state.pendingSaveConflicts.get(nodeId);
+    if (!original) return null;
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
-      // Any save that settled while this GET was in flight cleared the
-      // conflict (or a new capture replaced it): the response is stale.
-      // Check against the conflict object captured at start, before the
+      // Any save of this node that settled while this GET was in flight
+      // retired the conflict (or a new capture replaced it): the response
+      // is stale. Check the node's map entry captured at start, before the
       // cache write.
-      if (state.lastSaveConflict.value !== original) return null;
+      if (state.pendingSaveConflicts.get(nodeId) !== original) return null;
       nodeCache.setCache(nodeId, context);
-      return {
+      const fresh: SaveConflict = {
         nodeId,
         draftContent: original.draftContent,
         serverContent: context.nodeInfo?.content ?? '',
         serverRevision: context.nodeInfo?.revision ?? 0,
         serverVerified: true,
       };
+      state.pendingSaveConflicts.set(nodeId, fresh);
+      if (state.lastSaveConflict.value === original) {
+        state.lastSaveConflict.value = fresh;
+      }
+      return fresh;
     } catch (error) {
       console.error('[nodeStore] conflict copy re-read failed:', nodeId, error);
       return null;

@@ -145,6 +145,7 @@ export const useNodeStore = defineStore('node', () => {
     isBusy: state.isBusy,
     errorMessage: state.errorMessage,
     lastSaveConflict: state.lastSaveConflict,
+    pendingSaveConflicts: state.pendingSaveConflicts,
     isEditState,
     isTreeState,
     isTreeOverviewState,
