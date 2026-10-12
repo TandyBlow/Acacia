@@ -180,8 +180,13 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         }
         return true
       }
-      const conflict = ctx.store.lastSaveConflict
-      if (conflict?.nodeId === nodeId) {
+      // The per-node record is authoritative: the global lastSaveConflict
+      // pointer can be cleared or re-pointed by another node's resolution
+      // landing between this node's capture and this check, and a cleared
+      // pointer must not downgrade a version conflict into a blind retry
+      // (which would overwrite the server with a stale draft).
+      const conflict = ctx.store.pendingSaveConflicts?.get(nodeId)
+      if (conflict) {
         // The server copy is known only when the store's conflict capture
         // actually read it; a failed read fell back to a cache that may
         // predate the write, so the node's real state stays uncertain.
@@ -350,14 +355,18 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       // Only clear the conflict that was just resolved: a take-server click
       // or a node switch may already have replaced or cleared the banner.
       if (ctx.saveConflict.value === conflict) {
-        ctx.store.lastSaveConflict = null
+        if (ctx.store.lastSaveConflict?.nodeId === conflict.nodeId) {
+          ctx.store.lastSaveConflict = null
+        }
         ctx.saveConflict.value = null
       }
-    } else if (ctx.saveConflict.value === conflict && !ctx.store.lastSaveConflict) {
+    } else if (ctx.saveConflict.value === conflict && ctx.store.lastSaveConflict?.nodeId !== conflict.nodeId) {
       // The keep-mine write failed without a version conflict — it may still
       // have committed. The server copy read earlier can no longer be
       // trusted (the store invalidated its record the same way), so
-      // take-server must re-read before adopting.
+      // take-server must re-read before adopting. A fresh 412 for this node
+      // (global pointer re-pointed at it) replaces the banner on its own
+      // and is left alone.
       ctx.saveConflict.value = { ...conflict, serverVerified: false }
     }
     return saved
@@ -381,7 +390,12 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       ctx.saveConflict.value = conflict
     }
     const serverContent = conflict.serverContent
-    ctx.store.lastSaveConflict = null
+    // Retire the global pointer only when it still points at THIS node's
+    // conflict — another node's capture may have claimed it meanwhile, and
+    // that one's handling must not be erased from under it.
+    if (ctx.store.lastSaveConflict?.nodeId === conflict.nodeId) {
+      ctx.store.lastSaveConflict = null
+    }
     ctx.saveConflict.value = null
     // The node's pending conflict is resolved: retire it so a later re-read
     // (or stale GET) no longer treats it as open.

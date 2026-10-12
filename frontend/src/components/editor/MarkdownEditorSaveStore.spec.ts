@@ -223,4 +223,44 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
     expect(ctx.lastSavedContent.value).toBe('A server v2');
     expect(getCachedRevision(NODE_A)).toBe(2);
   });
+
+  it('node A adopting its copy does not erase node B\'s conflict or trigger a B retry', async () => {
+    vi.useFakeTimers();
+    const store = useNodeStore();
+    const ctx = makeCtx(store);
+    const save = await loadSave(ctx);
+
+    // A saves first and hits 412 with a failed capture: an unverified
+    // conflict, later resolved through the re-read.
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('read failed'));
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    expect(ctx.saveConflict.value?.nodeId).toBe(NODE_A);
+
+    // B then saves, hits 412, and its capture succeeds: the global pointer
+    // now points at B's conflict (A's banner is still up underneath).
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_B, 'B server v1', 1));
+    await save.enqueueSave(NODE_B, 'B draft', { force: true, revision: 0 });
+    expect(store.lastSaveConflict?.nodeId).toBe(NODE_B);
+
+    // A adopts its server copy through the re-read.
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server v6', 6));
+    const taken = await save.resolveConflictTakeServer();
+    expect(taken).toBe(true);
+    expect(store.pendingSaveConflicts.has(NODE_A)).toBe(false);
+
+    // The per-node cleanup left B's conflict exactly as captured — in the
+    // map AND as the global pointer. (The old unconditional clear emptied
+    // the pointer here, downgrading B's later failure into a blind retry.)
+    expect(store.pendingSaveConflicts.get(NODE_B)?.nodeId).toBe(NODE_B);
+    expect(store.lastSaveConflict?.nodeId).toBe(NODE_B);
+
+    // A later save attempt for B therefore lands in its conflict — not
+    // downgraded to a retry, so nothing overwrites the server with a
+    // stale draft against the captured revision.
+    await save.enqueueSave(NODE_B, 'B draft retry', { force: true, revision: 1 });
+    await vi.runAllTimersAsync();
+    expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(3);
+  });
 });
