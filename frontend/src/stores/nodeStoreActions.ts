@@ -193,9 +193,12 @@ export function createNodeStoreActions(
     if (!original || original.nodeId !== nodeId) return null;
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
-      nodeCache.setCache(nodeId, context);
-      // The conflict may have been replaced or cleared while reading.
+      // Any save that settled while this GET was in flight cleared the
+      // conflict (or a new capture replaced it): the response is stale.
+      // Check against the conflict object captured at start, before the
+      // cache write.
       if (state.lastSaveConflict.value !== original) return null;
+      nodeCache.setCache(nodeId, context);
       return {
         nodeId,
         draftContent: original.draftContent,
