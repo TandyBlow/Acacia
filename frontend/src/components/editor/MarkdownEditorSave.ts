@@ -353,6 +353,12 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         ctx.store.lastSaveConflict = null
         ctx.saveConflict.value = null
       }
+    } else if (ctx.saveConflict.value === conflict && !ctx.store.lastSaveConflict) {
+      // The keep-mine write failed without a version conflict — it may still
+      // have committed. The server copy read earlier can no longer be
+      // trusted (the store invalidated its record the same way), so
+      // take-server must re-read before adopting.
+      ctx.saveConflict.value = { ...conflict, serverVerified: false }
     }
     return saved
   }

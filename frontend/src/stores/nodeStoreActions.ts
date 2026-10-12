@@ -111,9 +111,15 @@ export function createNodeStoreActions(
     state.errorMessage.value = null;
     // A conflict recorded by an earlier save must not be mistaken for this
     // one: after this call, a non-null lastSaveConflict is always fresh.
-    // Only THIS node's pending conflict retires — another node's open
-    // conflict keeps waiting for its user.
-    state.pendingSaveConflicts.delete(nodeId);
+    // The node's pending conflict is NOT retired yet — this save may commit
+    // without the response reaching us, so the record stays until the
+    // outcome is known; only its server copy is invalidated, since that
+    // copy predates a write that may have landed. Another node's pending
+    // conflict is never touched.
+    const pending = state.pendingSaveConflicts.get(nodeId);
+    if (pending) {
+      state.pendingSaveConflicts.set(nodeId, { ...pending, serverVerified: false });
+    }
     state.lastSaveConflict.value = null;
     try {
       // The version this content was edited against; a mismatch answers 412

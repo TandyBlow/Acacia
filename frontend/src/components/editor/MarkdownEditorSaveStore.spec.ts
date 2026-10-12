@@ -157,4 +157,70 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
     expect(getCachedRevision(NODE_A)).toBe(2);
     expect(getCached(NODE_A)?.nodeInfo?.content).toBe('A draft');
   });
+
+  it('a failed keep-mine on an unverified conflict keeps the re-read channel alive', async () => {
+    const store = useNodeStore();
+    const ctx = makeCtx(store);
+    const save = await loadSave(ctx);
+    ctx.draft.value = 'A draft';
+
+    // A hits 412; the capture GET fails — an unverified conflict.
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('read failed'));
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    expect(ctx.saveConflict.value?.serverVerified).toBe(false);
+
+    // Keep-mine fails with a plain network error (no conflict information).
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(new Error('network down'));
+    const kept = await save.resolveConflictKeepMine();
+    expect(kept).toBe(false);
+
+    // The banner and the pending record survive, flagged unverified — the
+    // write may have committed, so nothing claims to know the server state.
+    expect(ctx.saveConflict.value?.nodeId).toBe(NODE_A);
+    expect(ctx.saveConflict.value?.serverVerified).toBe(false);
+    expect(store.pendingSaveConflicts.get(NODE_A)?.serverVerified).toBe(false);
+
+    // The network is back: take-server re-reads (a real GET goes out) and
+    // adopts the server copy.
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server truth', 5));
+    const taken = await save.resolveConflictTakeServer();
+    expect(taken).toBe(true);
+    expect(mockAdapter.getNodeContext).toHaveBeenCalledTimes(2);
+    expect(ctx.draft.value).toBe('A server truth');
+    expect(getCached(NODE_A)?.nodeInfo?.content).toBe('A server truth');
+  });
+
+  it('a keep-mine that committed but lost its response re-reads rev 2 instead of adopting rev 1', async () => {
+    const store = useNodeStore();
+    const ctx = makeCtx(store);
+    const save = await loadSave(ctx);
+    ctx.draft.value = 'A draft';
+
+    // A hits 412; the capture GET succeeds — a verified conflict at rev 1.
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server v1', 1));
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    expect(ctx.saveConflict.value?.serverVerified).toBe(true);
+
+    // Keep-mine commits on the server (which moves to revision 2), but the
+    // success response is lost — the client sees a network error.
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(new Error('response lost'));
+    const kept = await save.resolveConflictKeepMine();
+    expect(kept).toBe(false);
+
+    // The once-verified flag is invalidated on both the editor view and the
+    // store record: the old read predates a write that landed.
+    expect(ctx.saveConflict.value?.serverVerified).toBe(false);
+    expect(store.pendingSaveConflicts.get(NODE_A)?.serverVerified).toBe(false);
+
+    // Take-server therefore re-reads and adopts revision 2, never the
+    // stale revision 1 copy the conflict was captured with.
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server v2', 2));
+    const taken = await save.resolveConflictTakeServer();
+    expect(taken).toBe(true);
+    expect(ctx.draft.value).toBe('A server v2');
+    expect(ctx.lastSavedContent.value).toBe('A server v2');
+    expect(getCachedRevision(NODE_A)).toBe(2);
+  });
 });
