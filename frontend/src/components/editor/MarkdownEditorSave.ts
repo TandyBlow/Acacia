@@ -363,12 +363,16 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     if (!conflict) return false
     // The server copy must be from a live read: the original capture may
     // have failed and fallen back to a cache that predates the conflicting
-    // write. Re-read once; if that also fails, keep the banner and the
-    // draft — the user can retry or choose keep-mine instead.
+    // write. Re-read once — the store returns the fresh copy, and this
+    // view of the conflict is synced from it (a store-side update alone
+    // does not reach this ref). If the read fails, or the conflict was
+    // resolved or replaced meanwhile, the banner and the draft stay and
+    // the user can retry or choose keep-mine instead.
     if (!conflict.serverVerified) {
-      const refreshed = await ctx.store.refreshConflictCopy(conflict.nodeId)
-      conflict = ctx.saveConflict.value
-      if (!refreshed || !conflict || !conflict.serverVerified) return false
+      const fresh = await ctx.store.refreshConflictCopy(conflict.nodeId)
+      if (!fresh || ctx.saveConflict.value !== conflict) return false
+      conflict = { ...fresh, draftValidated: conflict.draftValidated }
+      ctx.saveConflict.value = conflict
     }
     const serverContent = conflict.serverContent
     ctx.store.lastSaveConflict = null

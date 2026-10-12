@@ -1,7 +1,7 @@
 import * as nodeCache from '../services/nodeCache';
 import { getDataAdapter, formatError, clearAdapterCache } from './nodeStoreAdapter';
 import { clearTransientState } from './nodeStoreState';
-import type { NodeStoreState } from './nodeStoreState';
+import type { NodeStoreState, SaveConflict } from './nodeStoreState';
 import { computeHasAnyNodes, computeIsEditState } from './nodeStoreHelpers';
 import { ViewStates } from '../types/node';
 import type { TransitionTrigger } from '../types/transition';
@@ -179,29 +179,33 @@ export function createNodeStoreActions(
   }
 
   /**
-   * Re-reads the server copy for an open conflict. Resolves false without
-   * touching the conflict when the read fails — the banner and the draft
-   * stay, and taking the server copy can be retried.
+   * Re-reads the server copy for an open conflict. Returns the fresh,
+   * verified conflict copy — the caller must sync its own view of the
+   * conflict, the store's update does not propagate. Resolves null without
+   * touching anything when there is no open conflict for the node, the
+   * read fails, or the conflict was resolved or replaced while the read
+   * was in flight: a late response then belongs to a settled state and
+   * must not reach the cache either, where an older revision could roll
+   * back newer content.
    */
-  async function refreshConflictCopy(nodeId: string): Promise<boolean> {
-    const conflict = state.lastSaveConflict.value;
-    if (!conflict || conflict.nodeId !== nodeId) return false;
+  async function refreshConflictCopy(nodeId: string): Promise<SaveConflict | null> {
+    const original = state.lastSaveConflict.value;
+    if (!original || original.nodeId !== nodeId) return null;
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
       nodeCache.setCache(nodeId, context);
-      const current = state.lastSaveConflict.value;
       // The conflict may have been replaced or cleared while reading.
-      if (!current || current.nodeId !== nodeId) return false;
-      state.lastSaveConflict.value = {
-        ...current,
+      if (state.lastSaveConflict.value !== original) return null;
+      return {
+        nodeId,
+        draftContent: original.draftContent,
         serverContent: context.nodeInfo?.content ?? '',
         serverRevision: context.nodeInfo?.revision ?? 0,
         serverVerified: true,
       };
-      return true;
     } catch (error) {
       console.error('[nodeStore] conflict copy re-read failed:', nodeId, error);
-      return false;
+      return null;
     }
   }
 

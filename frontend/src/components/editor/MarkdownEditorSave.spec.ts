@@ -27,7 +27,7 @@ function makeCtx() {
     // unwrapped on the instance.
     store: {
       saveActiveNodeContent: vi.fn().mockResolvedValue(true),
-      refreshConflictCopy: vi.fn().mockResolvedValue(false),
+      refreshConflictCopy: vi.fn().mockResolvedValue(null),
       lastSaveConflict: null as { nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean } | null,
     },
   };
@@ -841,7 +841,7 @@ describe('MarkdownEditorSave', () => {
 
   // ── Round-7 acceptance fixes ───────────────────────────────────────────
 
-  it('take-server on an unverified conflict re-reads and adopts the fresh copy', async () => {
+  it('take-server on an unverified conflict re-reads, syncs its view, and adopts the fresh copy', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
@@ -855,11 +855,12 @@ describe('MarkdownEditorSave', () => {
       draftValidated: true,
       serverVerified: false,
     };
-    // The re-read succeeds and lands the fresh server copy in the store.
+    // Real-store semantics: the re-read lands the fresh copy in the store
+    // and returns it. It does NOT touch the editor's saveConflict ref —
+    // syncing that view is the caller's job.
     ctx.store.refreshConflictCopy.mockImplementation(async () => {
       ctx.store.lastSaveConflict = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'fresh server copy', serverRevision: 2, serverVerified: true };
-      ctx.saveConflict.value = { ...ctx.store.lastSaveConflict, draftValidated: true };
-      return true;
+      return { nodeId: 'n1', draftContent: 'my draft', serverContent: 'fresh server copy', serverRevision: 2, serverVerified: true };
     });
 
     const taken = await save.resolveConflictTakeServer();
@@ -871,7 +872,7 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.editor.value.commands.setContent).toHaveBeenCalled();
   });
 
-  it('take-server keeps the banner and draft when the re-read fails', async () => {
+  it('take-server keeps the banner and draft when the re-read fails or the conflict moved on', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = await loadSave(ctx);
@@ -883,7 +884,7 @@ describe('MarkdownEditorSave', () => {
       draftValidated: true,
       serverVerified: false,
     };
-    ctx.store.refreshConflictCopy.mockResolvedValue(false);
+    ctx.store.refreshConflictCopy.mockResolvedValue(null);
 
     const taken = await save.resolveConflictTakeServer();
 
