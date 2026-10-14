@@ -189,7 +189,9 @@ async function ensureState(browser, url, args) {
 }
 
 async function newLoggedInContext(browser, stateFile) {
-  return browser.newContext({ viewport:{width:1440,height:900}, serviceWorkers:'allow', storageState:stateFile });
+  const context = await browser.newContext({ viewport:{width:1440,height:900}, serviceWorkers:'allow', storageState:stateFile });
+  await context.addInitScript(instrumentation);
+  return context;
 }
 
 // 打开文档：与画布点击走同一 store action（nodeStore.loadNode）。
@@ -486,8 +488,8 @@ async function measureActions(args) {
       return note;
     });
 
-    // 2. 连续输入 490 字（真实键盘事件，evaluate 聚焦以避开覆盖层拦截指针），观察自动保存与服务器核验
-    await segment('连续输入490字并观察自动保存', async () => {
+    // 2. 一次插入 280 字（真实键盘事件，evaluate 聚焦以避开覆盖层拦截指针），观察自动保存与服务器核验
+    await segment('一次插入280字并观察自动保存', async () => {
       await page.evaluate(() => {
         const el = document.querySelector('.tiptap[contenteditable]');
         el.focus();
@@ -497,13 +499,14 @@ async function measureActions(args) {
       });
       await page.waitForTimeout(100);
       await page.keyboard.press('Control+End');
-      await page.keyboard.insertText('性能测量输入段：'.repeat(35)); // 490 字
-      await page.waitForFunction((base) => (document.querySelector('.tiptap[contenteditable]')?.innerText.length ?? 0) >= base + 400,
-        await page.evaluate(() => document.querySelector('.tiptap[contenteditable]')?.innerText.length ?? 0).then(v => v - 490), { timeout: 10000 }).catch(()=>{});
+      const lenBefore = await page.evaluate(() => document.querySelector('.tiptap[contenteditable]')?.innerText.length ?? 0);
+      await page.keyboard.insertText('性能测量输入段：'.repeat(35)); // 8 字 × 35 = 280 字，单次 insertText 插入
+      await page.waitForFunction((base) => (document.querySelector('.tiptap[contenteditable]')?.innerText.length ?? 0) >= base + 250,
+        lenBefore, { timeout: 10000 }).catch(()=>{});
       const len = await page.evaluate(() => document.querySelector('.tiptap[contenteditable]')?.innerText.length ?? 0);
       const saveWrites = await collectSaveWrites(20000);
       const serverAfter = await serverTruth();
-      return { editorLenAfterType: len, saveWrites, serverAfter };
+      return { editorLenAfterType: len, insertedChars: len - lenBefore, saveWrites, serverAfter };
     });
 
     // 3. 粘贴约两千二百字符混合内容（真实剪贴板 + Ctrl+V），观察自动保存与服务器核验
@@ -629,8 +632,8 @@ function makeEditorReport(result) {
     }
     lines.push('','p95 使用本批样本的排序位置计算。失败样本保留在 results.json，不混入成功耗时统计。');
   } else {
-    lines.push('方法：登录后按分段执行操作。打开/切换文档经 nodeStore.loadNode（与画布点击相同代码路径），以 store.activeNode 与编辑区正文字数双条件确认到位；连续输入为真实键盘事件（evaluate 聚焦以避开覆盖层对指针的拦截）；粘贴为真实系统剪贴板写入后发送 Ctrl+V。每段结束后固定观察 1 秒。',
-      '涉及自动保存的分段记录观察窗内全部 PATCH /content 尝试及状态码，并直接向服务器核对内容长度；打开文档出现卡滞时重试一次并在备注注明。',
+    lines.push('方法：登录后按分段执行操作。打开/切换文档经 nodeStore.loadNode（与画布点击相同代码路径），以 store.activeNode 与编辑区正文字数双条件确认到位；文本输入为一次 insertText 插入（真实键盘事件，evaluate 聚焦以避开覆盖层对指针的拦截）；粘贴为真实系统剪贴板写入后发送 Ctrl+V。每段结束后固定观察 1 秒。',
+      '性能观察器（longtask / event / LCP）经 addInitScript 注入每个页面；涉及自动保存的分段记录观察窗内全部 PATCH /content 尝试及状态码，并直接向服务器核对内容长度；打开文档出现卡滞时重试一次并在备注注明。',
       '交互计时来自 Event Timing，程序化触发不含真实指针事件，可见交互数偏低属预期。');
     lines.push(...interactionTable(result));
     const notes=result.samples.map(s=>s.note?('| '+s.label+' | '+JSON.stringify(s.note)+' |'):'').filter(Boolean);
@@ -638,6 +641,7 @@ function makeEditorReport(result) {
   }
   lines.push(...apiTable(result.records));
   lines.push('','排错记录见 browser-records.json。记录不含 Cookie、请求头、请求正文、响应正文、截图、会话存储；常见凭证文本与 URL 查询参数已移除。',
+    '登录口令仅经环境变量传入脚本；会话令牌（storageState）写入系统临时目录的 JSON 以复用登录态，测量结束后删除，不进入本目录输出。',
     '这些文件记录运行时观察。性能改善幅度需要使用同一浏览器、设备、文档、操作与采集参数，对照两个明确的版本计算。',
     '本报告未替简历填入性能改善数值，也未把本机结果推定为全部用户结果。');
   return lines.join('\n')+'\n';
