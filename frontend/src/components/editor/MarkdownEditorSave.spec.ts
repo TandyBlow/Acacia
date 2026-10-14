@@ -37,7 +37,7 @@ function makeCtx() {
       saveNodeContent: vi.fn<(nodeId: string, content: string, options?: { expectedRevision?: number | null }) => Promise<SaveWriteResult>>(
         async () => ({ ok: true, revision: null }),
       ),
-      resolveNodeRevision: vi.fn<(nodeId: string) => Promise<number | null>>(async () => 1),
+      resolveNodeRevision: vi.fn<(nodeId: string) => Promise<{ revision: number | null; content?: string } | null>>(async () => ({ revision: 1, content: 'ignored' })),
       refreshConflictCopy: vi.fn<(nodeId: string) => Promise<unknown>>(async () => null),
     },
   };
@@ -97,8 +97,8 @@ function makeEchoEditor() {
 }
 
 /** Seeds the node's record as if the editor had loaded it. */
-function seedNode(save: ReturnType<typeof useMarkdownEditorSave>, nodeId: string, savedContent: string): void {
-  save.prepareNodeView(nodeId, savedContent);
+function seedNode(save: ReturnType<typeof useMarkdownEditorSave>, nodeId: string, savedContent: string, savedRevision: number | null = 1): void {
+  save.prepareNodeView(nodeId, savedContent, savedRevision);
 }
 
 /** Opens a conflict through the production path: a 412 settling a task. */
@@ -762,7 +762,7 @@ describe('MarkdownEditorSave', () => {
     seedNode(save, 'n1', 'typed content');
 
     // Same content is deduped while the server state is confirmed.
-    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'saved', revision: null });
+    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'saved', revision: 1 });
     expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
 
     // A failed write makes the outcome unknown: the dedup must not skip.

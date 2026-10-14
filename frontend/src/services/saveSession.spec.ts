@@ -27,7 +27,7 @@ type Write = (req: SaveRequestRecord) => Promise<SaveWriteResult>;
 function setup(performWrite?: Write, resolveRevision?: (nodeId: string) => Promise<number | null>) {
   resetSaveSessionForTests();
   const write = vi.fn<Write>(performWrite ?? (async () => ({ ok: true, revision: null })));
-  const resolve = vi.fn(resolveRevision ?? (async () => 7));
+  const resolve = vi.fn(resolveRevision ?? (async () => ({ revision: 7, content: 'ignored' })));
   configureSaveSession({ performWrite: write, resolveRevision: resolve });
   return { write, resolve };
 }
@@ -169,7 +169,7 @@ describe('saveSession registry', () => {
 
   it('cancelling a settled-node task sends nothing; an unresolved node gets a reconciliation write', async () => {
     const { write } = setup();
-    prepareNodeView('n1', 'saved');
+    prepareNodeView('n1', 'saved', 3);
 
     reconcileNodeContent('n1', 'saved', true);
     await vi.runAllTimersAsync();
@@ -184,6 +184,7 @@ describe('saveSession registry', () => {
     await vi.advanceTimersByTimeAsync(SAVE_RETRY_BASE_MS);
     expect(write).toHaveBeenCalledTimes(1);
     expect(write.mock.calls[0][0].content).toBe('saved');
+    expect(write.mock.calls[0][0].expectedRevision).toBe(3);
   });
 
   it('a late confirmed response does not overwrite a newer queued draft', async () => {
@@ -283,6 +284,92 @@ describe('saveSession registry', () => {
     });
     await Promise.all([first, second]);
     expect(order).toEqual(['first', 'second']);
+  });
+
+  it('continued typing queued at the same base inherits the own write that lands', async () => {
+    let release: ((result: SaveWriteResult) => void) | null = null;
+    const { write } = setup();
+    write.mockImplementationOnce(
+      () => new Promise<SaveWriteResult>((resolve) => { release = () => resolve({ ok: true, revision: 5 }); }),
+    );
+    prepareNodeView('n1', 'loaded', 1);
+
+    const first = enqueueNodeSave('n1', 'draft v1', { validated: true });
+    // A second draft is queued while the first request is out: both were
+    // edited against revision 1.
+    const second = enqueueNodeSave('n1', 'draft v2', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0].expectedRevision).toBe(1);
+
+    // The first write lands: the server moves to revision 5. The queued
+    // draft follows OUR OWN commit — it must not hit a self-inflicted 412.
+    release!();
+    await expect(first.done).resolves.toEqual({ status: 'saved', revision: 5 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1][0].content).toBe('draft v2');
+    expect(write.mock.calls[1][0].expectedRevision).toBe(5);
+    await expect(second.done).resolves.toEqual({ status: 'saved', revision: null });
+  });
+
+  it('a pinned write keeps its captured revision when an own write lands meanwhile', async () => {
+    let release: ((result: SaveWriteResult) => void) | null = null;
+    const { write } = setup();
+    write.mockImplementationOnce(
+      () => new Promise<SaveWriteResult>((resolve) => { release = () => resolve({ ok: true, revision: 5 }); }),
+    );
+    prepareNodeView('n1', 'loaded', 1);
+
+    const first = enqueueNodeSave('n1', 'draft v1', { validated: true });
+    const pinned = enqueueNodeSave('n1', 'keep-mine draft', { validated: true, force: true, revision: 2 });
+    await vi.advanceTimersByTimeAsync(0);
+    release!();
+    await expect(first.done).resolves.toEqual({ status: 'saved', revision: 5 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The pinned revision belongs to a captured conflict: an own success
+    // in between must not upgrade it — a moved server must answer 412.
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1][0].content).toBe('keep-mine draft');
+    expect(write.mock.calls[1][0].expectedRevision).toBe(2);
+    await expect(pinned.done).resolves.toEqual({ status: 'saved', revision: null });
+  });
+
+  it('a queued draft keeps its base version — only own successes inherit', async () => {
+    const { write } = setup();
+    write.mockResolvedValue({ ok: true, revision: 5 });
+    prepareNodeView('n1', 'loaded', 1);
+
+    // A draft queued at base 1 stays at 1 even after later enqueues learn
+    // newer confirmed revisions: the version is stamped at queue time.
+    const first = enqueueNodeSave('n1', 'draft v1', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write.mock.calls[0][0].expectedRevision).toBe(1);
+    await expect(first.done).resolves.toEqual({ status: 'saved', revision: 5 });
+
+    // The next draft is stamped from the confirmed revision (5), not from
+    // any externally refreshed cache.
+    await enqueueNodeSave('n1', 'draft v2', { validated: true, force: true }).done;
+    expect(write.mock.calls[1][0].expectedRevision).toBe(5);
+  });
+
+  it('resolving an unknown base compares the live text: a moved server enters the conflict flow', async () => {
+    const { write, resolve } = setup();
+    resolve.mockResolvedValue({ revision: 9, content: 'server moved on' });
+    prepareNodeView('n1', 'loaded text', null); // base version never known
+
+    const { done } = enqueueNodeSave('n1', 'my draft', { validated: true });
+
+    await expect(done).resolves.toEqual({ status: 'conflict' });
+    expect(write).not.toHaveBeenCalled();
+    expect(getNodeConflict('n1')?.serverContent).toBe('server moved on');
+    expect(getNodeConflict('n1')?.serverRevision).toBe(9);
+    expect(getNodeConflict('n1')?.serverVerified).toBe(true);
+    expect(getNodeConflict('n1')?.draftContent).toBe('my draft');
+    const record = getNodeRecord('n1')!;
+    expect(record.conflict).not.toBeNull();
+    expect(record.draft).toBe('loaded text');
   });
 
   it('adopting the server content cancels pending work and confirms the copy', async () => {

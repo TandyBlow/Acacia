@@ -71,10 +71,15 @@ export interface SaveTask {
   validated: boolean
   force: boolean
   keepalive?: boolean
-  /** Explicit revision pinned from creation (conflict keep-mine writes). */
-  pinnedRevision?: number
-  /** undefined until first dispatch resolves and freezes it. */
-  expectedRevision?: number | null
+  /** The version this draft was edited against: stamped from the record's
+   * confirmed revision at enqueue (or pinned for keep-mine writes), and
+   * frozen. External cache refreshes never rewrite it. */
+  expectedRevision: number | null
+  /** Normal tasks inherit the revision of an own write that succeeded after
+   * they were queued at the same base version — continued typing follows
+   * our own commits. Licensed keep-mine writes never do: their version is
+   * pinned to the captured conflict. */
+  inheritOwnSuccess: boolean
   editCount: number
   timer?: number
   resolve: (outcome: SaveTaskOutcome) => void
@@ -101,9 +106,17 @@ export interface SaveTaskHandle {
   done: Promise<SaveTaskOutcome>
 }
 
+/** Result of resolving an unknown write base: the live server version and
+ * the text it currently holds (used to detect a moved server before an
+ * unversioned draft is sent). */
+export interface ResolvedRevision {
+  revision: number | null
+  content?: string
+}
+
 export interface SaveSessionDeps {
   performWrite(req: SaveRequestRecord): Promise<SaveWriteResult>
-  resolveRevision(nodeId: string): Promise<number | null>
+  resolveRevision(nodeId: string): Promise<ResolvedRevision | null>
 }
 
 export function configureSaveSession(d: SaveSessionDeps): void {
@@ -182,20 +195,23 @@ function ensureRecord(nodeId: string, seedContent?: string): NodeSaveRecord {
 }
 
 /**
- * Prepares the editor view for a node: seeds the record on first touch and
- * returns the draft to display — the node's preserved draft when it has
- * one (switch-back, including a draft emptied by the user), otherwise the
- * freshly loaded content.
+ * Prepares the editor view for a node: seeds the record on first touch —
+ * content AND the revision it was loaded at, which becomes the write base
+ * of the drafts edited on top of it — and returns the draft to display:
+ * the node's preserved draft when it has one (switch-back, including a
+ * draft emptied by the user), otherwise the freshly loaded content.
  */
-export function prepareNodeView(nodeId: string, seedContent: string): string {
+export function prepareNodeView(nodeId: string, seedContent: string, seedRevision: number | null = null): string {
   const existing = records.get(nodeId)
   if (!existing) {
     const record = ensureRecord(nodeId, seedContent)
+    record.confirmedRevision = seedRevision
     record.draft = seedContent
     return seedContent
   }
   if (!existing.confirmedSeeded) {
     existing.confirmedContent = seedContent
+    existing.confirmedRevision = seedRevision
     existing.confirmedSeeded = true
     existing.draft = seedContent
     return seedContent
@@ -252,7 +268,11 @@ export function enqueueNodeSave(
     validated: options.validated,
     force: options.force ?? false,
     keepalive: options.keepalive,
-    pinnedRevision: options.revision,
+    // The write base is the version this draft was edited against — the
+    // record's confirmed revision at queue time. A pinned revision
+    // (keep-mine) wins; external cache refreshes never rewrite it.
+    expectedRevision: options.revision ?? record.confirmedRevision,
+    inheritOwnSuccess: options.revision === undefined,
     editCount: record.editCount,
     resolve: () => {},
   }
@@ -334,12 +354,39 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
       return
     }
     const sessionAtDispatch = sessionId
-    if (task.expectedRevision === undefined) {
-      task.expectedRevision = task.pinnedRevision ?? await deps!.resolveRevision(record.nodeId)
+    if (task.expectedRevision == null) {
+      // The draft never knew a base version. Resolving one now must not
+      // sneak a stale draft past a moved server: if the live read holds
+      // different text than what this record was loaded from, the draft's
+      // base is gone — keep it and enter the conflict flow instead.
+      const resolved = await deps!.resolveRevision(record.nodeId)
       if (sessionId !== sessionAtDispatch) {
         task.resolve({ status: 'session-ended' })
         return
       }
+      if (
+        resolved
+        && record.confirmedSeeded
+        && resolved.content !== undefined
+        && resolved.content !== record.confirmedContent
+      ) {
+        record.retryCount = 0
+        record.outcomeUncertain = false
+        record.conflict = {
+          nodeId: record.nodeId,
+          draftContent: task.content,
+          serverContent: resolved.content,
+          serverRevision: resolved.revision ?? 0,
+          serverVerified: true,
+          draftValidated: task.validated,
+        }
+        clearTaskTimer(record.nodeId)
+        queuedTasks.get(record.nodeId)?.resolve({ status: 'conflict' })
+        queuedTasks.delete(record.nodeId)
+        task.resolve({ status: 'conflict' })
+        return
+      }
+      task.expectedRevision = resolved?.revision ?? null
     }
     const request: SaveRequestRecord = {
       requestId: ++requestCounter,
@@ -379,6 +426,18 @@ function settle(record: NodeSaveRecord, task: SaveTask, request: SaveRequestReco
   if (result.ok) {
     record.confirmedContent = request.content
     if (result.revision != null) record.confirmedRevision = result.revision
+    // Continued typing queued at the same base version follows our own
+    // commit: inherit the post-write revision. External reads and unknown
+    // outcomes never do this — only a confirmed own write may advance a
+    // queued task's version.
+    const queued = queuedTasks.get(record.nodeId)
+    if (
+      result.revision != null
+      && queued?.inheritOwnSuccess
+      && (queued.expectedRevision == null || queued.expectedRevision === request.expectedRevision)
+    ) {
+      queued.expectedRevision = result.revision
+    }
     record.outcomeUncertain = false
     record.retryCount = 0
     // The server accepted this node's content: any open conflict for it is
@@ -412,8 +471,8 @@ function settle(record: NodeSaveRecord, task: SaveTask, request: SaveRequestReco
       validated: task.validated,
       force: true,
       keepalive: task.keepalive,
-      pinnedRevision: task.pinnedRevision,
       expectedRevision: request.expectedRevision,
+      inheritOwnSuccess: task.inheritOwnSuccess,
       editCount: task.editCount,
       resolve: () => {},
     }

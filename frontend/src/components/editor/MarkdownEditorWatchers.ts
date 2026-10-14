@@ -39,9 +39,15 @@ export function useMarkdownEditorWatchers(
 
       const content = ctx.activeNode.value?.content ?? ''
       // Restore the incoming node's preserved draft (or seed its record on
-      // first touch). Confirmed content and an open conflict come back
-      // through the derived views — nothing is cleared on a switch.
-      const restored = deps.save.prepareNodeView(ctx.activeNode.value?.id ?? '', content)
+      // first touch — content AND the revision it was loaded at, which
+      // becomes the write base of drafts edited on top of it). Confirmed
+      // content and an open conflict come back through the derived views —
+      // nothing is cleared on a switch.
+      const restored = deps.save.prepareNodeView(
+        ctx.activeNode.value?.id ?? '',
+        content,
+        ctx.activeNode.value?.revision ?? null,
+      )
       ctx.draft.value = restored
 
       ctx.integrityIssueText.value = ''

@@ -207,11 +207,11 @@ describe('saveNodeContent (structured write, session-guarded)', () => {
     const store = useNodeStore();
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf('content', 4));
 
-    expect(await store.resolveNodeRevision(nodeId)).toBe(4);
+    expect(await store.resolveNodeRevision(nodeId)).toEqual({ revision: 4, content: 'content' });
     expect(mockAdapter.getNodeContext).toHaveBeenCalledTimes(1);
     expect(getCachedRevision(nodeId)).toBe(4);
 
-    expect(await store.resolveNodeRevision(nodeId)).toBe(4);
+    expect(await store.resolveNodeRevision(nodeId)).toEqual({ revision: 4, content: 'content' });
     expect(mockAdapter.getNodeContext).toHaveBeenCalledTimes(1);
 
     // An unreadable node resolves to null: the server will answer 428 and

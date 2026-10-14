@@ -3,7 +3,7 @@ import { getDataAdapter, formatError, clearAdapterCache } from './nodeStoreAdapt
 import { clearTransientState } from './nodeStoreState';
 import type { NodeStoreState } from './nodeStoreState';
 import { currentSessionId, endSaveSession, getNodeConflict, replaceNodeConflictIf } from '../services/saveSession';
-import type { ConflictedSave, SaveConflict, SaveWriteResult } from '../services/saveSession';
+import type { ConflictedSave, ResolvedRevision, SaveConflict, SaveWriteResult } from '../services/saveSession';
 import { computeHasAnyNodes, computeIsEditState } from './nodeStoreHelpers';
 import { ViewStates } from '../types/node';
 import type { TransitionTrigger } from '../types/transition';
@@ -215,21 +215,24 @@ export function createNodeStoreActions(
   }
 
   /**
-   * Resolves the expected revision for a task's first send: the cache
-   * first, one prefetch GET when it is empty. The caller freezes the value
-   * on the task, so retries reuse it. Without a version the server answers
-   * 428 and the conflict path preserves the draft.
+   * Resolves the write base for a task whose record never knew a version:
+   * the cache first, one prefetch GET when it is empty. Returns the live
+   * server CONTENT too, so the save session can tell when the server moved
+   * past the text the draft was loaded from. The caller freezes the value
+   * on the task; retries reuse it.
    */
-  async function resolveNodeRevision(nodeId: string): Promise<number | null> {
-    const cached = nodeCache.getCachedRevision(nodeId);
-    if (cached != null) return cached;
+  async function resolveNodeRevision(nodeId: string): Promise<ResolvedRevision | null> {
+    const cachedRevision = nodeCache.getCachedRevision(nodeId);
+    if (cachedRevision != null) {
+      return { revision: cachedRevision, content: nodeCache.getCached(nodeId)?.nodeInfo?.content };
+    }
     const sessionAtStart = currentSessionId();
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
       if (!context) return null;
       if (currentSessionId() !== sessionAtStart) return null;
       nodeCache.setCache(nodeId, context);
-      return context.nodeInfo?.revision ?? null;
+      return { revision: context.nodeInfo?.revision ?? null, content: context.nodeInfo?.content ?? '' };
     } catch {
       return null;
     }
