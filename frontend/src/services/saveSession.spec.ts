@@ -75,8 +75,9 @@ describe('saveSession registry', () => {
     expect(getNodeConflict('n1')?.serverContent).toBe('server');
     expect(getNodeConflict('n1')?.draftValidated).toBe(true);
 
+    // The resolving write is licensed by the conflict it was granted against.
     write.mockResolvedValueOnce({ ok: true, revision: 5 });
-    const second = enqueueNodeSave('n1', 'c1', { validated: true, force: true });
+    const second = enqueueNodeSave('n1', 'c1', { validated: true, force: true, conflictLicense: getNodeConflict('n1')!.conflictId });
     await expect(second.done).resolves.toEqual({ status: 'saved', revision: 5 });
     expect(getNodeConflict('n1')).toBeNull();
     const record = getNodeRecord('n1')!;
@@ -85,17 +86,44 @@ describe('saveSession registry', () => {
     expect(record.outcomeUncertain).toBe(false);
   });
 
-  it('an unverified conflict keeps the outcome uncertain so the dedup stays off', async () => {
+  it('an unverified conflict keeps the outcome uncertain; the licensed write clears it', async () => {
     const { write } = setup();
-    write.mockResolvedValue({ ok: false, kind: 'conflict', conflict: { nodeId: 'n1', draftContent: 'c1', serverContent: 'cache copy', serverRevision: 0, serverVerified: false } });
+    write.mockResolvedValueOnce({ ok: false, kind: 'conflict', conflict: { nodeId: 'n1', draftContent: 'c1', serverContent: 'cache copy', serverRevision: 0, serverVerified: false } });
 
     await expect(enqueueNodeSave('n1', 'c1', { validated: true }).done).resolves.toEqual({ status: 'conflict' });
     expect(getNodeRecord('n1')!.outcomeUncertain).toBe(true);
 
-    // Same content must not be treated as already saved.
+    // The licensed write goes out despite the open conflict and confirms
+    // the server state, clearing the uncertainty.
     write.mockResolvedValueOnce({ ok: true, revision: 2 });
-    await expect(enqueueNodeSave('n1', 'c1', { validated: true }).done).resolves.toEqual({ status: 'saved', revision: 2 });
+    const licensed = enqueueNodeSave('n1', 'c1', {
+      validated: true, force: true, conflictLicense: getNodeConflict('n1')!.conflictId,
+    });
+    await expect(licensed.done).resolves.toEqual({ status: 'saved', revision: 2 });
     expect(write).toHaveBeenCalledTimes(2);
+    expect(getNodeConflict('n1')).toBeNull();
+    expect(getNodeRecord('n1')!.outcomeUncertain).toBe(false);
+  });
+
+  it('invalidation and re-reads keep the conflict id; a fresh capture mints a new one', async () => {
+    const { write } = setup();
+    write.mockResolvedValueOnce({ ok: false, kind: 'conflict', conflict: { nodeId: 'n1', draftContent: 'c1', serverContent: 'server v1', serverRevision: 1, serverVerified: true } });
+    await expect(enqueueNodeSave('n1', 'c1', { validated: true }).done).resolves.toEqual({ status: 'conflict' });
+    const originalId = getNodeConflict('n1')!.conflictId;
+
+    // Invalidation (the write may have committed) keeps the grant.
+    invalidateNodeConflict('n1');
+    expect(getNodeConflict('n1')!.conflictId).toBe(originalId);
+
+    // A re-read refreshes the server fields under the same id.
+    const fresh = { nodeId: 'n1', draftContent: 'c1', serverContent: 'server v2', serverRevision: 2, serverVerified: true };
+    expect(replaceNodeConflictIf('n1', getNodeConflict('n1')!, fresh)?.conflictId).toBe(originalId);
+
+    // A NEW version conflict (the licensed write hit a moved server again)
+    // mints a new id — outstanding licenses are revoked.
+    write.mockResolvedValueOnce({ ok: false, kind: 'conflict', conflict: { nodeId: 'n1', draftContent: 'c2', serverContent: 'server v3', serverRevision: 3, serverVerified: true } });
+    await expect(enqueueNodeSave('n1', 'c2', { validated: true, force: true, conflictLicense: originalId }).done).resolves.toEqual({ status: 'conflict' });
+    expect(getNodeConflict('n1')!.conflictId).not.toBe(originalId);
   });
 
   it('an unknown failure ends the wait immediately and retries with the same expected revision', async () => {

@@ -4,7 +4,7 @@ import { ref } from 'vue';
 import type { MarkdownEditorContext } from './MarkdownEditorContext';
 import { createEditorSaveViews } from './MarkdownEditorContext';
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
-import { resetSaveSessionForTests, getNodeConflict, getNodeRecord, replaceNodeConflictIf } from '../../services/saveSession';
+import { enqueueNodeSave, resetSaveSessionForTests, getNodeConflict, getNodeRecord, replaceNodeConflictIf } from '../../services/saveSession';
 import type { SaveWriteResult } from '../../services/saveSession';
 import { useMarkdownEditorSave } from './MarkdownEditorSave';
 
@@ -893,7 +893,7 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.editor.value.commands.setContent).not.toHaveBeenCalled();
   });
 
-  it('an unverified conflict keeps the node outcome uncertain for the dedup', async () => {
+  it('an unverified conflict keeps the node outcome uncertain and gates plain enqueues', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
@@ -904,9 +904,10 @@ describe('MarkdownEditorSave', () => {
     await conflictVia412(ctx, save, 'n1', 'other content', { serverContent: 'cached copy', serverRevision: 0, serverVerified: false });
     expect(getNodeRecord('n1')!.outcomeUncertain).toBe(true);
 
-    // The same content as the (unproven) confirmed content must not be
-    // skipped as "already saved": the dedup stays off.
-    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'saved', revision: null });
-    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
+    // A plain enqueue cannot bypass the open conflict: refused with no
+    // request, the unverified record and the banner untouched.
+    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'conflict' });
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
+    expect(getNodeConflict('n1')?.serverVerified).toBe(false);
   });
 });

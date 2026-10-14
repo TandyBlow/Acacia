@@ -36,7 +36,13 @@ export interface SaveConflict {
   serverVerified: boolean
 }
 
-export type ConflictedSave = SaveConflict & { draftValidated: boolean }
+export type ConflictedSave = SaveConflict & {
+  draftValidated: boolean
+  /** Stable id: invalidation and re-reads keep it, so a keep-mine write's
+   * license survives a failed attempt; only a fresh capture (a new version
+   * conflict) mints a new one and revokes outstanding licenses. */
+  conflictId: number
+}
 
 export type SaveTaskOutcome =
   | { status: 'saved'; revision: number | null }
@@ -80,6 +86,10 @@ export interface SaveTask {
    * our own commits. Licensed keep-mine writes never do: their version is
    * pinned to the captured conflict. */
   inheritOwnSuccess: boolean
+  /** The conflictId this write is licensed against (keep-mine). While the
+   * node's open conflict is exactly this one, the write may pass; a fresh
+   * capture (new id) or a cleared conflict revokes it. */
+  conflictLicense?: number
   editCount: number
   timer?: number
   resolve: (outcome: SaveTaskOutcome) => void
@@ -135,6 +145,7 @@ const resolutionChains = new Map<string, Promise<unknown>>()
 let sessionId = 1
 let taskCounter = 0
 let requestCounter = 0
+let conflictSeq = 0
 let deps: SaveSessionDeps | null = null
 let sending = false
 
@@ -234,6 +245,10 @@ export interface EnqueueOptions {
   keepalive?: boolean
   /** Explicit revision pinned from creation (conflict keep-mine writes). */
   revision?: number
+  /** Write permission while a conflict is open: the conflictId captured by
+   * the keep-mine click. Plain tasks carry none and are refused with a
+   * `conflict` outcome while any conflict is open. */
+  conflictLicense?: number
   /** Delay the first dispatch (autosave debounce). */
   delayMs?: number
 }
@@ -253,6 +268,13 @@ export function enqueueNodeSave(
     return immediateDone({ status: 'refused' })
   }
   const record = ensureRecord(nodeId)
+  // Conflict gate — BEFORE the supersede step: a refused plain enqueue
+  // (an AI append, say) must not cancel an already-queued keep-mine write.
+  // Licensed tasks pass only while the open conflict is exactly the one
+  // they were granted against.
+  if (record.conflict && options?.conflictLicense !== record.conflict.conflictId) {
+    return immediateDone({ status: 'conflict' })
+  }
   const previous = queuedTasks.get(nodeId)
   if (previous) {
     clearTaskTimer(nodeId)
@@ -273,6 +295,7 @@ export function enqueueNodeSave(
     // (keep-mine) wins; external cache refreshes never rewrite it.
     expectedRevision: options.revision ?? record.confirmedRevision,
     inheritOwnSuccess: options.revision === undefined,
+    conflictLicense: options.conflictLicense,
     editCount: record.editCount,
     resolve: () => {},
   }
@@ -349,6 +372,13 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
   try {
     queuedTasks.delete(record.nodeId)
 
+    // The conflict may have opened (or been replaced) between queueing and
+    // dispatching: re-check the license against the live record.
+    if (record.conflict && task.conflictLicense !== record.conflict.conflictId) {
+      task.resolve({ status: 'conflict' })
+      return
+    }
+
     if (!task.force && !record.outcomeUncertain && task.content === record.confirmedContent) {
       task.resolve({ status: 'saved', revision: record.confirmedRevision })
       return
@@ -379,6 +409,7 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
           serverRevision: resolved.revision ?? 0,
           serverVerified: true,
           draftValidated: task.validated,
+          conflictId: ++conflictSeq,
         }
         clearTaskTimer(record.nodeId)
         queuedTasks.get(record.nodeId)?.resolve({ status: 'conflict' })
@@ -449,7 +480,7 @@ function settle(record: NodeSaveRecord, task: SaveTask, request: SaveRequestReco
   if (result.kind === 'conflict') {
     record.retryCount = 0
     record.outcomeUncertain = !result.conflict.serverVerified
-    record.conflict = { ...result.conflict, draftValidated: task.validated }
+    record.conflict = { ...result.conflict, draftValidated: task.validated, conflictId: ++conflictSeq }
     // Pause this node: a queued sibling task would write past an unresolved
     // conflict, so it ends here with the same verdict.
     clearTaskTimer(record.nodeId)
@@ -473,6 +504,7 @@ function settle(record: NodeSaveRecord, task: SaveTask, request: SaveRequestReco
       keepalive: task.keepalive,
       expectedRevision: request.expectedRevision,
       inheritOwnSuccess: task.inheritOwnSuccess,
+      conflictLicense: task.conflictLicense,
       editCount: task.editCount,
       resolve: () => {},
     }
@@ -519,11 +551,13 @@ export function clearNodeConflictIf(nodeId: string, expected: ConflictedSave): b
   return true
 }
 
-/** Swaps the node's conflict for a fresh copy when the original is intact. */
-export function replaceNodeConflictIf(nodeId: string, expected: ConflictedSave, fresh: ConflictedSave): ConflictedSave | null {
+/** Swaps the node's conflict for a fresh copy when the original is intact.
+ * A re-read refreshes the server fields only: the id and the draft verdict
+ * stay as captured, so an outstanding keep-mine license keeps its grant. */
+export function replaceNodeConflictIf(nodeId: string, expected: ConflictedSave, fresh: SaveConflict): ConflictedSave | null {
   const record = records.get(nodeId)
   if (!record || record.conflict !== expected) return null
-  record.conflict = { ...fresh }
+  record.conflict = { ...fresh, draftValidated: expected.draftValidated, conflictId: expected.conflictId }
   return record.conflict
 }
 
@@ -539,6 +573,7 @@ export function resetSaveSessionForTests(): void {
   sessionId = 1
   taskCounter = 0
   requestCounter = 0
+  conflictSeq = 0
   deps = null
   sending = false
   records.clear()

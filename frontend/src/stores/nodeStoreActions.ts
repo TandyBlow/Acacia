@@ -121,8 +121,8 @@ export function createNodeStoreActions(
       if (currentSessionId() !== sessionAtStart) return null;
       if (getNodeConflict(nodeId) !== original) return null;
       nodeCache.setCache(nodeId, context);
-      // The re-read refreshes the server fields; the draft snapshot and its
-      // validation verdict stay as captured.
+      // The re-read refreshes the server fields; the draft snapshot, its
+      // validation verdict, and the stable conflict id stay as captured.
       const fresh: ConflictedSave = {
         nodeId,
         draftContent: original.draftContent,
@@ -130,6 +130,7 @@ export function createNodeStoreActions(
         serverRevision: context.nodeInfo?.revision ?? 0,
         serverVerified: true,
         draftValidated: original.draftValidated,
+        conflictId: original.conflictId,
       };
       return replaceNodeConflictIf(nodeId, original, fresh);
     } catch (error) {

@@ -248,13 +248,24 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
     // The per-node cleanup left B's conflict exactly as captured.
     expect(getNodeConflict(NODE_B)?.nodeId).toBe(NODE_B);
 
-    // A later save attempt for B therefore lands in a fresh 412 — it is
-    // never sent blindly against the captured revision.
-    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
-    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_B, 'B server v2', 2));
-    await save.enqueueSave(NODE_B, 'B draft retry', { force: true, revision: 1 }).done;
+    // A later PLAIN save attempt for B is refused at the door while the
+    // conflict is open — it is never sent, blindly or otherwise. Only a
+    // licensed keep-mine write may go out.
+    const retry = save.enqueueSave(NODE_B, 'B draft retry', { force: true, revision: 1 });
+    await expect(retry.done).resolves.toEqual({ status: 'conflict' });
     await vi.runAllTimersAsync();
+    expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(2);
+    expect(getNodeConflict(NODE_B)?.serverRevision).toBe(1);
+
+    // The licensed keep-mine write — clicked while B is on screen — passes
+    // and lands against the captured revision.
+    mockAdapter.updateNodeContent!.mockResolvedValueOnce({ revision: 2 } as never);
+    ctx.activeNode.value = { id: NODE_B, name: NODE_B, content: 'B saved', parentId: null, sortOrder: 0, revision: 1 };
+    ctx.draft.value = 'B draft';
+    const kept = await save.resolveConflictKeepMine();
+    expect(kept).toBe(true);
     expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(3);
-    expect(getNodeConflict(NODE_B)?.serverRevision).toBe(2);
+    expect(mockAdapter.updateNodeContent.mock.calls[2][1]).toBe('B draft');
+    expect(getNodeConflict(NODE_B)).toBeNull();
   });
 });

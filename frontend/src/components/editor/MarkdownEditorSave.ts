@@ -163,14 +163,16 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         console.error('[MarkdownEditor] keep-mine refused: snapshot failed the parse-integrity check')
         return false
       }
-      // The write carries the captured server revision: a moved server
-      // answers 412 again instead of accepting a stale overwrite. While the
-      // write is queued or in flight the banner stays — the conflict is not
-      // resolved until the server confirms.
+      // The write carries the captured server revision AND the conflict id
+      // as its write license: a moved server answers 412 again, and a
+      // fresher capture (new id) revokes the grant before anything is
+      // sent. While the write is queued or in flight the banner stays —
+      // the conflict is not resolved until the server confirms.
       const { done } = enqueueNodeSave(nodeId, content, {
         force: true,
         validated,
         revision: conflict.serverRevision,
+        conflictLicense: conflict.conflictId,
       })
       const outcome = await done
       if (outcome.status === 'saved') {

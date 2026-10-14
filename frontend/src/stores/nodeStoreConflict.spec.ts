@@ -92,10 +92,12 @@ describe('refreshConflictCopy (real store + real registry + real node cache)', (
     );
     const reRead = store.refreshConflictCopy(nodeId);
 
-    // Keep-mine lands while the GET is in flight: server and cache reach
-    // revision 2, and the conflict is gone.
+    // Keep-mine lands (licensed by the open conflict) while the GET is in
+    // flight: server and cache reach revision 2, and the conflict is gone.
     mockAdapter.updateNodeContent!.mockResolvedValueOnce({ revision: 2 } as never);
-    await enqueueNodeSave(nodeId, 'draft B wins', { force: true, validated: true, revision: 1 }).done;
+    await enqueueNodeSave(nodeId, 'draft B wins', {
+      force: true, validated: true, revision: 1, conflictLicense: getNodeConflict(nodeId)!.conflictId,
+    }).done;
     expect(getCachedRevision(nodeId)).toBe(2);
     expect(getNodeConflict(nodeId)).toBeNull();
 
