@@ -237,7 +237,24 @@ export function prepareNodeView(nodeId: string, seedContent: string, seedRevisio
     existing.draft = seedContent
     return seedContent
   }
-  return existing.draft
+  // Only a record with NOTHING at stake may be refreshed from the fresh
+  // read. Pending unsaved edits, queued or in-flight work, a task still
+  // resolving its write base, an open conflict, or an unknown outcome all
+  // mean the server state is not settled enough to overwrite — the draft
+  // (and its base version) stays.
+  const pending =
+    existing.draft !== existing.confirmedContent
+    || queuedTasks.has(nodeId)
+    || inFlightRequests.has(nodeId)
+    || inFlightTasks.has(nodeId)
+    || existing.conflict != null
+    || existing.outcomeUncertain
+  if (pending) return existing.draft
+  existing.confirmedContent = seedContent
+  existing.confirmedRevision = seedRevision
+  existing.confirmedSeeded = true
+  existing.draft = seedContent
+  return seedContent
 }
 
 /** Mirrors the editor draft into the node's record, counting edits. */

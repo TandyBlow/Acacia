@@ -23,7 +23,7 @@ const mockAdapter: CoreDataAdapter = {
   clearCache: vi.fn(),
 };
 
-import { invalidateAll, setCache } from '../../services/nodeCache';
+import { getCached, invalidateAll, setCache } from '../../services/nodeCache';
 import { getNodeConflict, resetSaveSessionForTests } from '../../services/saveSession';
 import { useNodeStore, setDataAdapter } from '../../stores/nodeStore';
 import { mountEditorHarness } from './editorTestHarness';
@@ -92,12 +92,29 @@ describe('MarkdownEditorWatchers (mounted component)', () => {
     expect(callsForA).toHaveLength(1);
     expect(callsForA[0][1]).toBe('A pending unsaved');
 
-    // Back to A: the preserved draft comes back, already confirmed by the
-    // background save.
-    h.ctx.activeNode.value = { id: NODE_A, content: 'A saved', parentId: null, sortOrder: 0, revision: 2 };
+    // Back to A through the real navigation path: the node context comes
+    // from the cache, which the background save already updated.
+    h.ctx.activeNode.value = { ...getCached(NODE_A)!.nodeInfo! };
     await nextTick();
     expect(h.ctx.draft.value).toBe('A pending unsaved');
     expect(h.ctx.lastSavedContent.value).toBe('A pending unsaved');
+  });
+
+  it('switching back to an unmodified node shows the re-read server content, not a stale record', async () => {
+    const h = await mountNode({ id: NODE_A, content: 'A saved' });
+
+    h.ctx.activeNode.value = { id: NODE_B, content: 'B saved', parentId: null, sortOrder: 0, revision: 1 };
+    setCache(NODE_B, contextOf(NODE_B, 'B saved', 1));
+    await nextTick();
+
+    // While away, a re-read fetches a newer server draft for A (the cache
+    // and the store's node context move together, as refreshCurrentNode does).
+    setCache(NODE_A, contextOf(NODE_A, 'A server v2', 2));
+
+    h.ctx.activeNode.value = { ...getCached(NODE_A)!.nodeInfo! };
+    await nextTick();
+    expect(h.ctx.draft.value).toBe('A server v2');
+    expect(h.ctx.lastSavedContent.value).toBe('A server v2');
   });
 
   it('a conflict for the active node raises the banner, hides it on switch-away, restores it on switch-back', async () => {

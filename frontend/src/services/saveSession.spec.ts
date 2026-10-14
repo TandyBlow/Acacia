@@ -405,6 +405,40 @@ describe('saveSession registry', () => {
     expect(record.draft).toBe('loaded text');
   });
 
+  it('switch-back refreshes a clean record from the fresh read and keeps anything at stake', async () => {
+    let release: ((result: SaveWriteResult) => void) | null = null;
+    const { write } = setup();
+    prepareNodeView('n1', 'loaded', 1);
+
+    // Clean record: the fresh read wins, content AND revision.
+    expect(prepareNodeView('n1', 'fresh from server', 7)).toBe('fresh from server');
+    const record = getNodeRecord('n1')!;
+    expect(record.confirmedContent).toBe('fresh from server');
+    expect(record.confirmedRevision).toBe(7);
+
+    // Unknown outcome: the server state is not settled — keep the record.
+    record.outcomeUncertain = true;
+    expect(prepareNodeView('n1', 'newer', 8)).toBe('fresh from server');
+    expect(record.confirmedRevision).toBe(7);
+    record.outcomeUncertain = false;
+
+    // Open conflict: keep.
+    record.conflict = { nodeId: 'n1', draftContent: 'd', serverContent: 's', serverRevision: 1, serverVerified: true, draftValidated: true, conflictId: 1 };
+    expect(prepareNodeView('n1', 'newer', 8)).toBe('fresh from server');
+    record.conflict = null;
+
+    // A task still resolving its write base counts as pending too.
+    write.mockImplementationOnce(
+      () => new Promise<SaveWriteResult>(() => { /* hangs */ }),
+    );
+    const saving = enqueueNodeSave('n1', 'edited', { validated: true, force: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(prepareNodeView('n1', 'newer', 8)).toBe('fresh from server');
+    release = null;
+    resetSaveSessionForTests();
+    void saving;
+  });
+
   it('whenNodeIdle answers after the write lands, or session-ended on logout', async () => {
     let release: ((result: SaveWriteResult) => void) | null = null;
     const { write } = setup();
