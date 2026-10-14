@@ -1,0 +1,1125 @@
+{
+  "schemaVersion": 1,
+  "kind": "editor-actions",
+  "createdAt": "2026-10-14T15:26:51.345Z",
+  "options": {
+    "url": "https://acacia.tandyblow.top/",
+    "label": "production-editor-2026-10-14",
+    "mode": "editor-actions",
+    "settleMs": 1000
+  },
+  "environment": {
+    "browser": "155.0.4283.45",
+    "channel": "msedge",
+    "headless": true,
+    "os": "win32 10.0.26200",
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700H",
+    "logicalCPUs": 20,
+    "localGitCommit": "0e197bffedf3fcee74a9119d3472d75f7d02bf1d"
+  },
+  "meta": {
+    "docId": "258ecc29-0908-43ee-b47c-e88fbb38baee",
+    "docChars": 10935,
+    "switchDocId": "21f4826c-5e49-49d2-8377-1e855b97d917",
+    "method": "storageState 登录；文档开合经 store.loadNode；输入为真实键盘事件；粘贴为合成 ClipboardEvent(text/plain)",
+    "saveVerificationAfterAll": {
+      "revision": 3,
+      "contentLength": 10935
+    }
+  },
+  "samples": [
+    {
+      "run": 1,
+      "label": "打开1.1万字测试文档",
+      "navigationChanged": false,
+      "performance": {
+        "now": 13378.300000190735,
+        "timeOrigin": 1791991611930.5,
+        "url": "https://acacia.tandyblow.top/",
+        "title": "Acacia",
+        "appVersion": "Acacia v0.1.381",
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "dpr": 1
+        },
+        "navigation": {
+          "name": "https://acacia.tandyblow.top/",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 8269.60000038147,
+          "navigationId": 7827,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "zstd",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.3000001907348633,
+          "domainLookupStart": 1.3000001907348633,
+          "domainLookupEnd": 1.3000001907348633,
+          "connectStart": 243.80000019073486,
+          "secureConnectionStart": 246,
+          "connectEnd": 1077.5,
+          "requestStart": 1077.6000003814697,
+          "responseStart": 1632.1000003814697,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 1632.1000003814697,
+          "responseEnd": 1633.5,
+          "transferSize": 1000,
+          "encodedBodySize": 700,
+          "decodedBodySize": 1231,
+          "responseStatus": 200,
+          "serverTiming": [
+            {
+              "name": "cfCacheStatus",
+              "duration": 0,
+              "description": "DYNAMIC"
+            },
+            {
+              "name": "cfEdge",
+              "duration": 68,
+              "description": ""
+            },
+            {
+              "name": "cfOrigin",
+              "duration": 82,
+              "description": ""
+            }
+          ],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 3100.7000002861023,
+          "domContentLoadedEventStart": 8267.900000095367,
+          "domContentLoadedEventEnd": 8268,
+          "domComplete": 8269.400000095367,
+          "loadEventStart": 8269.400000095367,
+          "loadEventEnd": 8269.60000038147,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        },
+        "fcp_ms": 10916,
+        "lcp_snapshot_ms": null,
+        "editor_present": true,
+        "editor_text_length": 11381,
+        "topElement": "P.",
+        "longtasks": [],
+        "interactions": [],
+        "supported": [],
+        "resources": [
+          {
+            "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+            "initiatorType": "fetch",
+            "startTime": 10942.400000095367,
+            "duration": 751.3000001907349,
+            "transferSize": 1991,
+            "encodedBodySize": 1691,
+            "decodedBodySize": 28831,
+            "workerStart": 0,
+            "responseStatus": 200
+          },
+          {
+            "url": "https://acacia.tandyblow.top/assets/TreeLeaves01-D05xhd3T.png",
+            "initiatorType": "img",
+            "startTime": 11861.10000038147,
+            "duration": 834,
+            "transferSize": 42972,
+            "encodedBodySize": 42672,
+            "decodedBodySize": 42672,
+            "workerStart": 0,
+            "responseStatus": 200
+          },
+          {
+            "url": "https://acacia.tandyblow.top/assets/TreeLeaves02-CYcVkUHT.png",
+            "initiatorType": "img",
+            "startTime": 11861.10000038147,
+            "duration": 1186.5999999046326,
+            "transferSize": 106416,
+            "encodedBodySize": 106116,
+            "decodedBodySize": 106116,
+            "workerStart": 0,
+            "responseStatus": 200
+          },
+          {
+            "url": "https://acacia.tandyblow.top/assets/TreeLeaves03-leAIhk21.png",
+            "initiatorType": "img",
+            "startTime": 11861.200000286102,
+            "duration": 1081.9000000953674,
+            "transferSize": 49229,
+            "encodedBodySize": 48929,
+            "decodedBodySize": 48929,
+            "workerStart": 0,
+            "responseStatus": 200
+          }
+        ],
+        "store": {
+          "active": "258ecc29-0908-43ee-b47c-e88fbb38baee",
+          "view": "display"
+        }
+      },
+      "note": {
+        "openMs": 1423
+      }
+    },
+    {
+      "run": 2,
+      "label": "连续输入490字并观察自动保存",
+      "navigationChanged": false,
+      "performance": {
+        "now": 35078.5,
+        "timeOrigin": 1791991611930.5,
+        "url": "https://acacia.tandyblow.top/",
+        "title": "Acacia",
+        "appVersion": "Acacia v0.1.381",
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "dpr": 1
+        },
+        "navigation": {
+          "name": "https://acacia.tandyblow.top/",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 8269.60000038147,
+          "navigationId": 7827,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "zstd",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.3000001907348633,
+          "domainLookupStart": 1.3000001907348633,
+          "domainLookupEnd": 1.3000001907348633,
+          "connectStart": 243.80000019073486,
+          "secureConnectionStart": 246,
+          "connectEnd": 1077.5,
+          "requestStart": 1077.6000003814697,
+          "responseStart": 1632.1000003814697,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 1632.1000003814697,
+          "responseEnd": 1633.5,
+          "transferSize": 1000,
+          "encodedBodySize": 700,
+          "decodedBodySize": 1231,
+          "responseStatus": 200,
+          "serverTiming": [
+            {
+              "name": "cfCacheStatus",
+              "duration": 0,
+              "description": "DYNAMIC"
+            },
+            {
+              "name": "cfEdge",
+              "duration": 68,
+              "description": ""
+            },
+            {
+              "name": "cfOrigin",
+              "duration": 82,
+              "description": ""
+            }
+          ],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 3100.7000002861023,
+          "domContentLoadedEventStart": 8267.900000095367,
+          "domContentLoadedEventEnd": 8268,
+          "domComplete": 8269.400000095367,
+          "loadEventStart": 8269.400000095367,
+          "loadEventEnd": 8269.60000038147,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        },
+        "fcp_ms": 10916,
+        "lcp_snapshot_ms": null,
+        "editor_present": true,
+        "editor_text_length": 11660,
+        "topElement": "DIV.tiptap ProseMirror editor-prose ProseMir",
+        "longtasks": [],
+        "interactions": [],
+        "supported": [],
+        "resources": [
+          {
+            "url": "https://acacia.tandyblow.top/api/nodes/:id/content",
+            "initiatorType": "fetch",
+            "startTime": 14553.700000286102,
+            "duration": 983,
+            "transferSize": 395,
+            "encodedBodySize": 95,
+            "decodedBodySize": 95,
+            "workerStart": 14554.10000038147,
+            "responseStatus": 428
+          },
+          {
+            "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+            "initiatorType": "fetch",
+            "startTime": 15538.900000095367,
+            "duration": 485.5,
+            "transferSize": 1991,
+            "encodedBodySize": 1691,
+            "decodedBodySize": 28831,
+            "workerStart": 15539.300000190735,
+            "responseStatus": 200
+          },
+          {
+            "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+            "initiatorType": "fetch",
+            "startTime": 33561.800000190735,
+            "duration": 499,
+            "transferSize": 1991,
+            "encodedBodySize": 1691,
+            "decodedBodySize": 28831,
+            "workerStart": 33562.2000002861,
+            "responseStatus": 200
+          }
+        ],
+        "store": {
+          "active": "258ecc29-0908-43ee-b47c-e88fbb38baee",
+          "view": "display"
+        }
+      },
+      "note": {
+        "editorLenAfterType": 11660,
+        "saveWrites": [
+          {
+            "status": 428,
+            "at": 1791991627470
+          }
+        ],
+        "serverAfter": {
+          "revision": 3,
+          "contentLength": 10935
+        }
+      }
+    },
+    {
+      "run": 3,
+      "label": "粘贴2204字符混合内容并观察自动保存",
+      "navigationChanged": false,
+      "performance": {
+        "now": 56723.90000009537,
+        "timeOrigin": 1791991611930.5,
+        "url": "https://acacia.tandyblow.top/",
+        "title": "Acacia",
+        "appVersion": "Acacia v0.1.381",
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "dpr": 1
+        },
+        "navigation": {
+          "name": "https://acacia.tandyblow.top/",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 8269.60000038147,
+          "navigationId": 7827,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "zstd",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.3000001907348633,
+          "domainLookupStart": 1.3000001907348633,
+          "domainLookupEnd": 1.3000001907348633,
+          "connectStart": 243.80000019073486,
+          "secureConnectionStart": 246,
+          "connectEnd": 1077.5,
+          "requestStart": 1077.6000003814697,
+          "responseStart": 1632.1000003814697,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 1632.1000003814697,
+          "responseEnd": 1633.5,
+          "transferSize": 1000,
+          "encodedBodySize": 700,
+          "decodedBodySize": 1231,
+          "responseStatus": 200,
+          "serverTiming": [
+            {
+              "name": "cfCacheStatus",
+              "duration": 0,
+              "description": "DYNAMIC"
+            },
+            {
+              "name": "cfEdge",
+              "duration": 68,
+              "description": ""
+            },
+            {
+              "name": "cfOrigin",
+              "duration": 82,
+              "description": ""
+            }
+          ],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 3100.7000002861023,
+          "domContentLoadedEventStart": 8267.900000095367,
+          "domContentLoadedEventEnd": 8268,
+          "domComplete": 8269.400000095367,
+          "loadEventStart": 8269.400000095367,
+          "loadEventEnd": 8269.60000038147,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        },
+        "fcp_ms": 10916,
+        "lcp_snapshot_ms": null,
+        "editor_present": true,
+        "editor_text_length": 13888,
+        "topElement": "DIV.tiptap ProseMirror editor-prose ProseMir",
+        "longtasks": [],
+        "interactions": [],
+        "supported": [],
+        "resources": [
+          {
+            "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+            "initiatorType": "fetch",
+            "startTime": 55263.800000190735,
+            "duration": 453.69999980926514,
+            "transferSize": 1991,
+            "encodedBodySize": 1691,
+            "decodedBodySize": 28831,
+            "workerStart": 55264,
+            "responseStatus": 200
+          }
+        ],
+        "store": {
+          "active": "258ecc29-0908-43ee-b47c-e88fbb38baee",
+          "view": "display"
+        }
+      },
+      "note": {
+        "saveWrites": [],
+        "serverAfter": {
+          "revision": 3,
+          "contentLength": 10935
+        }
+      }
+    },
+    {
+      "run": 4,
+      "label": "切换到轻量文档",
+      "navigationChanged": false,
+      "performance": {
+        "now": 58528.60000038147,
+        "timeOrigin": 1791991611930.5,
+        "url": "https://acacia.tandyblow.top/",
+        "title": "Acacia",
+        "appVersion": "Acacia v0.1.381",
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "dpr": 1
+        },
+        "navigation": {
+          "name": "https://acacia.tandyblow.top/",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 8269.60000038147,
+          "navigationId": 7827,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "zstd",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.3000001907348633,
+          "domainLookupStart": 1.3000001907348633,
+          "domainLookupEnd": 1.3000001907348633,
+          "connectStart": 243.80000019073486,
+          "secureConnectionStart": 246,
+          "connectEnd": 1077.5,
+          "requestStart": 1077.6000003814697,
+          "responseStart": 1632.1000003814697,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 1632.1000003814697,
+          "responseEnd": 1633.5,
+          "transferSize": 1000,
+          "encodedBodySize": 700,
+          "decodedBodySize": 1231,
+          "responseStatus": 200,
+          "serverTiming": [
+            {
+              "name": "cfCacheStatus",
+              "duration": 0,
+              "description": "DYNAMIC"
+            },
+            {
+              "name": "cfEdge",
+              "duration": 68,
+              "description": ""
+            },
+            {
+              "name": "cfOrigin",
+              "duration": 82,
+              "description": ""
+            }
+          ],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 3100.7000002861023,
+          "domContentLoadedEventStart": 8267.900000095367,
+          "domContentLoadedEventEnd": 8268,
+          "domComplete": 8269.400000095367,
+          "loadEventStart": 8269.400000095367,
+          "loadEventEnd": 8269.60000038147,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        },
+        "fcp_ms": 10916,
+        "lcp_snapshot_ms": null,
+        "editor_present": true,
+        "editor_text_length": 11,
+        "topElement": "DIV.editor-input",
+        "longtasks": [],
+        "interactions": [],
+        "supported": [],
+        "resources": [
+          {
+            "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+            "initiatorType": "fetch",
+            "startTime": 56745.2000002861,
+            "duration": 451.7999997138977,
+            "transferSize": 509,
+            "encodedBodySize": 209,
+            "decodedBodySize": 219,
+            "workerStart": 56745.5,
+            "responseStatus": 200
+          },
+          {
+            "url": "https://acacia.tandyblow.top/api/tree",
+            "initiatorType": "fetch",
+            "startTime": 57501.10000038147,
+            "duration": 443.2999997138977,
+            "transferSize": 1986,
+            "encodedBodySize": 1686,
+            "decodedBodySize": 4748,
+            "workerStart": 57501.40000009537,
+            "responseStatus": 200
+          }
+        ],
+        "store": {
+          "active": "21f4826c-5e49-49d2-8377-1e855b97d917",
+          "view": "display"
+        }
+      },
+      "note": {
+        "openMs": 774
+      }
+    },
+    {
+      "run": 5,
+      "label": "切回1.1万字文档",
+      "navigationChanged": false,
+      "performance": {
+        "now": 60188.60000038147,
+        "timeOrigin": 1791991611930.5,
+        "url": "https://acacia.tandyblow.top/",
+        "title": "Acacia",
+        "appVersion": "Acacia v0.1.381",
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "dpr": 1
+        },
+        "navigation": {
+          "name": "https://acacia.tandyblow.top/",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 8269.60000038147,
+          "navigationId": 7827,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "h2",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "zstd",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.3000001907348633,
+          "domainLookupStart": 1.3000001907348633,
+          "domainLookupEnd": 1.3000001907348633,
+          "connectStart": 243.80000019073486,
+          "secureConnectionStart": 246,
+          "connectEnd": 1077.5,
+          "requestStart": 1077.6000003814697,
+          "responseStart": 1632.1000003814697,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 1632.1000003814697,
+          "responseEnd": 1633.5,
+          "transferSize": 1000,
+          "encodedBodySize": 700,
+          "decodedBodySize": 1231,
+          "responseStatus": 200,
+          "serverTiming": [
+            {
+              "name": "cfCacheStatus",
+              "duration": 0,
+              "description": "DYNAMIC"
+            },
+            {
+              "name": "cfEdge",
+              "duration": 68,
+              "description": ""
+            },
+            {
+              "name": "cfOrigin",
+              "duration": 82,
+              "description": ""
+            }
+          ],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 3100.7000002861023,
+          "domContentLoadedEventStart": 8267.900000095367,
+          "domContentLoadedEventEnd": 8268,
+          "domComplete": 8269.400000095367,
+          "loadEventStart": 8269.400000095367,
+          "loadEventEnd": 8269.60000038147,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {
+            "randomizedTriggerRate": 0.4994798,
+            "value": "high"
+          }
+        },
+        "fcp_ms": 10916,
+        "lcp_snapshot_ms": null,
+        "editor_present": true,
+        "editor_text_length": 13888,
+        "topElement": "P.",
+        "longtasks": [],
+        "interactions": [],
+        "supported": [],
+        "resources": [
+          {
+            "url": "https://acacia.tandyblow.top/api/tree",
+            "initiatorType": "fetch",
+            "startTime": 59082.40000009537,
+            "duration": 445.30000019073486,
+            "transferSize": 1986,
+            "encodedBodySize": 1686,
+            "decodedBodySize": 4748,
+            "workerStart": 59082.7000002861,
+            "responseStatus": 200
+          },
+          {
+            "url": "https://acacia.tandyblow.top/api/tree",
+            "initiatorType": "fetch",
+            "startTime": 59133.90000009537,
+            "duration": 1008.5,
+            "transferSize": 1986,
+            "encodedBodySize": 1686,
+            "decodedBodySize": 4748,
+            "workerStart": 59134.2000002861,
+            "responseStatus": 200
+          }
+        ],
+        "store": {
+          "active": "258ecc29-0908-43ee-b47c-e88fbb38baee",
+          "view": "display"
+        }
+      },
+      "note": {
+        "openMs": 630
+      }
+    }
+  ],
+  "records": [
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:03.632Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991622873.48,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.26,
+        "responseStart": 750.216,
+        "responseEnd": 751.361
+      },
+      "scenario": "打开1.1万字测试文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:03.640Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/style",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991622739.003,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.426,
+        "responseStart": 885.638,
+        "responseEnd": 887.25
+      },
+      "scenario": "打开1.1万字测试文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:03.640Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/quiz-stats",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991622744,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.33,
+        "responseStart": 881.284,
+        "responseEnd": 882.228
+      },
+      "scenario": "打开1.1万字测试文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:04.628Z",
+      "method": "GET",
+      "resourceType": "image",
+      "url": "https://acacia.tandyblow.top/assets/TreeLeaves01-D05xhd3T.png",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991623792.0872,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.291,
+        "responseStart": 694.381,
+        "responseEnd": 834.071
+      },
+      "scenario": "打开1.1万字测试文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:04.875Z",
+      "method": "GET",
+      "resourceType": "image",
+      "url": "https://acacia.tandyblow.top/assets/TreeLeaves03-leAIhk21.png",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991623793.379,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.262,
+        "responseStart": 693.284,
+        "responseEnd": 1081.844
+      },
+      "scenario": "打开1.1万字测试文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:04.980Z",
+      "method": "GET",
+      "resourceType": "image",
+      "url": "https://acacia.tandyblow.top/assets/TreeLeaves02-CYcVkUHT.png",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991623792.929,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.211,
+        "responseStart": 693.916,
+        "responseEnd": 1186.546
+      },
+      "scenario": "打开1.1万字测试文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:06.567Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/tree",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991624054.6328,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.246,
+        "responseStart": 2131.117,
+        "responseEnd": 2511.929
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:06.572Z",
+      "method": "GET",
+      "resourceType": "font",
+      "url": "https://acacia.tandyblow.top/assets/KaTeX_Size1-Regular-mCD8mA8B.woff2",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991624182.64,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.104,
+        "responseStart": 2386.049,
+        "responseEnd": 2386.42
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:06.991Z",
+      "method": "GET",
+      "resourceType": "image",
+      "url": "https://acacia.tandyblow.top/api/backgrounds/ai/:id.png",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991623793.5332,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.153,
+        "responseStart": 692.405,
+        "responseEnd": 3194.298
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:06.991Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/tree",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991624167.128,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 2019.826,
+        "responseStart": 2821.028,
+        "responseEnd": 2822.237
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:06.994Z",
+      "method": "GET",
+      "resourceType": "font",
+      "url": "https://acacia.tandyblow.top/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991624180.9421,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.135,
+        "responseStart": 2810.449,
+        "responseEnd": 2811.289
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:06.996Z",
+      "method": "GET",
+      "resourceType": "font",
+      "url": "https://acacia.tandyblow.top/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991624180.997,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.685,
+        "responseStart": 2810.752,
+        "responseEnd": 2811.076
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "console",
+      "at": "2026-10-14T15:27:07.472Z",
+      "level": "error",
+      "message": "Failed to load resource: the server responded with a status of 428 ()",
+      "source": "https://acacia.tandyblow.top/api/nodes/:id/content",
+      "line": 0,
+      "column": 0,
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:07.473Z",
+      "method": "PATCH",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/nodes/:id/content",
+      "status": 428,
+      "timing": {
+        "startTime": 1791991626485.6602,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.293,
+        "responseStart": 981.435,
+        "responseEnd": 983.384
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:07.957Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991627470.232,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.325,
+        "responseStart": 484.07,
+        "responseEnd": 485.668
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:25.994Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991645493.3728,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.311,
+        "responseStart": 497.509,
+        "responseEnd": 499.036
+      },
+      "scenario": "连续输入490字并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:47.650Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991667194.9512,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.282,
+        "responseStart": 452.614,
+        "responseEnd": 453.849
+      },
+      "scenario": "粘贴2204字符混合内容并观察自动保存"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:49.131Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991668676.5708,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.255,
+        "responseStart": 450.038,
+        "responseEnd": 451.831
+      },
+      "scenario": "切换到轻量文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:49.878Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/tree",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991669432.4749,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.291,
+        "responseStart": 441.954,
+        "responseEnd": 444.926
+      },
+      "scenario": "切换到轻量文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:50.487Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/tree",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991669443.5532,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 431.835,
+        "responseStart": 1038.664,
+        "responseEnd": 1040.306
+      },
+      "scenario": "切回1.1万字文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:51.460Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/tree",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991671013.9182,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 0.425,
+        "responseStart": 443.783,
+        "responseEnd": 445.421
+      },
+      "scenario": "切回1.1万字文档"
+    },
+    {
+      "kind": "request",
+      "at": "2026-10-14T15:27:52.076Z",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://acacia.tandyblow.top/api/tree",
+      "status": 200,
+      "timing": {
+        "startTime": 1791991671065.154,
+        "domainLookupStart": -1,
+        "domainLookupEnd": -1,
+        "connectStart": -1,
+        "secureConnectionStart": -1,
+        "connectEnd": -1,
+        "requestStart": 393.367,
+        "responseStart": 1007.308,
+        "responseEnd": 1008.567
+      },
+      "scenario": "切回1.1万字文档"
+    }
+  ]
+}
