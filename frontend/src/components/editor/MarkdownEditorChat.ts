@@ -14,9 +14,10 @@ export function useMarkdownEditorChat(
     const newContent = currentContent
       ? currentContent + '\n\n' + note
       : note
-    const saved = await save.enqueueSave(nodeId, newContent)
-    if (!saved) {
-      console.error('[MarkdownEditor] appendKnowledgeNote save failed:', nodeId)
+    const { done } = save.enqueueSave(nodeId, newContent)
+    const outcome = await done
+    if (outcome.status !== 'saved') {
+      console.error('[MarkdownEditor] appendKnowledgeNote save failed:', nodeId, outcome.status)
       return
     }
     ctx.draft.value = newContent
@@ -63,9 +64,10 @@ export function useMarkdownEditorChat(
         // Auto-end: replace incremental appends with LLM-consolidated content
         if (result?.consolidated_content && ctx.activeNode.value) {
           const nodeId = ctx.activeNode.value.id
-          const saved = await save.enqueueSave(nodeId, result.consolidated_content)
-          if (!saved) {
-            console.error('[MarkdownEditor] consolidation save failed:', nodeId)
+          const { done } = save.enqueueSave(nodeId, result.consolidated_content)
+          const outcome = await done
+          if (outcome.status !== 'saved') {
+            console.error('[MarkdownEditor] consolidation save failed:', nodeId, outcome.status)
           } else {
             ctx.draft.value = result.consolidated_content
             if (ctx.activeNode.value) {
@@ -123,9 +125,10 @@ export function useMarkdownEditorChat(
       // Replace incremental knowledge_note appends with LLM-consolidated version
       if (result.consolidated_content && ctx.activeNode.value) {
         const nodeId = ctx.activeNode.value.id
-        const saved = await save.enqueueSave(nodeId, result.consolidated_content)
-        if (!saved) {
-          console.error('[MarkdownEditor] onEndConversation save failed:', nodeId)
+        const { done } = save.enqueueSave(nodeId, result.consolidated_content)
+        const outcome = await done
+        if (outcome.status !== 'saved') {
+          console.error('[MarkdownEditor] onEndConversation save failed:', nodeId, outcome.status)
         } else {
           ctx.draft.value = result.consolidated_content
           if (ctx.activeNode.value) {

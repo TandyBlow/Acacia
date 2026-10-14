@@ -1,14 +1,35 @@
 import { computed, ref, shallowRef } from 'vue'
+import type { Ref } from 'vue'
 // vue-3's Editor extends core's Editor; using the vue-3 type keeps this
 // assignable both to useEditor()'s return and to useNodeChat's setEditor().
 import type { Editor } from '@tiptap/vue-3'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useNodeStore } from '../../stores/nodeStore'
-import type { SaveConflict } from '../../stores/nodeStoreState'
+import { getNodeConflict, getNodeRecord } from '../../services/saveSession'
+import type { ConflictedSave } from '../../services/saveSession'
 import { useNodeChat } from '../../composables/useNodeChat'
 import { usePageTransition } from '../../composables/usePageTransition'
 import type { TreeNode } from '../../types/node'
+
+/**
+ * The editor-facing views of the save session: confirmed content and the
+ * open conflict of the CURRENT document, derived from its per-node record.
+ * There is no second writable copy to keep in sync — switching documents
+ * re-points both automatically, and a conflict captured for a background
+ * node shows its banner the moment that node comes back on screen.
+ */
+export function createEditorSaveViews(activeNode: Ref<{ id?: string } | null | undefined>) {
+  const saveConflict = computed<ConflictedSave | null>(() => {
+    const id = activeNode.value?.id
+    return id ? getNodeConflict(id) : null
+  })
+  const lastSavedContent = computed(() => {
+    const id = activeNode.value?.id
+    return id ? getNodeRecord(id)?.confirmedContent ?? '' : ''
+  })
+  return { saveConflict, lastSavedContent }
+}
 
 export interface UploadedFile {
   file_id: string
@@ -103,7 +124,7 @@ export function createMarkdownEditorContext() {
   const lastActiveNodeId = ref<string | null>(null)
   const editorRef = shallowRef<HTMLElement | null>(null)
   const draft = ref('')
-  const lastSavedContent = ref('')
+  const { saveConflict, lastSavedContent } = createEditorSaveViews(activeNode)
   const isApplyingExternalContent = ref(false)
   const isMigratingMath = ref(false)
   // True while the editor is showing the plain-text fallback because the saved
@@ -114,12 +135,6 @@ export function createMarkdownEditorContext() {
   // duplicated units). Blocks saving exactly like isParseDegraded and drives
   // the visible warning banner.
   const integrityIssueText = ref('')
-  // A save was rejected because the server holds a newer version (412/428).
-  // Carries the draft snapshot captured at conflict time plus its validation
-  // verdict, bound to the node — a later response after the user switched
-  // nodes must never apply another node's draft here. Only set while the
-  // conflicted node is the one on screen.
-  const saveConflict = ref<(SaveConflict & { draftValidated: boolean }) | null>(null)
   // Reassigned by createMarkdownEditorEditor later; composables must always
   // read ctx.editor.value at call time, never capture the initial ref.
   // Use shallowRef so Vue's UnwrapRef doesn't strip Editor's private members

@@ -33,8 +33,10 @@ export function useMarkdownEditorFile(
       // Rewrite image URLs to absolute backend URLs so they load in the editor
       fullText = fullText.replace(/\/file-images\//g, `${backendUrl}/file-images/`)
 
-      const saved = await save.enqueueSave(ctx.activeNode.value.id, fullText)
-      if (!saved) {
+      const { done } = save.enqueueSave(ctx.activeNode.value.id, fullText)
+      const outcome = await done
+      if (outcome.status !== 'saved') {
+        console.error('[MarkdownEditor] fillContentFromFile save failed:', outcome.status)
         ctx.errorMessage.value = ctx.t('editor.fillContentFailed')
         return
       }

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-// Conflict re-read semantics on the real store: refreshConflictCopy must
-// return the fresh copy for the caller to sync, and a response that lands
-// after the conflict settled must not roll the node cache back.
+// Conflict re-read semantics on the real store + the real save session
+// registry (mock network adapter): refreshConflictCopy must return the
+// fresh copy, and a response that lands after the conflict settled must
+// not roll the node cache back.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import type { NodeContext, NodeRecord, CoreDataAdapter } from '../types/node';
@@ -18,7 +19,7 @@ const mockAdapter: CoreDataAdapter = {
 
 // The REAL nodeCache: the rollback scenario is about its contents.
 import { getCachedRevision, getCached, setCache, invalidateAll } from '../services/nodeCache';
-import { resetSaveSessionForTests } from '../services/saveSession';
+import { configureSaveSession, enqueueNodeSave, getNodeConflict, resetSaveSessionForTests } from '../services/saveSession';
 import { useNodeStore, setDataAdapter } from './nodeStore';
 
 const nodeId = 'conflicted-node';
@@ -35,25 +36,30 @@ function contextOf(content: string, revision: number): NodeContext {
   return { nodeInfo, pathNodes: [], children: [] };
 }
 
-describe('refreshConflictCopy (real store + real node cache)', () => {
+describe('refreshConflictCopy (real store + real registry + real node cache)', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     setDataAdapter(mockAdapter);
+    resetSaveSessionForTests();
+    invalidateAll();
     vi.clearAllMocks();
   });
 
   it('re-reads an open conflict and returns the fresh verified copy', async () => {
     const store = useNodeStore();
+    configureSaveSession({
+      performWrite: (req) => store.saveNodeContent(req.nodeId, req.content, { keepalive: req.keepalive, expectedRevision: req.expectedRevision }),
+      resolveRevision: (id) => store.resolveNodeRevision(id),
+    });
     // First save hits 412; the capture GET fails, so the conflict carries
     // a stale-cache copy flagged unverified.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('read failed'));
-    await store.saveActiveNodeContent(nodeId, 'draft B', { force: true, revision: 0 });
-    expect(store.lastSaveConflict?.nodeId).toBe(nodeId);
-    expect(store.lastSaveConflict?.serverVerified).toBe(false);
+    await enqueueNodeSave(nodeId, 'draft B', { force: true, validated: true, revision: 0 }).done;
+    expect(getNodeConflict(nodeId)?.nodeId).toBe(nodeId);
+    expect(getNodeConflict(nodeId)?.serverVerified).toBe(false);
 
-    // The next re-read succeeds and returns the fresh copy for the caller
-    // to adopt.
+    // The next re-read succeeds and returns the fresh copy.
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf('server v2 fresh', 2));
     const fresh = await store.refreshConflictCopy(nodeId);
 
@@ -62,17 +68,22 @@ describe('refreshConflictCopy (real store + real node cache)', () => {
     expect(fresh?.serverRevision).toBe(2);
     expect(fresh?.serverVerified).toBe(true);
     expect(fresh?.draftContent).toBe('draft B');
+    expect(getNodeConflict(nodeId)?.serverContent).toBe('server v2 fresh');
     // The cache now reflects the live read too.
     expect(getCachedRevision(nodeId)).toBe(2);
   });
 
   it('a re-read landing after the conflict settled returns nothing and leaves the cache at the newer revision', async () => {
     const store = useNodeStore();
+    configureSaveSession({
+      performWrite: (req) => store.saveNodeContent(req.nodeId, req.content, { keepalive: req.keepalive, expectedRevision: req.expectedRevision }),
+      resolveRevision: (id) => store.resolveNodeRevision(id),
+    });
     // First save hits 412; the capture GET reads revision 1 and opens the
     // conflict with the cache at revision 1.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf('server v1', 1));
-    await store.saveActiveNodeContent(nodeId, 'draft B', { force: true, revision: 0 });
+    await enqueueNodeSave(nodeId, 'draft B', { force: true, validated: true, revision: 0 }).done;
 
     // A re-read starts; its GET hangs.
     let release: (() => void) | null = null;
@@ -84,10 +95,9 @@ describe('refreshConflictCopy (real store + real node cache)', () => {
     // Keep-mine lands while the GET is in flight: server and cache reach
     // revision 2, and the conflict is gone.
     mockAdapter.updateNodeContent!.mockResolvedValueOnce({ revision: 2 } as never);
-    const keepMine = await store.saveActiveNodeContent(nodeId, 'draft B wins', { force: true, revision: 1 });
-    expect(keepMine).toBe(true);
-    expect(store.lastSaveConflict).toBeNull();
+    await enqueueNodeSave(nodeId, 'draft B wins', { force: true, validated: true, revision: 1 }).done;
     expect(getCachedRevision(nodeId)).toBe(2);
+    expect(getNodeConflict(nodeId)).toBeNull();
 
     // The stale response (revision 1) arrives last.
     release!();

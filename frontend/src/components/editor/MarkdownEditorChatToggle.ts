@@ -30,8 +30,8 @@ export function useMarkdownEditorChatToggle(
         //     ? currentContent + '\n\n' + generatedContent.value
         //     : generatedContent.value;
         //   try {
-        //     await store.saveActiveNodeContent(activeNode.value.id, newContent);
-        //     lastSavedContent.value = newContent;
+        //     await save.enqueueSave(activeNode.value.id, newContent);
+        //     draft.value = newContent;
         //     draft.value = newContent;
         //     generatedContent.value = '';
         //   } catch { /* save failed, discard */ }

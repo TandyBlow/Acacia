@@ -2,9 +2,6 @@ import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { NodeRecord, TreeNode, ViewState, OfficialNodeSummary } from '../types/node';
 import { ViewStates } from '../types/node';
-import type { SaveConflict } from '../services/saveSession';
-
-export type { SaveConflict };
 
 export interface OfficialNodeContent {
   id: string;
@@ -33,12 +30,6 @@ export interface NodeStoreState {
   blockedParentIds: Ref<string[]>;
   isBusy: Ref<boolean>;
   errorMessage: Ref<string | null>;
-  /** Set when a save was rejected with 412/428 — the server holds a newer version. */
-  lastSaveConflict: Ref<SaveConflict | null>;
-  /** Open conflicts by node. lastSaveConflict mirrors the most recent one
-   * for display, but only this map is authoritative per node: another
-   * node's save starting or succeeding must not retire a pending conflict. */
-  pendingSaveConflicts: Map<string, SaveConflict>;
   hasAnyNodes: Ref<boolean>;
   dailyQuizVisible: Ref<boolean>;
   dailyQuizDueCount: Ref<number>;
@@ -65,8 +56,6 @@ export function createNodeStoreState(): NodeStoreState {
 
   const isBusy = ref(false);
   const errorMessage = ref<string | null>(null);
-  const lastSaveConflict = ref<SaveConflict | null>(null);
-  const pendingSaveConflicts = new Map<string, SaveConflict>();
 
   // 账号是否有任何知识点（乐观默认为 true，加载后确定）
   const hasAnyNodes = ref(true);
@@ -95,8 +84,6 @@ export function createNodeStoreState(): NodeStoreState {
     blockedParentIds,
     isBusy,
     errorMessage,
-    lastSaveConflict,
-    pendingSaveConflicts,
     hasAnyNodes,
     dailyQuizVisible,
     dailyQuizDueCount,

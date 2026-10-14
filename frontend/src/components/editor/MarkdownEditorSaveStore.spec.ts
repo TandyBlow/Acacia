@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Cross-module conflict handling: the editor save composable running on the
-// REAL pinia store (mock adapter). Pins the round-10 contract — another
-// node's save settling must not retire this node's pending conflict, so a
-// conflicted node can still re-read and adopt the server copy afterwards.
+// REAL pinia store and the REAL save session registry (mock network adapter).
+// Pins the per-node contract — another node's save settling must not retire
+// this node's pending conflict, so a conflicted node can still re-read and
+// adopt the server copy afterwards.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { ref } from 'vue';
@@ -22,9 +23,10 @@ const mockAdapter: CoreDataAdapter = {
 };
 
 import { getCached, getCachedRevision } from '../../services/nodeCache';
+import { getNodeConflict, resetSaveSessionForTests } from '../../services/saveSession';
 import { useNodeStore, setDataAdapter } from '../../stores/nodeStore';
+import { createEditorSaveViews } from './MarkdownEditorContext';
 import { useMarkdownEditorSave } from './MarkdownEditorSave';
-import type { MarkdownEditorContext } from './MarkdownEditorContext';
 
 const NODE_A = 'node-a';
 const NODE_B = 'node-b';
@@ -51,13 +53,13 @@ function makeEchoEditor() {
 }
 
 function makeCtx(store: ReturnType<typeof useNodeStore>) {
+  const activeNode = ref<{ id: string; content: string } | null>({ id: NODE_A, content: 'A saved' });
   return {
-    activeNode: ref<{ id: string; content: string } | null>({ id: NODE_A, content: 'A saved' }),
-    lastSavedContent: ref('A saved'),
+    activeNode,
+    ...createEditorSaveViews(activeNode),
     draft: ref(''),
     isParseDegraded: ref(false),
     integrityIssueText: ref(''),
-    saveConflict: ref(null),
     t: (key: string) => key,
     isApplyingExternalContent: ref(false),
     editor: ref(makeEchoEditor()),
@@ -65,22 +67,18 @@ function makeCtx(store: ReturnType<typeof useNodeStore>) {
   };
 }
 
-async function loadSave(ctx: ReturnType<typeof makeCtx>) {
-  const mod = await import('./MarkdownEditorSave');
-  return mod.useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
-}
-
 describe('save composable on the real store (per-node pending conflicts)', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     setDataAdapter(mockAdapter);
+    resetSaveSessionForTests();
     vi.clearAllMocks();
   });
 
   it('node B settling keeps node A\'s conflict alive: A re-reads and adopts the server copy', async () => {
     const store = useNodeStore();
     const ctx = makeCtx(store);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as never);
 
     // Node A's save hangs, then fails 412 with a failed capture GET —
     // an unverified conflict.
@@ -92,27 +90,26 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
 
     const saveA = save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
     // Node B queues behind A and then saves successfully.
-    save.enqueueSave(NODE_B, 'B content', { force: true });
+    save.enqueueSave(NODE_B, 'B content', { force: true, revision: 0 });
 
-    // The stale-412 response must reject, not resolve.
+    // The stale-412 response must reject into a conflict, not a retry.
+    await vi.waitFor(() => expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(1));
     releaseA!();
-    await saveA;
+    await saveA.done;
     // By the time saveA settles, node B's queued save has already run on
-    // the microtask queue and retired the global pointer. A's conflict
-    // survives in the per-node map — B's settle must not touch it.
+    // the microtask queue. A's conflict survives B's settle.
     await vi.waitFor(() => expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(store.lastSaveConflict).toBeNull());
-    expect(store.pendingSaveConflicts.get(NODE_A)?.nodeId).toBe(NODE_A);
-    expect(store.pendingSaveConflicts.get(NODE_A)?.serverVerified).toBe(false);
-    expect(store.pendingSaveConflicts.has(NODE_B)).toBe(false);
+    expect(getNodeConflict(NODE_A)?.nodeId).toBe(NODE_A);
+    expect(getNodeConflict(NODE_A)?.serverVerified).toBe(false);
+    expect(getNodeConflict(NODE_B)).toBeNull();
 
     // A's banner survives B's success; the capture read failed, so the
     // conflict is unverified.
     expect(ctx.saveConflict.value?.nodeId).toBe(NODE_A);
     expect(ctx.saveConflict.value?.serverVerified).toBe(false);
 
-    // The network is back: re-reading A reaches the server and returns the
-    // fresh copy.
+    // The network is back: re-reading A reaches the server and the
+    // adoption lands the fresh copy.
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server truth', 5));
     const taken = await save.resolveConflictTakeServer();
 
@@ -127,13 +124,13 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
   it('a re-read landing after node A\'s own keep-mine wins returns nothing and spares the newer cache', async () => {
     const store = useNodeStore();
     const ctx = makeCtx(store);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as never);
 
     // A hits 412; the capture reads revision 1 and opens a verified conflict.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server v1', 1));
     ctx.draft.value = 'A draft';
-    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 }).done;
     expect(ctx.saveConflict.value?.serverVerified).toBe(true);
 
     // A re-read starts; its GET hangs.
@@ -147,13 +144,11 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
     mockAdapter.updateNodeContent!.mockResolvedValueOnce({ revision: 2 } as never);
     const keepMine = await save.resolveConflictKeepMine();
     expect(keepMine).toBe(true);
-    expect(store.lastSaveConflict).toBeNull();
     expect(getCachedRevision(NODE_A)).toBe(2);
 
     // The stale response arrives last: no copy, cache untouched.
     release!();
-    const fresh = await reRead;
-    expect(fresh).toBeNull();
+    expect(await reRead).toBeNull();
     expect(getCachedRevision(NODE_A)).toBe(2);
     expect(getCached(NODE_A)?.nodeInfo?.content).toBe('A draft');
   });
@@ -161,25 +156,24 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
   it('a failed keep-mine on an unverified conflict keeps the re-read channel alive', async () => {
     const store = useNodeStore();
     const ctx = makeCtx(store);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as never);
     ctx.draft.value = 'A draft';
 
     // A hits 412; the capture GET fails — an unverified conflict.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('read failed'));
-    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 }).done;
     expect(ctx.saveConflict.value?.serverVerified).toBe(false);
 
-    // Keep-mine fails with a plain network error (no conflict information).
+    // Keep-mine fails with a plain network error (no conflict information):
+    // the write may have committed, so nothing claims to know the server.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(new Error('network down'));
     const kept = await save.resolveConflictKeepMine();
     expect(kept).toBe(false);
 
-    // The banner and the pending record survive, flagged unverified — the
-    // write may have committed, so nothing claims to know the server state.
     expect(ctx.saveConflict.value?.nodeId).toBe(NODE_A);
     expect(ctx.saveConflict.value?.serverVerified).toBe(false);
-    expect(store.pendingSaveConflicts.get(NODE_A)?.serverVerified).toBe(false);
+    expect(getNodeConflict(NODE_A)?.serverVerified).toBe(false);
 
     // The network is back: take-server re-reads (a real GET goes out) and
     // adopts the server copy.
@@ -194,13 +188,13 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
   it('a keep-mine that committed but lost its response re-reads rev 2 instead of adopting rev 1', async () => {
     const store = useNodeStore();
     const ctx = makeCtx(store);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as never);
     ctx.draft.value = 'A draft';
 
     // A hits 412; the capture GET succeeds — a verified conflict at rev 1.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server v1', 1));
-    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 }).done;
     expect(ctx.saveConflict.value?.serverVerified).toBe(true);
 
     // Keep-mine commits on the server (which moves to revision 2), but the
@@ -209,10 +203,10 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
     const kept = await save.resolveConflictKeepMine();
     expect(kept).toBe(false);
 
-    // The once-verified flag is invalidated on both the editor view and the
-    // store record: the old read predates a write that landed.
+    // The once-verified flag is invalidated on the registry record and the
+    // derived view: the old read predates a write that landed.
     expect(ctx.saveConflict.value?.serverVerified).toBe(false);
-    expect(store.pendingSaveConflicts.get(NODE_A)?.serverVerified).toBe(false);
+    expect(getNodeConflict(NODE_A)?.serverVerified).toBe(false);
 
     // Take-server therefore re-reads and adopts revision 2, never the
     // stale revision 1 copy the conflict was captured with.
@@ -224,43 +218,43 @@ describe('save composable on the real store (per-node pending conflicts)', () =>
     expect(getCachedRevision(NODE_A)).toBe(2);
   });
 
-  it('node A adopting its copy does not erase node B\'s conflict or trigger a B retry', async () => {
+  it('node A adopting its copy does not erase node B\'s conflict or blind-overwrite the server', async () => {
     vi.useFakeTimers();
     const store = useNodeStore();
     const ctx = makeCtx(store);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as never);
 
     // A saves first and hits 412 with a failed capture: an unverified
     // conflict, later resolved through the re-read.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('read failed'));
-    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 });
+    await save.enqueueSave(NODE_A, 'A draft', { force: true, revision: 0 }).done;
     expect(ctx.saveConflict.value?.nodeId).toBe(NODE_A);
 
-    // B then saves, hits 412, and its capture succeeds: the global pointer
-    // now points at B's conflict (A's banner is still up underneath).
+    // B then saves, hits 412, and its capture succeeds: B's conflict is
+    // recorded alongside A's.
     mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_B, 'B server v1', 1));
-    await save.enqueueSave(NODE_B, 'B draft', { force: true, revision: 0 });
-    expect(store.lastSaveConflict?.nodeId).toBe(NODE_B);
+    await save.enqueueSave(NODE_B, 'B draft', { force: true, revision: 0 }).done;
+    expect(getNodeConflict(NODE_A)?.nodeId).toBe(NODE_A);
+    expect(getNodeConflict(NODE_B)?.nodeId).toBe(NODE_B);
 
     // A adopts its server copy through the re-read.
     mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_A, 'A server v6', 6));
     const taken = await save.resolveConflictTakeServer();
     expect(taken).toBe(true);
-    expect(store.pendingSaveConflicts.has(NODE_A)).toBe(false);
+    expect(getNodeConflict(NODE_A)).toBeNull();
 
-    // The per-node cleanup left B's conflict exactly as captured — in the
-    // map AND as the global pointer. (The old unconditional clear emptied
-    // the pointer here, downgrading B's later failure into a blind retry.)
-    expect(store.pendingSaveConflicts.get(NODE_B)?.nodeId).toBe(NODE_B);
-    expect(store.lastSaveConflict?.nodeId).toBe(NODE_B);
+    // The per-node cleanup left B's conflict exactly as captured.
+    expect(getNodeConflict(NODE_B)?.nodeId).toBe(NODE_B);
 
-    // A later save attempt for B therefore lands in its conflict — not
-    // downgraded to a retry, so nothing overwrites the server with a
-    // stale draft against the captured revision.
-    await save.enqueueSave(NODE_B, 'B draft retry', { force: true, revision: 1 });
+    // A later save attempt for B therefore lands in a fresh 412 — it is
+    // never sent blindly against the captured revision.
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf(NODE_B, 'B server v2', 2));
+    await save.enqueueSave(NODE_B, 'B draft retry', { force: true, revision: 1 }).done;
     await vi.runAllTimersAsync();
     expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(3);
+    expect(getNodeConflict(NODE_B)?.serverRevision).toBe(2);
   });
 });

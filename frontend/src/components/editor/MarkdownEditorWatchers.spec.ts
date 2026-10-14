@@ -2,13 +2,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref, shallowRef } from 'vue';
 import type { MarkdownEditorContext } from './MarkdownEditorContext';
+import { createEditorSaveViews } from './MarkdownEditorContext';
 import type { MarkdownEditorSave } from './MarkdownEditorSave';
+import { resetSaveSessionForTests } from '../../services/saveSession';
+import type { SaveWriteResult } from '../../services/saveSession';
+import { useMarkdownEditorSave } from './MarkdownEditorSave';
 
 // migrateMathStrings walks editor.state/view, which the mock editor lacks.
 vi.mock('@tiptap/extension-mathematics', () => ({ migrateMathStrings: vi.fn() }));
 
 // Lifecycle registration is a component concern; the draft-watcher behavior
-// under test is not. Stub the hooks so the composable mounts standalone.
+// under test is not. (Real mount/unmount behavior is covered by the
+// acceptance scenarios spec with a mounted harness component.)
 vi.mock('vue', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue')>();
   return { ...actual, onMounted: () => undefined, onBeforeUnmount: () => undefined };
@@ -34,18 +39,20 @@ function makeEchoEditor() {
 }
 
 function makeCtx(nodeId: string | null, savedContent: string) {
+  const activeNode = ref(nodeId ? { id: nodeId, content: savedContent } : null);
   return {
     store: {
-      saveActiveNodeContent: vi.fn().mockResolvedValue(false),
-      lastSaveConflict: null as { nodeId: string } | null,
+      saveNodeContent: vi.fn<(nodeId: string, content: string, options?: { expectedRevision?: number | null }) => Promise<SaveWriteResult>>(
+        async () => ({ ok: false, kind: 'error' as const }),
+      ),
+      resolveNodeRevision: vi.fn<(nodeId: string) => Promise<number | null>>(async () => 1),
       refreshTree: vi.fn().mockResolvedValue(undefined),
     },
-    activeNode: ref(nodeId ? { id: nodeId, content: savedContent } : null),
-    lastSavedContent: ref(savedContent),
+    activeNode,
+    ...createEditorSaveViews(activeNode),
     draft: ref(''),
     isParseDegraded: ref(false),
     integrityIssueText: ref(''),
-    saveConflict: ref(null),
     hasUserEdited: ref(false),
     isChatSunk: ref(false),
     isFileSunk: ref(false),
@@ -68,10 +75,8 @@ function makeCtx(nodeId: string | null, savedContent: string) {
 }
 
 async function loadModules(ctx: ReturnType<typeof makeCtx>) {
-  vi.resetModules();
-  const saveMod = await import('./MarkdownEditorSave');
+  const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
   const watchersMod = await import('./MarkdownEditorWatchers');
-  const save = saveMod.useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
   watchersMod.useMarkdownEditorWatchers(ctx as unknown as MarkdownEditorContext, {
     save: save as unknown as MarkdownEditorSave,
     editor: ctx.editor,
@@ -83,15 +88,15 @@ async function loadModules(ctx: ReturnType<typeof makeCtx>) {
 describe('MarkdownEditorWatchers draft watcher', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetSaveSessionForTests();
   });
 
   it('reverting the draft to saved content cancels only this node\'s queued save', async () => {
     const ctx = makeCtx('nB', 'B saved');
-    ctx.editor.value = makeEchoEditor();
     const save = await loadModules(ctx);
 
     // Node A's first attempt just failed; its retry is armed (timer + queue).
-    await save.enqueueSave('nA', 'A content');
+    await save.enqueueSave('nA', 'A content').done;
 
     // Node B types and then reverts to its saved content.
     ctx.draft.value = 'B edited';
@@ -101,7 +106,7 @@ describe('MarkdownEditorWatchers draft watcher', () => {
 
     await vi.runAllTimersAsync();
 
-    const calls = ctx.store.saveActiveNodeContent.mock.calls;
+    const calls = ctx.store.saveNodeContent.mock.calls;
     // A's retry still went out.
     expect(calls.filter((call) => call[0] === 'nA').length).toBeGreaterThanOrEqual(2);
     // B's reverted intermediate draft never left.
@@ -110,11 +115,10 @@ describe('MarkdownEditorWatchers draft watcher', () => {
 
   it('a draft change with no active node leaves other nodes\' timers alone', async () => {
     const ctx = makeCtx(null, '');
-    ctx.editor.value = makeEchoEditor();
     const save = await loadModules(ctx);
 
     // Node A's retry is armed while nothing is active.
-    await save.enqueueSave('nA', 'A content');
+    await save.enqueueSave('nA', 'A content').done;
 
     // A stray draft change arrives with no active node.
     ctx.draft.value = 'stray change';
@@ -122,7 +126,29 @@ describe('MarkdownEditorWatchers draft watcher', () => {
 
     await vi.runAllTimersAsync();
 
-    const calls = ctx.store.saveActiveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
+    const calls = ctx.store.saveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
     expect(calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('switching to a node restores its preserved draft and conflict; other nodes keep saving', async () => {
+    const ctx = makeCtx('nA', 'A saved');
+    const save = await loadModules(ctx);
+
+    // The user edits node A (queued for autosave), then switches to B.
+    ctx.draft.value = 'A pending unsaved';
+    await nextTick();
+    ctx.activeNode.value = { id: 'nB', content: 'B saved' };
+    await nextTick();
+    // Node A's draft is preserved in its record; B's saved content shows.
+    expect(ctx.draft.value).toBe('B saved');
+
+    // Back to A: the preserved draft comes back, still queued.
+    ctx.activeNode.value = { id: 'nA', content: 'A saved' };
+    await nextTick();
+    expect(ctx.draft.value).toBe('A pending unsaved');
+
+    await vi.runAllTimersAsync();
+    const callsForA = ctx.store.saveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
+    expect(callsForA.length).toBeGreaterThanOrEqual(1);
   });
 });

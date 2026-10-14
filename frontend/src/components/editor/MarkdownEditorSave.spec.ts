@@ -2,21 +2,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import type { MarkdownEditorContext } from './MarkdownEditorContext';
+import { createEditorSaveViews } from './MarkdownEditorContext';
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app';
+import { resetSaveSessionForTests, getNodeConflict, getNodeRecord, replaceNodeConflictIf } from '../../services/saveSession';
+import type { SaveWriteResult } from '../../services/saveSession';
+import { useMarkdownEditorSave } from './MarkdownEditorSave';
 
 // migrateMathStrings walks editor.state/view, which the mock editor lacks.
 vi.mock('@tiptap/extension-mathematics', () => ({ migrateMathStrings: vi.fn() }));
 
-// MarkdownEditorSave keeps its pending save in module state, so each test
-// needs a fresh module instance.
+/**
+ * The save composable reads and writes the module-scope save session; the
+ * registry is reset between tests and every conflict is produced through
+ * the production path (a 412 flowing through a task settlement) — never by
+ * assigning editor state directly.
+ */
 function makeCtx() {
+  const activeNode = ref<{ id: string; content: string } | null>({ id: 'n1', content: 'old' });
   return {
-    activeNode: ref<{ id: string; content: string } | null>({ id: 'n1', content: 'old' }),
-    lastSavedContent: ref('old'),
+    activeNode,
+    ...createEditorSaveViews(activeNode),
     draft: ref(''),
     isParseDegraded: ref(false),
     integrityIssueText: ref(''),
-    saveConflict: ref<{ nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean } | null>(null),
     t: (key: string) => key,
     isApplyingExternalContent: ref(false),
     editor: ref<{ commands: { setContent: ReturnType<typeof vi.fn> }; setEditable: ReturnType<typeof vi.fn> }>({
@@ -26,10 +34,11 @@ function makeCtx() {
     // Plain object mirrors the pinia store, whose setup-store refs arrive
     // unwrapped on the instance.
     store: {
-      saveActiveNodeContent: vi.fn().mockResolvedValue(true),
-      refreshConflictCopy: vi.fn().mockResolvedValue(null),
-      lastSaveConflict: null as { nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean } | null,
-      pendingSaveConflicts: new Map<string, { nodeId: string; serverContent: string; serverRevision: number; serverVerified: boolean }>(),
+      saveNodeContent: vi.fn<(nodeId: string, content: string, options?: { expectedRevision?: number | null }) => Promise<SaveWriteResult>>(
+        async () => ({ ok: true, revision: null }),
+      ),
+      resolveNodeRevision: vi.fn<(nodeId: string) => Promise<number | null>>(async () => 1),
+      refreshConflictCopy: vi.fn<(nodeId: string) => Promise<unknown>>(async () => null),
     },
   };
 }
@@ -71,48 +80,68 @@ function makeEchoEditor() {
     getMarkdown: vi.fn(() => current.outMd),
     getJSON: vi.fn(() => echoDoc(current.docMd)),
   });
-  (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent = (
-    docMd: string,
-    outMd: string = docMd,
-  ) => {
+  const hooks = editor as unknown as {
+    setCurrent: (docMd: string, outMd?: string) => void;
+    bumpDoc: () => void;
+    state: { doc: { v: number } };
+  };
+  hooks.setCurrent = (docMd: string, outMd: string = docMd) => {
     current.docMd = docMd;
     current.outMd = outMd;
   };
-  (editor as unknown as { bumpDoc: () => void }).bumpDoc = () => {
+  hooks.bumpDoc = () => {
     current.docVersion += 1;
-    (editor as unknown as { state: { doc: { v: number } } }).state = { doc: { v: current.docVersion } };
+    hooks.state = { doc: { v: current.docVersion } };
   };
   return editor;
 }
 
-async function loadSave(ctx: ReturnType<typeof makeCtx>) {
-  vi.resetModules();
-  const mod = await import('./MarkdownEditorSave');
-  return mod.useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+/** Seeds the node's record as if the editor had loaded it. */
+function seedNode(save: ReturnType<typeof useMarkdownEditorSave>, nodeId: string, savedContent: string): void {
+  save.prepareNodeView(nodeId, savedContent);
+}
+
+/** Opens a conflict through the production path: a 412 settling a task. */
+async function conflictVia412(
+  ctx: ReturnType<typeof makeCtx>,
+  save: ReturnType<typeof useMarkdownEditorSave>,
+  nodeId: string,
+  content: string,
+  conflict: { serverContent: string; serverRevision: number; serverVerified: boolean },
+): Promise<void> {
+  ctx.store.saveNodeContent.mockResolvedValueOnce({
+    ok: false,
+    kind: 'conflict',
+    conflict: { nodeId, draftContent: content, ...conflict },
+  });
+  const { done } = save.enqueueSave(nodeId, content, { force: true, validated: true });
+  await done;
 }
 
 describe('MarkdownEditorSave', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetSaveSessionForTests();
   });
 
   it('flushes content that is still inside the debounce window', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
     save.scheduleAutoSave('n1', 'typed content');
     // Well short of AUTO_SAVE_DELAY_MS — the timer has not fired.
     await vi.advanceTimersByTimeAsync(50);
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
 
     save.flushPendingSave();
     await vi.runAllTimersAsync();
 
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith(
       'n1',
       'typed content',
-      expect.objectContaining({ force: true }),
+      expect.objectContaining({ expectedRevision: 1 }),
     );
     expect(ctx.lastSavedContent.value).toBe('typed content');
   });
@@ -120,69 +149,94 @@ describe('MarkdownEditorSave', () => {
   it('forwards keepalive so the flush can outlive the page', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
     save.scheduleAutoSave('n1', 'typed content');
     save.flushPendingSave({ keepalive: true });
     await vi.runAllTimersAsync();
 
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith(
       'n1',
       'typed content',
-      expect.objectContaining({ force: true, keepalive: true }),
+      expect.objectContaining({ keepalive: true }),
     );
   });
 
   it('does nothing when no save is pending', async () => {
     const ctx = makeCtx();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.flushPendingSave();
     await vi.runAllTimersAsync();
 
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
   });
 
   it('keeps the content pending when the write fails, and retries', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    const save = await loadSave(ctx);
+    ctx.store.saveNodeContent.mockResolvedValue({ ok: false, kind: 'error' });
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
     save.scheduleAutoSave('n1', 'typed content');
     save.flushPendingSave();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
     expect(ctx.lastSavedContent.value).toBe('old');
 
     // The retry timer must still carry the unsaved content.
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(ctx.store.saveActiveNodeContent.mock.calls.length).toBeGreaterThan(1);
+    expect(ctx.store.saveNodeContent.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it('does not advance lastSavedContent when the store rejects the write', async () => {
+  it('reports the write outcome through the task handle', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
-    await save.enqueueSave('n1', 'typed content');
+    ctx.store.saveNodeContent.mockResolvedValueOnce({ ok: true, revision: 7 });
+    const saved = save.enqueueSave('n1', 'typed content');
+    expect(await saved.done).toEqual({ status: 'saved', revision: 7 });
+    expect(ctx.lastSavedContent.value).toBe('typed content');
+
+    // Queueing the same confirmed content resolves without a request.
+    const deduped = save.enqueueSave('n1', 'typed content');
+    expect(await deduped.done).toEqual({ status: 'saved', revision: 7 });
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
+
+    // Unvalidated content is refused as its own outcome.
+    const refused = save.enqueueSave('n1', 'risky', { validated: false });
+    expect(await refused.done).toEqual({ status: 'refused' });
+  });
+
+  it('does not advance confirmed content when the store rejects the write', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    ctx.store.saveNodeContent.mockResolvedValue({ ok: false, kind: 'error' });
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
+
+    const { done } = save.enqueueSave('n1', 'typed content');
+    expect(await done).toEqual({ status: 'unknown' });
 
     expect(ctx.lastSavedContent.value).toBe('old');
   });
 
   it('goes read-only and degraded when parsing fails', async () => {
     const ctx = makeCtx();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.syncEditorContent('# Title\n\nSome **bold** text with $E=mc^2$.');
 
     expect(ctx.isParseDegraded.value).toBe(true);
     expect(ctx.integrityIssueText.value).not.toBe('');
-    expect(ctx.editor.value.setEditable).toHaveBeenCalledWith(false);
+    expect(ctx.editor.value!.setEditable).toHaveBeenCalledWith(false);
     // The flat fallback is still shown so the user can see the content.
-    expect(ctx.editor.value.commands.setContent).toHaveBeenCalledWith(
+    expect(ctx.editor.value!.commands.setContent).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'doc' }),
       expect.objectContaining({ emitUpdate: false }),
     );
@@ -190,23 +244,22 @@ describe('MarkdownEditorSave', () => {
 
   it('never persists a degraded doc through any save path', async () => {
     const ctx = makeCtx();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
     save.syncEditorContent('# Title');
 
     save.scheduleAutoSave('n1', 'flattened');
     await vi.runAllTimersAsync();
     save.flushPendingSave();
     await vi.runAllTimersAsync();
-    const forced = await save.enqueueSave('n1', 'flattened', { force: true });
+    const forced = save.enqueueSave('n1', 'flattened', { force: true });
+    expect(await forced.done).toEqual({ status: 'refused' });
 
-    expect(forced).toBe(false);
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
-    expect(ctx.lastSavedContent.value).toBe('old');
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
   });
 
   it('recovers saving when a later load parses successfully', async () => {
     const ctx = makeCtx();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
     ctx.editor.value = makeEchoEditor();
 
     // A manager-less editor first: parse fails, degraded read-only.
@@ -230,58 +283,55 @@ describe('MarkdownEditorSave', () => {
 
     save.scheduleAutoSave('n1', 'parsed content');
     await vi.runAllTimersAsync();
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith('n1', 'parsed content', expect.anything());
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith('n1', 'parsed content', expect.anything());
   });
 
   it('suppresses autosave and raises the banner when the draft fails integrity', async () => {
     const ctx = makeCtx();
     // Manager-less editor: every validation fails.
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.scheduleAutoSave('n1', 'typed content');
     await vi.runAllTimersAsync();
 
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
     expect(ctx.integrityIssueText.value).not.toBe('');
   });
 
   it('on 412 keeps the draft, pauses autosave, and never retries blindly', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    { const c = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5, serverVerified: true }; ctx.store.pendingSaveConflicts.set('n1', c); ctx.store.lastSaveConflict = c; }
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
-    ctx.draft.value = 'typed content';
-    save.scheduleAutoSave('n1', 'typed content');
-    await vi.runAllTimersAsync();
+    await conflictVia412(ctx, save, 'n1', 'typed content', { serverContent: 'server text', serverRevision: 5, serverVerified: true });
 
     // Exactly one attempt: no retry storm against a version conflict.
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
-    // The local draft is preserved for the user to decide on.
-    expect(ctx.draft.value).toBe('typed content');
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
+    // The conflict view is derived from the node's record.
     expect(ctx.saveConflict.value?.serverRevision).toBe(5);
 
     // Further edits stay unsent while the conflict is open.
-    ctx.draft.value = 'typed content v2';
     save.scheduleAutoSave('n1', 'typed content v2');
     await vi.runAllTimersAsync();
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
   });
 
   it('keep-mine re-saves the draft against the server version and clears the conflict', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true, serverVerified: true };
-
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
     ctx.draft.value = 'my draft';
-    await save.resolveConflictKeepMine();
+    await conflictVia412(ctx, save, 'n1', 'my draft', { serverContent: 'server text', serverRevision: 5, serverVerified: true });
 
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    const kept = await save.resolveConflictKeepMine();
+
+    expect(kept).toBe(true);
+    expect(ctx.store.saveNodeContent).toHaveBeenLastCalledWith(
       'n1',
       'my draft',
-      expect.objectContaining({ force: true, revision: 5 }),
+      expect.objectContaining({ expectedRevision: 5 }),
     );
     expect(ctx.saveConflict.value).toBeNull();
     expect(ctx.lastSavedContent.value).toBe('my draft');
@@ -294,31 +344,36 @@ describe('MarkdownEditorSave', () => {
     // user has already kept typing. The retried keep-mine save succeeds.
     let rejectWithConflict: (() => void) | null = null;
     let calls = 0;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { rejectWithConflict = resolve; });
-        { const c = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5, serverVerified: true }; ctx.store.pendingSaveConflicts.set('n1', c); ctx.store.lastSaveConflict = c; }
-        return false;
+        return {
+          ok: false,
+          kind: 'conflict',
+          conflict: { nodeId: 'n1', draftContent: 'typed content', serverContent: 'server text', serverRevision: 5, serverVerified: true },
+        };
       }
-      return true;
+      return { ok: true, revision: 6 };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
     ctx.draft.value = 'older draft';
     const inFlight = save.enqueueSave('n1', 'older draft');
+    await vi.advanceTimersByTimeAsync(0); // the request is out
     ctx.draft.value = 'newer draft typed while request was in flight';
     rejectWithConflict!();
-    await inFlight;
+    expect(await inFlight.done).toEqual({ status: 'conflict' });
     expect(ctx.saveConflict.value).not.toBeNull();
     // The in-flight content and the newer typing both survive untouched.
     expect(ctx.draft.value).toBe('newer draft typed while request was in flight');
 
     await save.resolveConflictKeepMine();
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenLastCalledWith(
+    expect(ctx.store.saveNodeContent).toHaveBeenLastCalledWith(
       'n1',
       'newer draft typed while request was in flight',
-      expect.objectContaining({ force: true, revision: 5 }),
+      expect.objectContaining({ expectedRevision: 5 }),
     );
     expect(ctx.saveConflict.value).toBeNull();
   });
@@ -326,11 +381,14 @@ describe('MarkdownEditorSave', () => {
   it('take-server adopts the server content and drops the local draft', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'server text', serverRevision: 5, draftValidated: true, serverVerified: true };
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
+    ctx.draft.value = 'my draft';
+    await conflictVia412(ctx, save, 'n1', 'my draft', { serverContent: 'server text', serverRevision: 5, serverVerified: true });
 
-    save.resolveConflictTakeServer();
+    const taken = await save.resolveConflictTakeServer();
 
+    expect(taken).toBe(true);
     expect(ctx.draft.value).toBe('server text');
     expect(ctx.lastSavedContent.value).toBe('server text');
     expect(ctx.saveConflict.value).toBeNull();
@@ -340,96 +398,58 @@ describe('MarkdownEditorSave', () => {
   it('a late conflict response after switching nodes does not banner the new node', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
     // Request for node A goes out; the user switches to node B; then the
     // conflict response for A arrives.
     ctx.activeNode.value = { id: 'n2', content: '' };
-    { const c = { nodeId: 'n1', draftContent: 'a draft', serverContent: 'a server', serverRevision: 5, serverVerified: true }; ctx.store.pendingSaveConflicts.set('n1', c); ctx.store.lastSaveConflict = c; }
+    await conflictVia412(ctx, save, 'n1', 'a draft', { serverContent: 'a server', serverRevision: 5, serverVerified: true });
 
-    await save.enqueueSave('n1', 'a draft');
-
-    // No banner on node B; the conflict stays in the store for bookkeeping.
+    // No banner on node B; the conflict stays in the node's record.
     expect(ctx.saveConflict.value).toBeNull();
-    expect(ctx.store.lastSaveConflict?.nodeId).toBe('n1');
+    expect(getNodeConflict('n1')?.nodeId).toBe('n1');
     // No retry storm against a version conflict either.
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
   });
 
-  it('keep-mine after switching nodes replays the captured snapshot, not the other node draft', async () => {
+  it('take-server mid-flight keeps the switched-to node editor untouched', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    // The conflict belongs to node A; the editor now shows node B with its
-    // own unsaved draft.
-    ctx.saveConflict.value = {
-      nodeId: 'n1',
-      draftContent: 'node A draft',
-      serverContent: 'node A server',
-      serverRevision: 5,
-      draftValidated: true,
-      serverVerified: true,
-    };
-    ctx.activeNode.value = { id: 'n2', content: '' };
-    ctx.draft.value = 'node B draft';
-
-    await save.resolveConflictKeepMine();
-
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
-      'n1',
-      'node A draft',
-      expect.objectContaining({ force: true, revision: 5 }),
-    );
-    // Node B's draft is untouched and its content never sent to node A.
-    expect(ctx.draft.value).toBe('node B draft');
-    expect(ctx.saveConflict.value).toBeNull();
-  });
-
-  it('keep-mine refuses to replay a snapshot that never passed validation', async () => {
-    const ctx = makeCtx();
-    ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = {
-      nodeId: 'n1',
-      draftContent: 'risky snapshot',
-      serverContent: 'server text',
-      serverRevision: 5,
-      draftValidated: false,
-      serverVerified: true,
-    };
-    ctx.activeNode.value = { id: 'n2', content: '' };
-
-    const saved = await save.resolveConflictKeepMine();
-
-    expect(saved).toBe(false);
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
-  });
-
-  it('take-server after switching nodes leaves the other node editor untouched', async () => {
-    const ctx = makeCtx();
-    ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = {
-      nodeId: 'n1',
-      draftContent: 'node A draft',
-      serverContent: 'node A server',
-      serverRevision: 5,
-      draftValidated: true,
-      serverVerified: true,
-    };
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
+    // The conflict's capture read failed: taking the server copy must
+    // re-read first. The re-read hangs while the user switches away.
+    await conflictVia412(ctx, save, 'n1', 'node A draft', { serverContent: 'stale cache', serverRevision: 0, serverVerified: false });
+    let landRead: (() => void) | null = null;
+    ctx.store.refreshConflictCopy.mockImplementation(async () => {
+      await new Promise<void>((resolve) => { landRead = resolve; });
+      const current = getNodeConflict('n1');
+      if (!current) return null;
+      const fresh = { nodeId: 'n1', draftContent: current.draftContent, serverContent: 'node A server', serverRevision: 6, serverVerified: true };
+      return replaceNodeConflictIf('n1', current, fresh);
+    });
+    const taking = save.resolveConflictTakeServer();
+    await vi.advanceTimersByTimeAsync(0); // the re-read is out
     ctx.activeNode.value = { id: 'n2', content: 'node B content' };
+    save.prepareNodeView('n2', 'node B content');
     ctx.draft.value = 'node B draft';
 
-    save.resolveConflictTakeServer();
+    // The re-read lands the fresh copy after the switch: the adoption still
+    // completes for node A, and node B's editor is untouched.
+    landRead!();
+    expect(await taking).toBe(true);
 
     expect(ctx.saveConflict.value).toBeNull();
     expect(ctx.draft.value).toBe('node B draft');
     expect(ctx.activeNode.value?.content).toBe('node B content');
     expect(ctx.editor.value.commands.setContent).not.toHaveBeenCalled();
+    expect(ctx.lastSavedContent.value).toBe('node B content');
+    expect(getNodeRecord('n1')!.confirmedContent).toBe('node A server');
+    expect(getNodeConflict('n1')).toBeNull();
   });
 
-  // ── Round-2 acceptance fixes ───────────────────────────────────────────
+  // ── Cross-node isolation ───────────────────────────────────────────────
 
   it('a conflict for node A leaves node B pending save and timer intact', async () => {
     const ctx = makeCtx();
@@ -437,19 +457,14 @@ describe('MarkdownEditorSave', () => {
     // Node B autosave is scheduled and ticking; then the in-flight request
     // for node A comes back with a version conflict.
     ctx.activeNode.value = { id: 'n2', content: '' };
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.scheduleAutoSave('nB', 'node B content');
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
-      { const c = { nodeId: 'nA', draftContent: 'A draft', serverContent: 'A server', serverRevision: 9, serverVerified: true }; ctx.store.pendingSaveConflicts.set('nA', c); ctx.store.lastSaveConflict = c; }
-      return false;
-    });
-
-    await save.enqueueSave('nA', 'A content');
+    await conflictVia412(ctx, save, 'nA', 'A content', { serverContent: 'A server', serverRevision: 9, serverVerified: true });
 
     // The conflict response must not tear down node B's queued save.
     await vi.runAllTimersAsync();
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith(
       'nB',
       'node B content',
       expect.anything(),
@@ -461,23 +476,17 @@ describe('MarkdownEditorSave', () => {
   it('an open conflict pauses autosave only for its own node', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = {
-      nodeId: 'nA',
-      draftContent: 'A draft',
-      serverContent: 'A server',
-      serverRevision: 9,
-      draftValidated: true,
-      serverVerified: true,
-    };
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'nA', 'old');
+    await conflictVia412(ctx, save, 'nA', 'A draft', { serverContent: 'A server', serverRevision: 9, serverVerified: true });
 
     save.scheduleAutoSave('nA', 'node A retry');
     await vi.runAllTimersAsync();
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
 
     save.scheduleAutoSave('nB', 'node B content');
     await vi.runAllTimersAsync();
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith(
       'nB',
       'node B content',
       expect.anything(),
@@ -493,14 +502,14 @@ describe('MarkdownEditorSave', () => {
       'the sum is ab here',
     );
     ctx.editor.value = editor;
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.scheduleAutoSave('n1', 'the sum is ab here');
     await vi.runAllTimersAsync();
 
     // String roundtrip alone would pass (parse of the draft is self-consistent);
     // the doc-equivalence leg catches the lost "+" and refuses to persist.
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
     expect(ctx.integrityIssueText.value).not.toBe('');
   });
 
@@ -509,19 +518,17 @@ describe('MarkdownEditorSave', () => {
     const editor = makeEchoEditor();
     (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent('the sum is a+b here');
     ctx.editor.value = editor;
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.scheduleAutoSave('n1', 'the sum is a+b here');
     await vi.runAllTimersAsync();
 
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith(
       'n1',
       'the sum is a+b here',
       expect.anything(),
     );
   });
-
-  // ── Round-3 acceptance fixes ───────────────────────────────────────────
 
   it('a queued save for another node with identical content still goes out', async () => {
     const ctx = makeCtx();
@@ -529,11 +536,12 @@ describe('MarkdownEditorSave', () => {
     // Node A's request hangs; node B's timer fires meanwhile and its save
     // queues behind the in-flight request. Both nodes carry the same text.
     let releaseA: (() => void) | null = null;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       await new Promise<void>((resolve) => { releaseA = resolve; });
-      return true;
+      return { ok: true, revision: null };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'nA', 'old');
 
     const inFlight = save.enqueueSave('nA', 'same text');
     ctx.activeNode.value = { id: 'nB', content: '' };
@@ -541,12 +549,11 @@ describe('MarkdownEditorSave', () => {
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
 
     releaseA!();
-    await inFlight;
+    await inFlight.done;
     await vi.runAllTimersAsync();
 
-    // The finally kick previously compared content only, dropping node B's
-    // identical queued save. It must compare the node too.
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    // The dedup is per node: node B's identical content is not "already saved".
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledWith(
       'nB',
       'same text',
       expect.anything(),
@@ -556,41 +563,29 @@ describe('MarkdownEditorSave', () => {
   it('the validation memo cannot bypass the doc-equivalence leg after the document changes', async () => {
     const ctx = makeCtx();
     const editor = makeEchoEditor();
-    const hooks = editor as unknown as {
-      setCurrent: (docMd: string, outMd?: string) => void;
-      bumpDoc: () => void;
-    };
     // First pass: document and output are both "ab" — validation passes and
     // is memoized.
-    hooks.setCurrent('ab');
+    (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent('ab');
     ctx.editor.value = editor;
-    const save = await loadSave(ctx);
-    expect(await save.enqueueSave('n1', 'ab', { force: true })).toBe(true);
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
+    expect(await save.enqueueSave('n1', 'ab', { force: true }).done).toEqual({ status: 'saved', revision: null });
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(1);
 
     // The document gains the "+" but the serialization still drops it. A
     // stale memo keyed on the output string would reuse the ok verdict
     // without re-reading the document.
-    hooks.setCurrent('a+b', 'ab');
-    hooks.bumpDoc();
+    (editor as unknown as { setCurrent: (docMd: string, outMd?: string) => void }).setCurrent('a+b', 'ab');
+    (editor as unknown as { bumpDoc: () => void }).bumpDoc();
     ctx.draft.value = 'ab';
-    ctx.saveConflict.value = {
-      nodeId: 'n1',
-      draftContent: 'ab',
-      serverContent: 'server',
-      serverRevision: 5,
-      draftValidated: true,
-      serverVerified: true,
-    };
+    await conflictVia412(ctx, save, 'n1', 'ab', { serverContent: 'server', serverRevision: 5, serverVerified: true });
 
-    const saved = await save.resolveConflictKeepMine();
+    const kept = await save.resolveConflictKeepMine();
 
-    expect(saved).toBe(false);
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(1);
+    expect(kept).toBe(false);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
     expect(ctx.saveConflict.value).not.toBeNull();
   });
-
-  // ── Round-4 acceptance fixes ───────────────────────────────────────────
 
   it('a failed stale save does not clobber a newer draft queued for the same node', async () => {
     const ctx = makeCtx();
@@ -599,25 +594,26 @@ describe('MarkdownEditorSave', () => {
     // first request fails with a plain (non-conflict) error.
     let releaseFirst: (() => void) | null = null;
     let calls = 0;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { releaseFirst = resolve; });
-        return false;
+        return { ok: false, kind: 'error' };
       }
-      return true;
+      return { ok: true, revision: null };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
 
     const inFlight = save.enqueueSave('n1', 'old draft');
     save.scheduleAutoSave('n1', 'new draft typed while request was in flight');
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
     releaseFirst!();
-    await inFlight;
+    await inFlight.done;
     await vi.runAllTimersAsync();
 
     // The stale content went out exactly once; the retry carries the newer draft.
-    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    const savedContents = ctx.store.saveNodeContent.mock.calls.map((call) => call[1]);
     expect(savedContents.filter((content) => content === 'old draft')).toHaveLength(1);
     expect(savedContents).toContain('new draft typed while request was in flight');
   });
@@ -625,17 +621,18 @@ describe('MarkdownEditorSave', () => {
   it('cancelling one node\'s queued save leaves another node\'s retry armed', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    ctx.store.saveActiveNodeContent.mockResolvedValue(false);
-    const save = await loadSave(ctx);
+    ctx.store.saveNodeContent.mockResolvedValue({ ok: false, kind: 'error' });
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'nA', 'old');
 
     // Node A's first attempt just failed; its retry is armed (timer + queue).
-    await save.enqueueSave('nA', 'A content');
+    await save.enqueueSave('nA', 'A content').done;
 
     // Node B's draft reverted to its saved content: cancel B only.
     save.cancelQueuedSave('nB');
 
     await vi.runAllTimersAsync();
-    const callsForA = ctx.store.saveActiveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
+    const callsForA = ctx.store.saveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
     expect(callsForA.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -643,73 +640,76 @@ describe('MarkdownEditorSave', () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     let release: (() => void) | null = null;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       await new Promise<void>((resolve) => { release = resolve; });
-      return false;
+      return { ok: false, kind: 'error' };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'nA', 'old');
 
     const inFlight = save.enqueueSave('nA', 'A content');
+    await vi.advanceTimersByTimeAsync(0); // the request is out
     // While that request is in flight the user switches to node B, whose
     // content fails to parse (read-only degraded editor).
     ctx.activeNode.value = { id: 'nB', content: '' };
     ctx.isParseDegraded.value = true;
     release!();
-    await inFlight;
+    await inFlight.done;
 
     // The failed attempt schedules a retry for A: B's degradation must not
     // swallow it, and A's content must not be re-validated against B's editor.
     await vi.runAllTimersAsync();
-    const callsForA = ctx.store.saveActiveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
+    const callsForA = ctx.store.saveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
     expect(callsForA.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keep-mine response landing after a node switch does not stamp the other node', async () => {
+  it('a keep-mine response landing after a node switch confirms only that node', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     let release: (() => void) | null = null;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       await new Promise<void>((resolve) => { release = resolve; });
-      return true;
+      return { ok: true, revision: 6 };
     });
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = { nodeId: 'n1', draftContent: 'A draft', serverContent: 'A server', serverRevision: 5, draftValidated: true, serverVerified: true };
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
     ctx.draft.value = 'A draft latest';
+    await conflictVia412(ctx, save, 'n1', 'A draft latest', { serverContent: 'A server', serverRevision: 5, serverVerified: true });
 
     const pending = save.resolveConflictKeepMine();
+    await vi.advanceTimersByTimeAsync(0); // the keep-mine request is out
     // The user switches to node B while the keep-mine request is in flight.
     ctx.activeNode.value = { id: 'n2', content: 'B content' };
-    ctx.lastSavedContent.value = 'B content';
+    save.prepareNodeView('n2', 'B content');
     release!();
-    await pending;
+    expect(await pending).toBe(true);
 
-    // A's content was saved to node A — but node B's lastSavedContent is
-    // untouched: stamping it would make a later matching B edit look "saved".
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledWith(
+    // A's content was confirmed for node A — node B's view is untouched.
+    expect(ctx.store.saveNodeContent).toHaveBeenLastCalledWith(
       'n1',
       'A draft latest',
-      expect.objectContaining({ force: true, revision: 5 }),
+      expect.objectContaining({ expectedRevision: 5 }),
     );
     expect(ctx.lastSavedContent.value).toBe('B content');
   });
 
-  // ── Round-5 acceptance fixes ───────────────────────────────────────────
+  // ── Revert reconciliation ──────────────────────────────────────────────
 
   it('a revert while the node save is in flight re-saves the revert after the response', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     let calls = 0;
     let releaseFirst: (() => void) | null = null;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { releaseFirst = resolve; });
       }
-      return true;
+      return { ok: true, revision: null };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'A');
 
-    ctx.lastSavedContent.value = 'A';
     save.scheduleAutoSave('n1', 'B');
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
     // Before B's response lands, the user reverts the draft to A.
@@ -719,7 +719,7 @@ describe('MarkdownEditorSave', () => {
 
     // B went out once; the revert result A followed it, and the saved
     // pointer ended on A — the editor shows A and the server holds A.
-    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    const savedContents = ctx.store.saveNodeContent.mock.calls.map((call) => call[1]);
     expect(savedContents).toEqual(['B', 'A']);
     expect(ctx.lastSavedContent.value).toBe('A');
   });
@@ -729,18 +729,18 @@ describe('MarkdownEditorSave', () => {
     ctx.editor.value = makeEchoEditor();
     let calls = 0;
     let releaseFirst: (() => void) | null = null;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       calls += 1;
       if (calls === 1) {
         // Network error: the client cannot know whether the server committed.
         await new Promise<void>((resolve) => { releaseFirst = resolve; });
-        return false;
+        return { ok: false, kind: 'error' };
       }
-      return true;
+      return { ok: true, revision: null };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'A');
 
-    ctx.lastSavedContent.value = 'A';
     save.scheduleAutoSave('n1', 'B');
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
     save.cancelQueuedSave('n1', 'A');
@@ -750,28 +750,30 @@ describe('MarkdownEditorSave', () => {
     // The failed save leaves the server state unknown, so the revert result
     // A must go out even though it equals the stale lastSavedContent — a
     // true failure lands it again, a false failure reaches the conflict path.
-    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    const savedContents = ctx.store.saveNodeContent.mock.calls.map((call) => call[1]);
     expect(savedContents).toEqual(['B', 'A']);
     expect(ctx.lastSavedContent.value).toBe('A');
   });
 
-  it('a failed save disables the lastSavedContent dedup for its node until a save succeeds', async () => {
+  it('a failed save disables the confirmed-content dedup for its node until a save succeeds', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    ctx.store.saveActiveNodeContent.mockResolvedValueOnce(false).mockResolvedValue(true);
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'typed content');
 
-    // First write fails without a conflict — the server may or may not have it.
-    await save.enqueueSave('n1', 'typed content');
-    ctx.lastSavedContent.value = 'typed content';
+    // Same content is deduped while the server state is confirmed.
+    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'saved', revision: null });
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
 
-    // The same content must not be skipped as "already saved".
-    expect(await save.enqueueSave('n1', 'typed content')).toBe(true);
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(2);
+    // A failed write makes the outcome unknown: the dedup must not skip.
+    ctx.store.saveNodeContent.mockResolvedValueOnce({ ok: false, kind: 'error' });
+    await save.enqueueSave('n1', 'other content').done;
+    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'saved', revision: null });
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
 
     // The confirming write clears the uncertainty: dedup applies again.
-    await save.enqueueSave('n1', 'typed content');
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(2);
+    await save.enqueueSave('n1', 'typed content').done;
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
   });
 
   it('a false failure surfaces the server truth through the conflict banner when the revert is written', async () => {
@@ -779,19 +781,22 @@ describe('MarkdownEditorSave', () => {
     ctx.editor.value = makeEchoEditor();
     let calls = 0;
     let releaseFirst: (() => void) | null = null;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       calls += 1;
       if (calls === 1) {
         await new Promise<void>((resolve) => { releaseFirst = resolve; });
-        return false;
+        return { ok: false, kind: 'error' };
       }
       // The revert write carries the stale revision: 412, server has B.
-      { const c = { nodeId: 'n1', draftContent: 'A', serverContent: 'B', serverRevision: 6, serverVerified: true }; ctx.store.pendingSaveConflicts.set('n1', c); ctx.store.lastSaveConflict = c; }
-      return false;
+      return {
+        ok: false,
+        kind: 'conflict',
+        conflict: { nodeId: 'n1', draftContent: 'A', serverContent: 'B', serverRevision: 6, serverVerified: true },
+      };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'A');
 
-    ctx.lastSavedContent.value = 'A';
     save.scheduleAutoSave('n1', 'B');
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
     save.cancelQueuedSave('n1', 'A');
@@ -808,25 +813,25 @@ describe('MarkdownEditorSave', () => {
   it('a revert with no save in flight queues nothing', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
 
     save.cancelQueuedSave('n1', 'A');
     await vi.runAllTimersAsync();
 
-    expect(ctx.store.saveActiveNodeContent).not.toHaveBeenCalled();
+    expect(ctx.store.saveNodeContent).not.toHaveBeenCalled();
   });
 
   it('a revert after the failed response re-saves the revert despite the queued retry', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
     let calls = 0;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
+    ctx.store.saveNodeContent.mockImplementation(async () => {
       calls += 1;
-      return calls === 1 ? false : true;
+      return calls === 1 ? { ok: false, kind: 'error' } : { ok: true, revision: null };
     });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'A');
 
-    ctx.lastSavedContent.value = 'A';
     save.scheduleAutoSave('n1', 'B');
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
     // B's write failed with an unknown outcome and a retry is queued; the
@@ -835,33 +840,29 @@ describe('MarkdownEditorSave', () => {
     save.cancelQueuedSave('n1', 'A');
     await vi.runAllTimersAsync();
 
-    const savedContents = ctx.store.saveActiveNodeContent.mock.calls.map((call) => call[1]);
+    const savedContents = ctx.store.saveNodeContent.mock.calls.map((call) => call[1]);
     expect(savedContents).toEqual(['B', 'A']);
     expect(ctx.lastSavedContent.value).toBe('A');
   });
 
-  // ── Round-7 acceptance fixes ───────────────────────────────────────────
+  // ── Take-server re-read semantics ──────────────────────────────────────
 
-  it('take-server on an unverified conflict re-reads, syncs its view, and adopts the fresh copy', async () => {
+  it('take-server on an unverified conflict re-reads, swaps the record, and adopts the fresh copy', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
     // The original conflict capture failed: the server fields hold a stale
     // cache, flagged unverified.
-    ctx.saveConflict.value = {
-      nodeId: 'n1',
-      draftContent: 'my draft',
-      serverContent: 'stale cache copy',
-      serverRevision: 0,
-      draftValidated: true,
-      serverVerified: false,
-    };
-    // Real-store semantics: the re-read lands the fresh copy in the store
-    // and returns it. It does NOT touch the editor's saveConflict ref —
-    // syncing that view is the caller's job.
+    await conflictVia412(ctx, save, 'n1', 'my draft', { serverContent: 'stale cache copy', serverRevision: 0, serverVerified: false });
+
+    // Real-store semantics: the re-read swaps the registry record and
+    // returns the fresh copy; a failure returns null.
     ctx.store.refreshConflictCopy.mockImplementation(async () => {
-      { const c = { nodeId: 'n1', draftContent: 'my draft', serverContent: 'fresh server copy', serverRevision: 2, serverVerified: true }; ctx.store.pendingSaveConflicts.set('n1', c); ctx.store.lastSaveConflict = c; }
-      return { nodeId: 'n1', draftContent: 'my draft', serverContent: 'fresh server copy', serverRevision: 2, serverVerified: true };
+      const current = getNodeConflict('n1');
+      if (!current) return null;
+      const fresh = { nodeId: 'n1', draftContent: current.draftContent, serverContent: 'fresh server copy', serverRevision: 2, serverVerified: true };
+      return replaceNodeConflictIf('n1', current, fresh);
     });
 
     const taken = await save.resolveConflictTakeServer();
@@ -873,18 +874,13 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.editor.value.commands.setContent).toHaveBeenCalled();
   });
 
-  it('take-server keeps the banner and draft when the re-read fails or the conflict moved on', async () => {
+  it('take-server keeps the banner and draft when the re-read fails', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    const save = await loadSave(ctx);
-    ctx.saveConflict.value = {
-      nodeId: 'n1',
-      draftContent: 'my draft',
-      serverContent: 'stale cache copy',
-      serverRevision: 0,
-      draftValidated: true,
-      serverVerified: false,
-    };
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
+    ctx.draft.value = 'my draft';
+    await conflictVia412(ctx, save, 'n1', 'my draft', { serverContent: 'stale cache copy', serverRevision: 0, serverVerified: false });
     ctx.store.refreshConflictCopy.mockResolvedValue(null);
 
     const taken = await save.resolveConflictTakeServer();
@@ -892,64 +888,25 @@ describe('MarkdownEditorSave', () => {
     // Nothing was adopted and the conflict stays open for a retry.
     expect(taken).toBe(false);
     expect(ctx.saveConflict.value?.nodeId).toBe('n1');
-    expect(ctx.draft.value).toBe('');
+    expect(ctx.draft.value).toBe('my draft');
     expect(ctx.lastSavedContent.value).toBe('old');
     expect(ctx.editor.value.commands.setContent).not.toHaveBeenCalled();
-  });
-
-  it('treats a failure as this node\'s conflict from the map even when another node cleared the global pointer', async () => {
-    const ctx = makeCtx();
-    ctx.editor.value = makeEchoEditor();
-    let calls = 0;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
-      calls += 1;
-      return false;
-    });
-    const save = await loadSave(ctx);
-
-    // Node B's capture recorded its conflict in the map, but node A's
-    // take-server cleared the global pointer before B's save call returned.
-    ctx.store.pendingSaveConflicts.set('nB', {
-      nodeId: 'nB',
-      draftContent: 'B draft',
-      serverContent: 'B server',
-      serverRevision: 1,
-      serverVerified: true,
-    });
-    ctx.store.lastSaveConflict = null;
-
-    // The empty global pointer must not downgrade B's version conflict into
-    // a blind retry: no second write goes out, or it would overwrite the
-    // server with a stale draft against the captured revision.
-    const saved = await save.enqueueSave('nB', 'B draft', { force: true, revision: 1 });
-    expect(saved).toBe(false);
-    expect(calls).toBe(1);
-    await vi.runAllTimersAsync();
-    expect(calls).toBe(1);
   });
 
   it('an unverified conflict keeps the node outcome uncertain for the dedup', async () => {
     const ctx = makeCtx();
     ctx.editor.value = makeEchoEditor();
-    // Write fails, then answers 412 with a conflict whose server copy was
-    // NOT verified (the capture GET failed). The real server state stays
-    // unknown, so the same-content dedup must not re-enable.
-    let calls = 0;
-    ctx.store.saveActiveNodeContent.mockImplementation(async () => {
-      calls += 1;
-      if (calls === 1) {
-        { const c = { nodeId: 'n1', draftContent: 'typed content', serverContent: 'cached copy', serverRevision: 0, serverVerified: false }; ctx.store.pendingSaveConflicts.set('n1', c); ctx.store.lastSaveConflict = c; }
-        return false;
-      }
-      return true;
-    });
-    const save = await loadSave(ctx);
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'typed content');
 
-    await save.enqueueSave('n1', 'typed content');
-    ctx.lastSavedContent.value = 'typed content';
+    // A 412 whose capture GET failed: the conflict's server copy is a
+    // stale cache — the node's real server state stays unknown.
+    await conflictVia412(ctx, save, 'n1', 'other content', { serverContent: 'cached copy', serverRevision: 0, serverVerified: false });
+    expect(getNodeRecord('n1')!.outcomeUncertain).toBe(true);
 
-    // Not skipped as "already saved": the server state is unproven.
-    expect(await save.enqueueSave('n1', 'typed content')).toBe(true);
-    expect(ctx.store.saveActiveNodeContent).toHaveBeenCalledTimes(2);
+    // The same content as the (unproven) confirmed content must not be
+    // skipped as "already saved": the dedup stays off.
+    expect(await save.enqueueSave('n1', 'typed content').done).toEqual({ status: 'saved', revision: null });
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
   });
 });

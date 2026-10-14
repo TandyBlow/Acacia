@@ -361,6 +361,11 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
       if (inFlightTasks.get(record.nodeId) === task) inFlightTasks.delete(record.nodeId)
     }
     settle(record, task, request, result)
+  } catch {
+    // Anything unexpected (a throwing dependency, most likely) must still
+    // end the task's wait: the outcome is treated as unknown.
+    record.outcomeUncertain = true
+    task.resolve({ status: 'unknown' })
   } finally {
     sending = false
     dispatchNext()

@@ -30,17 +30,20 @@ export function useMarkdownEditorWatchers(
   watch(
     [() => ctx.editor.value, () => ctx.activeNode.value?.id],
     (val, oldVal) => {
-      deps.save.flushPendingSave()
-      deps.save.resetAutoSave()
+      // The outgoing node's last editor state is already mirrored into its
+      // save record; the record keeps its queued work, retry, and conflict.
+      const previousId = oldVal?.[1]
+      if (previousId) {
+        deps.save.setNodeDraft(previousId, ctx.draft.value)
+      }
 
       const content = ctx.activeNode.value?.content ?? ''
-      ctx.lastSavedContent.value = content
-      ctx.draft.value = content
+      // Restore the incoming node's preserved draft (or seed its record on
+      // first touch). Confirmed content and an open conflict come back
+      // through the derived views — nothing is cleared on a switch.
+      const restored = deps.save.prepareNodeView(ctx.activeNode.value?.id ?? '', content)
+      ctx.draft.value = restored
 
-      // Node switch abandons any pending conflict or integrity state; the
-      // next syncEditorContent decides afresh for the new node.
-      ctx.saveConflict.value = null
-      ctx.store.lastSaveConflict = null
       ctx.integrityIssueText.value = ''
 
       ctx.hasUserEdited.value = false
@@ -70,7 +73,7 @@ export function useMarkdownEditorWatchers(
       }
 
       if (ctx.activeNode.value && ctx.editor.value) {
-        deps.save.syncEditorContent(content)
+        deps.save.syncEditorContent(restored)
       }
 
       if (ctx.activeNode.value) {
@@ -86,12 +89,14 @@ export function useMarkdownEditorWatchers(
     // queued retries must survive.
     if (!nodeId) return
 
+    // Mirror the live draft into the node's record, so a switch preserves it.
+    deps.save.setNodeDraft(nodeId, value)
+
     if (value === ctx.lastSavedContent.value) {
       // The draft reverted to the saved content: only this node's queued
-      // work is stale (timer and bucket entry). Clearing globally here would
-      // cancel another node's armed retry; dropping the node's in-flight
-      // save without recording the revert would leave the server on
-      // content the user took back.
+      // work is stale. Clearing globally here would cancel another node's
+      // armed retry; dropping the node's in-flight save without recording
+      // the revert would leave the server on content the user took back.
       deps.save.cancelQueuedSave(nodeId, value)
       return
     }
@@ -140,9 +145,11 @@ export function useMarkdownEditorWatchers(
   }
 
   onBeforeUnmount(() => {
+    // Flushing sends the queued work now; the save session itself survives
+    // the component — in-flight requests, retries, and open conflicts keep
+    // running without an editor instance.
     deps.save.flushPendingSave()
     ctx.unregisterRegion('content-editor')
-    deps.save.clearAutoSaveTimer()
     deps.editor.value?.destroy()
     window.removeEventListener('cinema:chat-mode', deps.onCinemaChatMode)
     window.removeEventListener('pagehide', onPageHide)

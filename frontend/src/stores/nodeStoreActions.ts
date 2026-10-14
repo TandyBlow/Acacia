@@ -1,9 +1,9 @@
 import * as nodeCache from '../services/nodeCache';
 import { getDataAdapter, formatError, clearAdapterCache } from './nodeStoreAdapter';
 import { clearTransientState } from './nodeStoreState';
-import type { NodeStoreState, SaveConflict } from './nodeStoreState';
-import { currentSessionId, endSaveSession } from '../services/saveSession';
-import type { SaveWriteResult } from '../services/saveSession';
+import type { NodeStoreState } from './nodeStoreState';
+import { currentSessionId, endSaveSession, getNodeConflict, replaceNodeConflictIf } from '../services/saveSession';
+import type { ConflictedSave, SaveConflict, SaveWriteResult } from '../services/saveSession';
 import { computeHasAnyNodes, computeIsEditState } from './nodeStoreHelpers';
 import { ViewStates } from '../types/node';
 import type { TransitionTrigger } from '../types/transition';
@@ -100,132 +100,37 @@ export function createNodeStoreActions(
     }
   }
 
-  async function saveActiveNodeContent(
-    nodeId: string,
-    content: string,
-    options?: { force?: boolean; keepalive?: boolean; revision?: number },
-  ): Promise<boolean> {
-    // force lets a flushed save land after navigation already moved on.
-    if (!options?.force && (!state.activeNode.value || state.activeNode.value.id !== nodeId)) {
-      return false;
-    }
-
-    state.errorMessage.value = null;
-    // A conflict recorded by an earlier save must not be mistaken for this
-    // one: after this call, a non-null lastSaveConflict is always fresh.
-    // The node's pending conflict is NOT retired yet — this save may commit
-    // without the response reaching us, so the record stays until the
-    // outcome is known; only its server copy is invalidated, since that
-    // copy predates a write that may have landed. Another node's pending
-    // conflict is never touched.
-    const pending = state.pendingSaveConflicts.get(nodeId);
-    if (pending) {
-      state.pendingSaveConflicts.set(nodeId, { ...pending, serverVerified: false });
-    }
-    state.lastSaveConflict.value = null;
-    try {
-      // The version this content was edited against; a mismatch answers 412
-      // and the conflict handler below takes over (never a blind retry).
-      let revision = options?.revision ?? nodeCache.getCachedRevision(nodeId);
-      if (revision == null) {
-        try {
-          const context = await getDataAdapter().getNodeContext(nodeId);
-          revision = context.nodeInfo?.revision;
-          nodeCache.setCache(nodeId, context);
-        } catch {
-          // Proceed without a version; the server answers 428 and the
-          // conflict path preserves the draft.
-        }
-      }
-      const result = await getDataAdapter().updateNodeContent(nodeId, content, {
-        keepalive: options?.keepalive,
-        revision,
-      });
-      if (result?.revision != null) {
-        nodeCache.updateCachedRevision(nodeId, result.revision);
-      }
-      if (state.activeNode.value?.id === nodeId) {
-        state.activeNode.value = { ...state.activeNode.value, content };
-      }
-      nodeCache.updateCachedContent(nodeId, content);
-      state.pendingSaveConflicts.delete(nodeId);
-      state.lastSaveConflict.value = null;
-      deps.triggerStyleCheck();
-      return true;
-    } catch (error) {
-      const status = (error as { status?: number }).status;
-      if (status === 412 || status === 428) {
-        // Version conflict: keep the draft that was being saved, pull the
-        // server copy, and let the user choose keep-mine or take-server.
-        const { serverContent, serverRevision, serverVerified } = await _captureConflict(nodeId);
-        const conflict: SaveConflict = { nodeId, draftContent: content, serverContent, serverRevision, serverVerified };
-        state.pendingSaveConflicts.set(nodeId, conflict);
-        state.lastSaveConflict.value = conflict;
-        console.error('[nodeStore] save conflict, autosave paused for node:', nodeId, status);
-        return false;
-      }
-      state.errorMessage.value = formatError(error);
-      console.error('[nodeStore] saveActiveNodeContent failed:', nodeId, error);
-      return false;
-    }
-  }
-
-  async function _captureConflict(nodeId: string) {
-    try {
-      const context = await getDataAdapter().getNodeContext(nodeId);
-      nodeCache.setCache(nodeId, context);
-      return {
-        serverContent: context.nodeInfo?.content ?? '',
-        serverRevision: context.nodeInfo?.revision ?? 0,
-        serverVerified: true,
-      };
-    } catch {
-      // Surface the conflict with whatever the cache still holds — which may
-      // predate the conflicting write. Verified stays false so taking the
-      // "server copy" waits for a live re-read (refreshConflictCopy).
-      const cached = nodeCache.getCached(nodeId);
-      return {
-        serverContent: cached?.nodeInfo?.content ?? '',
-        serverRevision: cached?.nodeInfo?.revision ?? 0,
-        serverVerified: false,
-      };
-    }
-  }
-
   /**
    * Re-reads the server copy for an open conflict. Returns the fresh,
-   * verified conflict copy — the caller must sync its own view of the
-   * conflict, the store's update does not propagate. Resolves null without
-   * touching anything when the node has no pending conflict, the read
-   * fails, or the conflict was resolved or replaced while the read was in
-   * flight: a late response then belongs to a settled state and must not
-   * reach the cache either, where an older revision could roll back newer
-   * content. Per-node state is authoritative — another node's save
-   * settling must not retire this node's pending conflict.
+   * verified copy for the caller (the registry stores it and the editor
+   * view derives from it). Resolves null without touching anything when
+   * the node has no pending conflict, the read fails, the session ended,
+   * or the conflict was resolved or replaced while the read was in flight:
+   * a late response then belongs to a settled state and must not reach the
+   * cache either, where an older revision could roll back newer content.
+   * The registry's record is authoritative — another node's save settling
+   * must not retire this node's pending conflict.
    */
   async function refreshConflictCopy(nodeId: string): Promise<SaveConflict | null> {
-    const original = state.pendingSaveConflicts.get(nodeId);
+    const original = getNodeConflict(nodeId);
     if (!original) return null;
+    const sessionAtStart = currentSessionId();
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
-      // Any save of this node that settled while this GET was in flight
-      // retired the conflict (or a new capture replaced it): the response
-      // is stale. Check the node's map entry captured at start, before the
-      // cache write.
-      if (state.pendingSaveConflicts.get(nodeId) !== original) return null;
+      if (currentSessionId() !== sessionAtStart) return null;
+      if (getNodeConflict(nodeId) !== original) return null;
       nodeCache.setCache(nodeId, context);
-      const fresh: SaveConflict = {
+      // The re-read refreshes the server fields; the draft snapshot and its
+      // validation verdict stay as captured.
+      const fresh: ConflictedSave = {
         nodeId,
         draftContent: original.draftContent,
         serverContent: context.nodeInfo?.content ?? '',
         serverRevision: context.nodeInfo?.revision ?? 0,
         serverVerified: true,
+        draftValidated: original.draftValidated,
       };
-      state.pendingSaveConflicts.set(nodeId, fresh);
-      if (state.lastSaveConflict.value === original) {
-        state.lastSaveConflict.value = fresh;
-      }
-      return fresh;
+      return replaceNodeConflictIf(nodeId, original, fresh);
     } catch (error) {
       console.error('[nodeStore] conflict copy re-read failed:', nodeId, error);
       return null;
@@ -399,7 +304,6 @@ export function createNodeStoreActions(
     applyPendingSharedData,
     applyPendingData,
     refreshCurrentNode,
-    saveActiveNodeContent,
     saveNodeContent,
     resolveNodeRevision,
     refreshConflictCopy,
