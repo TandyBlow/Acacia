@@ -102,6 +102,7 @@ export const useNodeStore = defineStore('node', () => {
     saveNodeContent,
     resolveNodeRevision,
     refreshConflictCopy,
+    readNodeContent,
     resetAfterLogout,
     confirmOperation,
   } = createNodeStoreActions(state, {
@@ -177,6 +178,7 @@ export const useNodeStore = defineStore('node', () => {
     saveNodeContent,
     resolveNodeRevision,
     refreshConflictCopy,
+    readNodeContent,
     refreshTree,
     refreshCurrentNode,
     resetAfterLogout,

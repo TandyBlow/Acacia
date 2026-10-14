@@ -845,6 +845,54 @@ describe('MarkdownEditorSave', () => {
     expect(ctx.lastSavedContent.value).toBe('A');
   });
 
+  it('take-server waits out the raced keep-mine write and re-reads before adopting', async () => {
+    const ctx = makeCtx();
+    ctx.editor.value = makeEchoEditor();
+    const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
+    seedNode(save, 'n1', 'old');
+    await conflictVia412(ctx, save, 'n1', 'local draft', { serverContent: 'server truth', serverRevision: 5, serverVerified: true });
+    const conflictId = getNodeConflict('n1')!.conflictId;
+
+    // Keep-mine is clicked and its write hangs on the wire.
+    let release: (() => void) | null = null;
+    ctx.store.saveNodeContent.mockImplementation(async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return { ok: false, kind: 'error' };  // the write fails: outcome unknown
+    });
+    const keeping = save.resolveConflictKeepMine();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
+
+    // The user adopts the server copy while that write is still out. The
+    // operation holds the node's sends and waits.
+    ctx.store.refreshConflictCopy.mockImplementation(async () => {
+      const current = getNodeConflict('n1');
+      if (!current) return null;
+      const fresh = { nodeId: 'n1', draftContent: current.draftContent, serverContent: 'server truth v6', serverRevision: 6, serverVerified: true };
+      return replaceNodeConflictIf('n1', current, fresh);
+    });
+    const taking = save.resolveConflictTakeServer();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
+
+    // The raced write fails with an unknown outcome; no retry may sneak in
+    // after the adoption and overwrite the server with the local draft.
+    release!();
+    expect(await taking).toBe(true);
+    await vi.runAllTimersAsync();
+
+    expect(await keeping).toBe(false);
+    expect(ctx.store.saveNodeContent).toHaveBeenCalledTimes(2);
+    expect(getNodeRecord('n1')!.confirmedContent).toBe('server truth v6');
+    expect(getNodeRecord('n1')!.confirmedRevision).toBe(6);
+    expect(getNodeRecord('n1')!.outcomeUncertain).toBe(false);
+    expect(getNodeConflict('n1')).toBeNull();
+    expect(getNodeConflict('n1')?.conflictId).toBeUndefined();
+    void conflictId;
+    expect(ctx.lastSavedContent.value).toBe('server truth v6');
+    expect(ctx.saveConflict.value).toBeNull();
+  });
+
   // ── Take-server re-read semantics ──────────────────────────────────────
 
   it('take-server on an unverified conflict re-reads, swaps the record, and adopts the fresh copy', async () => {

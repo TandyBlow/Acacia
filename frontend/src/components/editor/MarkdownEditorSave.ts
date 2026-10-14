@@ -2,16 +2,21 @@ import { migrateMathStrings } from '@tiptap/extension-mathematics'
 import { AUTO_SAVE_DELAY_MS } from '../../constants/app'
 import {
   adoptServerContent,
+  beginNodeAdoption,
+  cancelNodeTask,
   clearNodeConflictIf,
   configureSaveSession,
   enqueueNodeSave,
   flushAllSaveTasks,
   getNodeConflict,
   invalidateNodeConflict,
+  isNodeSaving,
   prepareNodeView,
   reconcileNodeContent,
   runNodeResolution,
   setNodeDraft,
+  whenNodeIdle,
+  endNodeAdoption,
 } from '../../services/saveSession'
 import type { ConflictedSave, SaveTaskHandle } from '../../services/saveSession'
 import { parseMarkdownWithIntegrity } from './MarkdownEditorMarkdown'
@@ -151,7 +156,9 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     return runNodeResolution(nodeId, async () => {
       const current = getNodeConflict(nodeId)
       if (current == null) return true
-      if (current !== conflict) return false
+      // Matched by the stable id: an invalidated copy (the write may have
+      // committed) is still this conflict; only a fresh capture revokes.
+      if (current.conflictId !== conflict.conflictId) return false
       // While still on the conflicted node the draft may have evolved past
       // the snapshot — save the latest, revalidated. After switching away
       // the editor draft belongs to another node and must never land here;
@@ -196,30 +203,64 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
     return runNodeResolution(nodeId, async () => {
       const current = getNodeConflict(nodeId)
       if (current == null) return true
-      if (current !== conflict) return false
-      let target = conflict
-      if (!target.serverVerified) {
-        // The server copy must be from a live read: the original capture
-        // may have fallen back to a cache that predates the conflicting
-        // write. The store re-reads with the identity guard — a stale
-        // response neither updates the cache nor the open conflict. On
-        // failure the banner and the draft stay for a retry.
-        const fresh = await ctx.store.refreshConflictCopy(nodeId)
-        if (!fresh) return false
-        target = fresh as ConflictedSave
+      if (current.conflictId !== conflict.conflictId) return false
+      // The whole operation pauses sends for this node: a failing request
+      // must not re-arm a retry into the middle of the adoption.
+      beginNodeAdoption(nodeId)
+      try {
+        // Cancel queued work first, then wait out anything already on the
+        // wire — logout ends the wait instead of answering "idle".
+        cancelNodeTask(nodeId)
+        const raced = isNodeSaving(nodeId)
+        if (await whenNodeIdle(nodeId) === 'session-ended') return false
+        cancelNodeTask(nodeId)
+
+        const latest = getNodeConflict(nodeId)
+        if (latest == null) {
+          // A raced write settled the conflict by writing itself: the
+          // server state changed under us. Sync the draft to what the
+          // server actually holds — do not return on an empty conflict.
+          const fresh = await ctx.store.readNodeContent(nodeId)
+          if (!fresh) return false
+          adoptServerContent(nodeId, fresh.content, fresh.revision)
+          if (ctx.activeNode.value?.id === nodeId) {
+            ctx.activeNode.value = { ...ctx.activeNode.value, content: fresh.content }
+            ctx.draft.value = fresh.content
+            syncEditorContent(fresh.content)
+          }
+          return true
+        }
+        if (latest.conflictId !== conflict.conflictId) return false
+
+        // Judge by the record's CURRENT state: an invalidated copy (a raced
+        // write may have committed) must be re-read even though the
+        // capture was live when taken.
+        let target = latest
+        if (!latest.serverVerified || raced) {
+          // The captured copy is not enough when it was never live or a
+          // raced write may have moved the server: re-read with the
+          // identity guard — a stale response neither updates the cache
+          // nor the open conflict. On failure the banner and the draft
+          // stay for a retry.
+          const fresh = await ctx.store.refreshConflictCopy(nodeId)
+          if (!fresh) return false
+          target = fresh as ConflictedSave
+        }
+        const serverContent = target.serverContent
+        clearNodeConflictIf(nodeId, target)
+        // The adopted copy becomes the node's confirmed state and draft —
+        // for the record even when the user has since switched away; the
+        // editor itself is only touched when this node is on screen.
+        adoptServerContent(nodeId, serverContent, target.serverRevision)
+        if (ctx.activeNode.value?.id === nodeId) {
+          ctx.activeNode.value = { ...ctx.activeNode.value, content: serverContent }
+          ctx.draft.value = serverContent
+          syncEditorContent(serverContent)
+        }
+        return true
+      } finally {
+        endNodeAdoption(nodeId)
       }
-      const serverContent = target.serverContent
-      clearNodeConflictIf(nodeId, target)
-      // The adopted copy becomes the node's confirmed state and draft —
-      // for the record even when the user has since switched away; the
-      // editor itself is only touched when this node is on screen.
-      adoptServerContent(nodeId, serverContent, target.serverRevision)
-      if (ctx.activeNode.value?.id === nodeId) {
-        ctx.activeNode.value = { ...ctx.activeNode.value, content: serverContent }
-        ctx.draft.value = serverContent
-        syncEditorContent(serverContent)
-      }
-      return true
     })
   }
 

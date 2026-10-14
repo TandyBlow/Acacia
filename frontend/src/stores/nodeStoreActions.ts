@@ -239,6 +239,27 @@ export function createNodeStoreActions(
     }
   }
 
+  /**
+   * A plain, session-guarded read of the node's server truth: used after a
+   * raced write has settled an open conflict by writing itself, so the
+   * adoption can sync the draft to what the server actually holds.
+   */
+  async function readNodeContent(nodeId: string): Promise<{ content: string; revision: number } | null> {
+    const sessionAtStart = currentSessionId();
+    try {
+      const context = await getDataAdapter().getNodeContext(nodeId);
+      if (!context) return null;
+      if (currentSessionId() !== sessionAtStart) return null;
+      nodeCache.setCache(nodeId, context);
+      return {
+        content: context.nodeInfo?.content ?? '',
+        revision: context.nodeInfo?.revision ?? 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   function resetAfterLogout(): void {
     // End the save session first: late responses of this session are then
     // recognized and dropped instead of writing into the next one.
@@ -314,6 +335,7 @@ export function createNodeStoreActions(
     saveNodeContent,
     resolveNodeRevision,
     refreshConflictCopy,
+    readNodeContent,
     resetAfterLogout,
     confirmOperation,
   };

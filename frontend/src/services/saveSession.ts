@@ -141,6 +141,11 @@ const queuedTasks = new Map<string, SaveTask>()
 const inFlightRequests = new Map<string, SaveRequestRecord>()
 const inFlightTasks = new Map<string, SaveTask>()
 const resolutionChains = new Map<string, Promise<unknown>>()
+// While a node is adopting its server copy, ALL sends for it are paused —
+// across the cancel, the wait, the re-read, and the adoption itself — so a
+// failing request cannot re-arm a retry into the middle of the operation.
+const adoptionHolds = new Set<string>()
+const idleWaiters = new Map<string, Array<(outcome: 'idle' | 'session-ended') => void>>()
 
 let sessionId = 1
 let taskCounter = 0
@@ -172,6 +177,11 @@ export function endSaveSession(): void {
   inFlightTasks.clear()
   records.clear()
   resolutionChains.clear()
+  adoptionHolds.clear()
+  for (const waiters of idleWaiters.values()) {
+    for (const waiter of waiters) waiter('session-ended')
+  }
+  idleWaiters.clear()
 }
 
 export function getNodeRecord(nodeId: string): NodeSaveRecord | undefined {
@@ -348,6 +358,43 @@ export function reconcileNodeContent(nodeId: string, desired: string, validated:
   return enqueueNodeSave(nodeId, desired, { force: true, validated, delayMs: SAVE_RETRY_BASE_MS })
 }
 
+/** Cancels the node's queued task and ends its wait. */
+export function cancelNodeTask(nodeId: string): void {
+  clearTaskTimer(nodeId)
+  queuedTasks.get(nodeId)?.resolve({ status: 'cancelled' })
+  queuedTasks.delete(nodeId)
+}
+
+/** True while a write for this node is on the wire. */
+export function isNodeSaving(nodeId: string): boolean {
+  return inFlightRequests.has(nodeId)
+}
+
+/** Pauses ALL sends for the node until endNodeAdoption. */
+export function beginNodeAdoption(nodeId: string): void {
+  adoptionHolds.add(nodeId)
+}
+
+export function endNodeAdoption(nodeId: string): void {
+  adoptionHolds.delete(nodeId)
+  dispatchNext()
+}
+
+/**
+ * Resolves when the node has no write on the wire: 'idle' — or
+ * 'session-ended' when logout ends the wait first (an old session ending
+ * must never be mistaken for the document going idle and let a resolution
+ * continue against the new session's data).
+ */
+export function whenNodeIdle(nodeId: string): Promise<'idle' | 'session-ended'> {
+  if (!inFlightRequests.has(nodeId)) return Promise.resolve('idle')
+  return new Promise((resolve) => {
+    const waiters = idleWaiters.get(nodeId) ?? []
+    waiters.push(resolve)
+    idleWaiters.set(nodeId, waiters)
+  })
+}
+
 /** Sends every queued task now (tab close, editor teardown). */
 export function flushAllSaveTasks(options?: { keepalive?: boolean }): void {
   for (const [nodeId, task] of queuedTasks) {
@@ -360,6 +407,7 @@ export function flushAllSaveTasks(options?: { keepalive?: boolean }): void {
 function dispatchNext(): void {
   if (sending || !deps) return
   for (const record of records.values()) {
+    if (adoptionHolds.has(record.nodeId)) continue
     const task = queuedTasks.get(record.nodeId)
     if (!task || task.timer !== undefined) continue
     void dispatchTask(record, task)
@@ -437,6 +485,14 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
     } finally {
       if (inFlightRequests.get(record.nodeId) === request) inFlightRequests.delete(record.nodeId)
       if (inFlightTasks.get(record.nodeId) === task) inFlightTasks.delete(record.nodeId)
+      // Wake idlers after the bookkeeping delete but BEFORE settle runs:
+      // this continuation is synchronous, so waiters resume against final
+      // state.
+      const waiters = idleWaiters.get(record.nodeId)
+      if (waiters) {
+        idleWaiters.delete(record.nodeId)
+        for (const waiter of waiters) waiter('idle')
+      }
     }
     settle(record, task, request, result)
   } catch {
@@ -495,7 +551,7 @@ function settle(record: NodeSaveRecord, task: SaveTask, request: SaveRequestReco
   record.outcomeUncertain = true
   record.retryCount += 1
   task.resolve({ status: 'unknown' })
-  if (record.retryCount <= MAX_SAVE_RETRIES && !queuedTasks.has(record.nodeId)) {
+  if (record.retryCount <= MAX_SAVE_RETRIES && !queuedTasks.has(record.nodeId) && !adoptionHolds.has(record.nodeId)) {
     const retryTask: SaveTask = {
       taskId: ++taskCounter,
       content: request.content,
@@ -543,10 +599,11 @@ export function adoptServerContent(nodeId: string, content: string, revision: nu
   setNodeDraft(nodeId, content)
 }
 
-/** Retires the node's conflict when it is still this exact one. */
+/** Retires the node's conflict when it is still the same one — matched by
+ * the stable id, so an invalidated (but not replaced) conflict still counts. */
 export function clearNodeConflictIf(nodeId: string, expected: ConflictedSave): boolean {
   const record = records.get(nodeId)
-  if (!record || record.conflict !== expected) return false
+  if (!record || record.conflict?.conflictId !== expected.conflictId) return false
   record.conflict = null
   return true
 }
@@ -556,7 +613,7 @@ export function clearNodeConflictIf(nodeId: string, expected: ConflictedSave): b
  * stay as captured, so an outstanding keep-mine license keeps its grant. */
 export function replaceNodeConflictIf(nodeId: string, expected: ConflictedSave, fresh: SaveConflict): ConflictedSave | null {
   const record = records.get(nodeId)
-  if (!record || record.conflict !== expected) return null
+  if (!record || record.conflict?.conflictId !== expected.conflictId) return null
   record.conflict = { ...fresh, draftValidated: expected.draftValidated, conflictId: expected.conflictId }
   return record.conflict
 }
@@ -581,4 +638,9 @@ export function resetSaveSessionForTests(): void {
   inFlightRequests.clear()
   inFlightTasks.clear()
   resolutionChains.clear()
+  adoptionHolds.clear()
+  for (const waiters of idleWaiters.values()) {
+    for (const waiter of waiters) waiter('session-ended')
+  }
+  idleWaiters.clear()
 }

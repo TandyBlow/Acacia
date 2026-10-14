@@ -20,6 +20,10 @@ import {
   resetSaveSessionForTests,
   runNodeResolution,
   setNodeDraft,
+  whenNodeIdle,
+  beginNodeAdoption,
+  cancelNodeTask,
+  endNodeAdoption,
 } from './saveSession';
 
 type Write = (req: SaveRequestRecord) => Promise<SaveWriteResult>;
@@ -285,7 +289,8 @@ describe('saveSession registry', () => {
     await expect(enqueueNodeSave('n1', 'c', { validated: true }).done).resolves.toEqual({ status: 'conflict' });
     const conflict = getNodeConflict('n1')!;
 
-    expect(clearNodeConflictIf('n1', { ...conflict })).toBe(false);
+    // A genuinely different conflict (different id) does not match.
+    expect(clearNodeConflictIf('n1', { ...conflict, conflictId: conflict.conflictId + 1 })).toBe(false);
     expect(getNodeConflict('n1')).toBe(conflict);
 
     const fresh = { nodeId: 'n1', draftContent: 'c', serverContent: 's2', serverRevision: 2, serverVerified: true, draftValidated: true };
@@ -398,6 +403,62 @@ describe('saveSession registry', () => {
     const record = getNodeRecord('n1')!;
     expect(record.conflict).not.toBeNull();
     expect(record.draft).toBe('loaded text');
+  });
+
+  it('whenNodeIdle answers after the write lands, or session-ended on logout', async () => {
+    let release: ((result: SaveWriteResult) => void) | null = null;
+    const { write } = setup();
+    write.mockImplementationOnce(
+      () => new Promise<SaveWriteResult>((resolve) => { release = () => resolve({ ok: true, revision: 2 }); }),
+    );
+    const first = enqueueNodeSave('n1', 'draft', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Registered while the write is on the wire.
+    let idleOutcome: string | null = null;
+    const idle = whenNodeIdle('n1').then((outcome) => { idleOutcome = outcome; });
+    release!();
+    await expect(first.done).resolves.toEqual({ status: 'saved', revision: 2 });
+    await idle;
+    expect(idleOutcome).toBe('idle');
+
+    // Logout ends a pending idle wait explicitly.
+    write.mockImplementationOnce(
+      () => new Promise<SaveWriteResult>(() => { /* hangs */ }),
+    );
+    const second = enqueueNodeSave('n1', 'draft v2', { validated: true, force: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const logout = whenNodeIdle('n1').then((outcome) => outcome);
+    endSaveSession();
+    await expect(logout).resolves.toBe('session-ended');
+    await expect(second.done).resolves.toEqual({ status: 'session-ended' });
+  });
+
+  it("an adoption hold pauses the node's sends until it is lifted", async () => {
+    const { write } = setup();
+    beginNodeAdoption('n1');
+
+    const held = enqueueNodeSave('n1', 'held draft', { validated: true });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).not.toHaveBeenCalled();
+
+    // Under the hold the task just waits; take-server cancels it.
+    cancelNodeTask('n1');
+    await expect(held.done).resolves.toEqual({ status: 'cancelled' });
+
+    // Failed saves do not re-arm retries into the hold either: the
+    // reconciled write stays queued until the hold lifts.
+    getNodeRecord('n1')!.outcomeUncertain = true;
+    const reconciled = reconcileNodeContent('n1', 'held draft', true);
+    expect(reconciled).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).not.toHaveBeenCalled();
+
+    endNodeAdoption('n1');
+    await vi.advanceTimersByTimeAsync(SAVE_RETRY_BASE_MS);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0].content).toBe('held draft');
+    await expect(reconciled!.done).resolves.toEqual({ status: 'saved', revision: null });
   });
 
   it('adopting the server content cancels pending work and confirms the copy', async () => {
