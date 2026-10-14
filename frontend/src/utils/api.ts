@@ -21,7 +21,10 @@ export class ApiError extends Error {
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getToken();
+  // Callers attach protocol headers (If-Match on content writes); they must
+  // be merged with the defaults here, not replaced by them.
   const headers: Record<string, string> = {
+    ...((options?.headers ?? {}) as Record<string, string>),
     'Content-Type': 'application/json',
   };
   if (token) {
