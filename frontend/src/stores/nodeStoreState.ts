@@ -2,6 +2,9 @@ import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { NodeRecord, TreeNode, ViewState, OfficialNodeSummary } from '../types/node';
 import { ViewStates } from '../types/node';
+import type { SaveConflict } from '../services/saveSession';
+
+export type { SaveConflict };
 
 export interface OfficialNodeContent {
   id: string;
@@ -13,19 +16,6 @@ export interface PendingNodeContext {
   nodeInfo: NodeRecord | null;
   pathNodes: NodeRecord[];
   children: NodeRecord[];
-}
-
-export interface SaveConflict {
-  nodeId: string;
-  /** The draft that was being saved when the conflict hit — NOT the
-   * currently displayed draft, which may belong to another node by now. */
-  draftContent: string;
-  serverContent: string;
-  serverRevision: number;
-  /** True when serverContent/serverRevision come from a live GET. A failed
-   * GET falls back to the cache, which may predate the conflicting write —
-   * taking that "server copy" could revert the node. */
-  serverVerified: boolean;
 }
 
 export interface NodeStoreState {

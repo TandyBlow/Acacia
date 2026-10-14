@@ -17,7 +17,8 @@ const mockAdapter: CoreDataAdapter = {
 };
 
 // The REAL nodeCache: the rollback scenario is about its contents.
-import { getCachedRevision, getCached } from '../services/nodeCache';
+import { getCachedRevision, getCached, setCache, invalidateAll } from '../services/nodeCache';
+import { resetSaveSessionForTests } from '../services/saveSession';
 import { useNodeStore, setDataAdapter } from './nodeStore';
 
 const nodeId = 'conflicted-node';
@@ -105,5 +106,107 @@ describe('refreshConflictCopy (real store + real node cache)', () => {
     const fresh = await store.refreshConflictCopy(nodeId);
     expect(fresh).toBeNull();
     expect(mockAdapter.getNodeContext).not.toHaveBeenCalled();
+  });
+});
+
+describe('saveNodeContent (structured write, session-guarded)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setDataAdapter(mockAdapter);
+    resetSaveSessionForTests();
+    invalidateAll();
+    vi.clearAllMocks();
+  });
+
+  it('a confirmed write returns the new revision and updates the cache and active node', async () => {
+    const store = useNodeStore();
+    store.activeNode = { id: nodeId, name: 'N', content: 'old', parentId: null, sortOrder: 0, revision: 1 };
+    setCache(nodeId, contextOf('old', 1));
+    mockAdapter.updateNodeContent!.mockResolvedValueOnce({ revision: 3 } as never);
+
+    const result = await store.saveNodeContent(nodeId, 'new text', { expectedRevision: 1 });
+
+    expect(result).toEqual({ ok: true, revision: 3 });
+    expect(mockAdapter.updateNodeContent).toHaveBeenCalledWith(nodeId, 'new text', { keepalive: undefined, revision: 1 });
+    expect(getCached(nodeId)?.nodeInfo?.content).toBe('new text');
+    expect(getCachedRevision(nodeId)).toBe(3);
+    expect(store.activeNode?.content).toBe('new text');
+  });
+
+  it('a version conflict returns the captured server copy, verified by the live read', async () => {
+    const store = useNodeStore();
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf('server truth', 5));
+
+    const result = await store.saveNodeContent(nodeId, 'draft', { expectedRevision: 1 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.kind === 'conflict') {
+      expect(result.conflict.serverContent).toBe('server truth');
+      expect(result.conflict.serverRevision).toBe(5);
+      expect(result.conflict.serverVerified).toBe(true);
+      expect(result.conflict.draftContent).toBe('draft');
+      expect(result.conflict.nodeId).toBe(nodeId);
+    } else {
+      expect.unreachable('expected a conflict result');
+    }
+    // The live read landed the server copy in the cache.
+    expect(getCached(nodeId)?.nodeInfo?.content).toBe('server truth');
+  });
+
+  it('a version conflict whose capture read fails falls back to the cache, unverified', async () => {
+    const store = useNodeStore();
+    setCache(nodeId, contextOf('cached copy', 1));
+    mockAdapter.updateNodeContent!.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 428 }));
+    mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('read failed'));
+
+    const result = await store.saveNodeContent(nodeId, 'draft', { expectedRevision: 1 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.kind === 'conflict') {
+      expect(result.conflict.serverContent).toBe('cached copy');
+      expect(result.conflict.serverVerified).toBe(false);
+    } else {
+      expect.unreachable('expected a conflict result');
+    }
+  });
+
+  it('a late response after logout is dropped and touches nothing', async () => {
+    const store = useNodeStore();
+    store.activeNode = { id: nodeId, name: 'N', content: 'old', parentId: null, sortOrder: 0, revision: 1 };
+    let release: (() => void) | null = null;
+    mockAdapter.updateNodeContent!.mockImplementationOnce(
+      () => new Promise<never>((resolve) => { release = () => resolve({ revision: 2 } as never); }),
+    );
+    const saving = store.saveNodeContent(nodeId, 'draft', { expectedRevision: 1 });
+
+    store.resetAfterLogout();
+    // The next session loads the node fresh.
+    setCache(nodeId, contextOf('fresh content', 9));
+
+    release!();
+    const result = await saving;
+
+    expect(result).toEqual({ ok: false, kind: 'error' });
+    expect(getCached(nodeId)?.nodeInfo?.content).toBe('fresh content');
+    expect(getCachedRevision(nodeId)).toBe(9);
+    expect(store.activeNode).toBeNull();
+  });
+
+  it('resolveNodeRevision reads the cache first and prefetches only when empty', async () => {
+    const store = useNodeStore();
+    mockAdapter.getNodeContext!.mockResolvedValueOnce(contextOf('content', 4));
+
+    expect(await store.resolveNodeRevision(nodeId)).toBe(4);
+    expect(mockAdapter.getNodeContext).toHaveBeenCalledTimes(1);
+    expect(getCachedRevision(nodeId)).toBe(4);
+
+    expect(await store.resolveNodeRevision(nodeId)).toBe(4);
+    expect(mockAdapter.getNodeContext).toHaveBeenCalledTimes(1);
+
+    // An unreadable node resolves to null: the server will answer 428 and
+    // the conflict path preserves the draft.
+    mockAdapter.getNodeContext!.mockRejectedValueOnce(new Error('down'));
+    expect(await store.resolveNodeRevision('other-node')).toBeNull();
   });
 });

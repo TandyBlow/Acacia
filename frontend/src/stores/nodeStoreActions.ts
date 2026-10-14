@@ -2,6 +2,8 @@ import * as nodeCache from '../services/nodeCache';
 import { getDataAdapter, formatError, clearAdapterCache } from './nodeStoreAdapter';
 import { clearTransientState } from './nodeStoreState';
 import type { NodeStoreState, SaveConflict } from './nodeStoreState';
+import { currentSessionId, endSaveSession } from '../services/saveSession';
+import type { SaveWriteResult } from '../services/saveSession';
 import { computeHasAnyNodes, computeIsEditState } from './nodeStoreHelpers';
 import { ViewStates } from '../types/node';
 import type { TransitionTrigger } from '../types/transition';
@@ -230,7 +232,105 @@ export function createNodeStoreActions(
     }
   }
 
+  /**
+   * One structured write against the network. The expected revision is
+   * passed in by the save session — frozen on the task at first dispatch,
+   * so a retry re-sends the version its content was edited against instead
+   * of picking up a newer cache revision and defeating the version check.
+   * Every await is followed by a session check: a response landing after
+   * logout belongs to a dead state and must not touch the cache or the
+   * active node.
+   */
+  async function saveNodeContent(
+    nodeId: string,
+    content: string,
+    options?: { keepalive?: boolean; expectedRevision?: number | null },
+  ): Promise<SaveWriteResult> {
+    const sessionAtStart = currentSessionId();
+    state.errorMessage.value = null;
+    try {
+      const result = await getDataAdapter().updateNodeContent(nodeId, content, {
+        keepalive: options?.keepalive,
+        revision: options?.expectedRevision ?? undefined,
+      });
+      if (currentSessionId() !== sessionAtStart) return { ok: false, kind: 'error' };
+      if (result?.revision != null) {
+        nodeCache.updateCachedRevision(nodeId, result.revision);
+      }
+      if (state.activeNode.value?.id === nodeId) {
+        state.activeNode.value = { ...state.activeNode.value, content };
+      }
+      nodeCache.updateCachedContent(nodeId, content);
+      deps.triggerStyleCheck();
+      return { ok: true, revision: result?.revision ?? null };
+    } catch (error) {
+      if (currentSessionId() !== sessionAtStart) return { ok: false, kind: 'error' };
+      const status = (error as { status?: number }).status;
+      if (status === 412 || status === 428) {
+        // Version conflict: the caller (save session) records it and the
+        // user decides. The server copy is read here — a live read wins; a
+        // failed one falls back to the cache flagged unverified.
+        const captured = await _captureConflictCopy(nodeId, sessionAtStart);
+        if (!captured) return { ok: false, kind: 'error' };
+        return {
+          ok: false,
+          kind: 'conflict',
+          conflict: { nodeId, draftContent: content, ...captured },
+        };
+      }
+      state.errorMessage.value = formatError(error);
+      console.error('[nodeStore] saveNodeContent failed:', nodeId, error);
+      return { ok: false, kind: 'error' };
+    }
+  }
+
+  async function _captureConflictCopy(
+    nodeId: string,
+    sessionAtStart: number,
+  ): Promise<{ serverContent: string; serverRevision: number; serverVerified: boolean } | null> {
+    try {
+      const context = await getDataAdapter().getNodeContext(nodeId);
+      if (currentSessionId() !== sessionAtStart) return null;
+      nodeCache.setCache(nodeId, context);
+      return {
+        serverContent: context.nodeInfo?.content ?? '',
+        serverRevision: context.nodeInfo?.revision ?? 0,
+        serverVerified: true,
+      };
+    } catch {
+      const cached = nodeCache.getCached(nodeId);
+      return {
+        serverContent: cached?.nodeInfo?.content ?? '',
+        serverRevision: cached?.nodeInfo?.revision ?? 0,
+        serverVerified: false,
+      };
+    }
+  }
+
+  /**
+   * Resolves the expected revision for a task's first send: the cache
+   * first, one prefetch GET when it is empty. The caller freezes the value
+   * on the task, so retries reuse it. Without a version the server answers
+   * 428 and the conflict path preserves the draft.
+   */
+  async function resolveNodeRevision(nodeId: string): Promise<number | null> {
+    const cached = nodeCache.getCachedRevision(nodeId);
+    if (cached != null) return cached;
+    const sessionAtStart = currentSessionId();
+    try {
+      const context = await getDataAdapter().getNodeContext(nodeId);
+      if (currentSessionId() !== sessionAtStart) return null;
+      nodeCache.setCache(nodeId, context);
+      return context.nodeInfo?.revision ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   function resetAfterLogout(): void {
+    // End the save session first: late responses of this session are then
+    // recognized and dropped instead of writing into the next one.
+    endSaveSession();
     state.activeNode.value = null;
     state.pathNodes.value = [];
     state.childNodes.value = [];
@@ -300,6 +400,8 @@ export function createNodeStoreActions(
     applyPendingData,
     refreshCurrentNode,
     saveActiveNodeContent,
+    saveNodeContent,
+    resolveNodeRevision,
     refreshConflictCopy,
     resetAfterLogout,
     confirmOperation,
