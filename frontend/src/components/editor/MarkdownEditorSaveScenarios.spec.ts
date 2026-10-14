@@ -214,37 +214,73 @@ describe('save-flow acceptance scenarios', () => {
     expect(h.ctx.saveConflict.value).toBeNull();
   });
 
-  it('5. the server committed but the response was lost: the resent draft carries the original version', async () => {
+  it('5. the server committed but the response was lost: the resent draft is rejected 412 and the truth is confirmed', async () => {
     const h = await mountNode({ id: NODE_A, content: 'A saved' });
 
-    // First attempt "fails": the server actually committed (it moves to
-    // revision 2) but the client sees a network error.
-    mockAdapter.updateNodeContent.mockRejectedValueOnce(new Error('response lost'));
+    // A stateful server model: content + revision + a version check that
+    // mirrors the backend's If-Match handling — a write against a stale
+    // version is rejected with 412 and never lands.
+    const server = { content: 'A saved', revision: 1 };
+    const writes: Array<{ content: string; revision: number | null }> = [];
+    mockAdapter.updateNodeContent.mockImplementation(async (...args: unknown[]) => {
+      const content = args[1] as string;
+      const revision = (args[2] as { revision?: number | null } | undefined)?.revision ?? null;
+      writes.push({ content, revision });
+      if (revision !== server.revision) {
+        throw Object.assign(new Error('version mismatch'), { status: 412 });
+      }
+      server.content = content;
+      server.revision += 1;
+      if (writes.length === 1) {
+        // The commit landed (the server moves to revision 2) but the
+        // success response was lost — the client sees a network error.
+        throw new Error('response lost');
+      }
+      return { revision: server.revision } as never;
+    });
+    mockAdapter.getNodeContext.mockImplementation(async () => contextOf(NODE_A, server.content, server.revision));
+
     h.ctx.draft.value = 'A edited';
     await nextTick();
     await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS + 10);
-    expect(callsFor(NODE_A)).toHaveLength(1);
-    // The outcome is unknown: the same content must not be deduped away.
+
+    // Attempt 1: committed server-side at revision 2; the client saw an
+    // error, so the outcome is unknown and the draft must not be deduped.
+    expect(writes).toEqual([{ content: 'A edited', revision: 1 }]);
+    expect(server).toEqual({ content: 'A edited', revision: 2 });
     expect(getNodeRecord(NODE_A)?.outcomeUncertain).toBe(true);
 
-    // The retry carries the SAME content and the SAME expected version —
-    // picking up a newer cache version here would defeat the server's
-    // version check and overwrite a moved server silently.
-    mockAdapter.updateNodeContent.mockResolvedValueOnce({ revision: 2 } as never);
+    // The retry carries the SAME content and the SAME base version — and
+    // the server, now at revision 2, answers 412 instead of accepting it.
     await vi.advanceTimersByTimeAsync(2500);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual({ content: 'A edited', revision: 1 });
+    expect(server).toEqual({ content: 'A edited', revision: 2 });
 
-    expect(callsFor(NODE_A)).toHaveLength(2);
-    expect(callsFor(NODE_A)[1][1]).toBe('A edited');
-    expect(callsFor(NODE_A)[1][2]).toMatchObject({ revision: 1 });
+    // The 412's capture read confirms the server truth: a verified
+    // conflict whose server copy is the committed draft itself.
+    expect(h.ctx.saveConflict.value?.nodeId).toBe(NODE_A);
+    expect(h.ctx.saveConflict.value?.serverContent).toBe('A edited');
+    expect(h.ctx.saveConflict.value?.serverRevision).toBe(2);
+    expect(h.ctx.saveConflict.value?.serverVerified).toBe(true);
 
-    // Server and cache confirmed; uncertainty cleared, dedup re-enabled.
+    // Keep-mine — licensed, pinned to the captured revision 2 — converges:
+    // the server accepts and moves to revision 3.
+    const kept = await h.save.resolveConflictKeepMine();
+    expect(kept).toBe(true);
+    expect(writes).toHaveLength(3);
+    expect(writes[2]).toEqual({ content: 'A edited', revision: 2 });
+    expect(server.revision).toBe(3);
+
+    // Everything agrees again: cache, confirmed content, banner gone,
+    // uncertainty cleared, dedup re-enabled.
     expect(getCached(NODE_A)?.nodeInfo?.content).toBe('A edited');
-    expect(getCachedRevision(NODE_A)).toBe(2);
+    expect(getCachedRevision(NODE_A)).toBe(3);
+    expect(h.ctx.saveConflict.value).toBeNull();
     expect(getNodeRecord(NODE_A)?.outcomeUncertain).toBe(false);
     const { done } = enqueueNodeSave(NODE_A, 'A edited', { validated: true });
-    expect(await done).toEqual({ status: 'saved', revision: 2 });
-    expect(callsFor(NODE_A)).toHaveLength(2);
-    expect(h.ctx.saveConflict.value).toBeNull();
+    expect(await done).toEqual({ status: 'saved', revision: 3 });
+    expect(writes).toHaveLength(3);
   });
 
   it('6. keep-mine queued behind another save: nothing claimed, nothing cleared, server untouched', async () => {
