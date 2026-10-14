@@ -117,6 +117,7 @@ export function createNodeStoreActions(
     const sessionAtStart = currentSessionId();
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
+      if (!context) return null;
       if (currentSessionId() !== sessionAtStart) return null;
       if (getNodeConflict(nodeId) !== original) return null;
       nodeCache.setCache(nodeId, context);
@@ -195,6 +196,7 @@ export function createNodeStoreActions(
   ): Promise<{ serverContent: string; serverRevision: number; serverVerified: boolean } | null> {
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
+      if (!context) throw new Error('empty node context');
       if (currentSessionId() !== sessionAtStart) return null;
       nodeCache.setCache(nodeId, context);
       return {
@@ -224,6 +226,7 @@ export function createNodeStoreActions(
     const sessionAtStart = currentSessionId();
     try {
       const context = await getDataAdapter().getNodeContext(nodeId);
+      if (!context) return null;
       if (currentSessionId() !== sessionAtStart) return null;
       nodeCache.setCache(nodeId, context);
       return context.nodeInfo?.revision ?? null;

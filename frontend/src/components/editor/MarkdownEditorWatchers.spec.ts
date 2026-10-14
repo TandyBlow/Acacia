@@ -1,154 +1,172 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick, ref, shallowRef } from 'vue';
-import type { MarkdownEditorContext } from './MarkdownEditorContext';
-import { createEditorSaveViews } from './MarkdownEditorContext';
-import type { MarkdownEditorSave } from './MarkdownEditorSave';
-import { resetSaveSessionForTests } from '../../services/saveSession';
-import type { SaveWriteResult } from '../../services/saveSession';
-import { useMarkdownEditorSave } from './MarkdownEditorSave';
+// Watchers under a REAL mounted component: no lifecycle stubbing — the
+// mount / node-switch / unmount behavior runs for real, with the real
+// Tiptap editor, the real save session, and the real pinia store behind a
+// mocked network adapter.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { nextTick } from 'vue';
+import type { NodeContext, NodeRecord, CoreDataAdapter } from '../../types/node';
 
-// migrateMathStrings walks editor.state/view, which the mock editor lacks.
-vi.mock('@tiptap/extension-mathematics', () => ({ migrateMathStrings: vi.fn() }));
-
-// Lifecycle registration is a component concern; the draft-watcher behavior
-// under test is not. (Real mount/unmount behavior is covered by the
-// acceptance scenarios spec with a mounted harness component.)
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  return { ...actual, onMounted: () => undefined, onBeforeUnmount: () => undefined };
+vi.mock('@tiptap/extension-mathematics', async (importOriginal) => {
+  // The real one: the harness editor has the production extension stack.
+  return await importOriginal<typeof import('@tiptap/extension-mathematics')>();
 });
 
-function makeEchoEditor() {
-  const echoDoc = (md: string) => ({
-    type: 'doc',
-    content: [{ type: 'paragraph', content: [{ type: 'text', text: md }] }],
-  });
-  return {
-    commands: { setContent: vi.fn() },
-    setEditable: vi.fn(),
-    getMarkdown: vi.fn(() => ''),
-    getJSON: vi.fn(() => ({ type: 'doc', content: [] })),
-    state: { doc: { v: 0 } },
-    markdown: { parse: vi.fn((md: string) => echoDoc(md)) },
-    schema: {
-      nodes: { doc: {}, paragraph: {}, text: {} },
-      nodeFromJSON: () => ({ check: vi.fn() }),
-    },
-  };
+const mockAdapter: CoreDataAdapter = {
+  getNodeContext: vi.fn<(nodeId: string | null) => Promise<NodeContext>>(),
+  createNode: vi.fn<(parentId: string | null, name: string) => Promise<NodeRecord>>(),
+  updateNodeContent: vi.fn<(nodeId: string, content: string) => Promise<never>>(),
+  deleteNode: vi.fn<(nodeId: string, deleteChildren: boolean) => Promise<void>>(),
+  moveNode: vi.fn<(nodeId: string, newParentId: string | null) => Promise<void>>(),
+  getTree: vi.fn<() => Promise<never[]>>(),
+  clearCache: vi.fn(),
+};
+
+import { invalidateAll, setCache } from '../../services/nodeCache';
+import { getNodeConflict, resetSaveSessionForTests } from '../../services/saveSession';
+import { useNodeStore, setDataAdapter } from '../../stores/nodeStore';
+import { mountEditorHarness } from './editorTestHarness';
+import type { EditorHarness } from './editorTestHarness';
+
+const NODE_A = 'node-a';
+const NODE_B = 'node-b';
+
+function contextOf(nodeId: string, content: string, revision: number): NodeContext {
+  const nodeInfo: NodeRecord = { id: nodeId, name: nodeId, content, parentId: null, sortOrder: 0, revision };
+  return { nodeInfo, pathNodes: [], children: [] };
 }
 
-function makeCtx(nodeId: string | null, savedContent: string) {
-  const activeNode = ref(nodeId ? { id: nodeId, content: savedContent } : null);
-  return {
-    store: {
-      saveNodeContent: vi.fn<(nodeId: string, content: string, options?: { expectedRevision?: number | null }) => Promise<SaveWriteResult>>(
-        async () => ({ ok: false, kind: 'error' as const }),
-      ),
-      resolveNodeRevision: vi.fn<(nodeId: string) => Promise<number | null>>(async () => 1),
-      refreshTree: vi.fn().mockResolvedValue(undefined),
-    },
-    activeNode,
-    ...createEditorSaveViews(activeNode),
-    draft: ref(''),
-    isParseDegraded: ref(false),
-    integrityIssueText: ref(''),
-    hasUserEdited: ref(false),
-    isChatSunk: ref(false),
-    isFileSunk: ref(false),
-    userInput: ref(''),
-    pendingFile: ref(null),
-    lastActiveNodeId: ref(null),
-    editorRef: shallowRef(null),
-    chatMode: ref('idle'),
-    hasResumableSession: ref(false),
-    setEditor: vi.fn(),
-    exitChat: vi.fn(),
-    resetForNewNode: vi.fn(),
-    setNodeId: vi.fn(),
-    registerRegion: vi.fn(),
-    unregisterRegion: vi.fn(),
-    editor: ref(makeEchoEditor()),
-    t: (key: string) => key,
-    isApplyingExternalContent: ref(false),
-  };
-}
+describe('MarkdownEditorWatchers (mounted component)', () => {
+  let harness: EditorHarness | null = null;
 
-async function loadModules(ctx: ReturnType<typeof makeCtx>) {
-  const save = useMarkdownEditorSave(ctx as unknown as MarkdownEditorContext);
-  const watchersMod = await import('./MarkdownEditorWatchers');
-  watchersMod.useMarkdownEditorWatchers(ctx as unknown as MarkdownEditorContext, {
-    save: save as unknown as MarkdownEditorSave,
-    editor: ctx.editor,
-    onCinemaChatMode: () => undefined,
-  });
-  return save;
-}
-
-describe('MarkdownEditorWatchers draft watcher', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    setActivePinia(createPinia());
+    setDataAdapter(mockAdapter);
     resetSaveSessionForTests();
+    invalidateAll();
+    vi.clearAllMocks();
+    mockAdapter.getTree.mockResolvedValue([]);
   });
 
-  it('reverting the draft to saved content cancels only this node\'s queued save', async () => {
-    const ctx = makeCtx('nB', 'B saved');
-    const save = await loadModules(ctx);
-
-    // Node A's first attempt just failed; its retry is armed (timer + queue).
-    await save.enqueueSave('nA', 'A content').done;
-
-    // Node B types and then reverts to its saved content.
-    ctx.draft.value = 'B edited';
-    await nextTick();
-    ctx.draft.value = 'B saved';
-    await nextTick();
-
-    await vi.runAllTimersAsync();
-
-    const calls = ctx.store.saveNodeContent.mock.calls;
-    // A's retry still went out.
-    expect(calls.filter((call) => call[0] === 'nA').length).toBeGreaterThanOrEqual(2);
-    // B's reverted intermediate draft never left.
-    expect(calls.filter((call) => call[0] === 'nB')).toHaveLength(0);
+  afterEach(() => {
+    harness?.wrapper.unmount();
+    harness = null;
   });
 
-  it('a draft change with no active node leaves other nodes\' timers alone', async () => {
-    const ctx = makeCtx(null, '');
-    const save = await loadModules(ctx);
-
-    // Node A's retry is armed while nothing is active.
-    await save.enqueueSave('nA', 'A content').done;
-
-    // A stray draft change arrives with no active node.
-    ctx.draft.value = 'stray change';
+  async function mountNode(node: { id: string; content: string }): Promise<EditorHarness> {
+    const store = useNodeStore();
+    store.activeNode = { ...node, parentId: null, sortOrder: 0, revision: 1 };
+    // The node was loaded: its context is cached, revisions included.
+    setCache(node.id, contextOf(node.id, node.content, 1));
+    harness = mountEditorHarness(store, { id: node.id, content: node.content });
     await nextTick();
+    return harness;
+  }
 
-    await vi.runAllTimersAsync();
+  it('mounting loads the content through the real parse pipeline and seeds the record', async () => {
+    const h = await mountNode({ id: NODE_A, content: '# Title\n\nSome text.' });
 
-    const calls = ctx.store.saveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
-    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(h.ctx.draft.value).toBe('# Title\n\nSome text.');
+    expect(h.ctx.lastSavedContent.value).toBe('# Title\n\nSome text.');
+    expect(h.ctx.isParseDegraded.value).toBe(false);
+    expect(h.ctx.integrityIssueText.value).toBe('');
+    expect(h.ctx.editor.value!.getMarkdown()).toBe('# Title\n\nSome text.');
   });
 
-  it('switching to a node restores its preserved draft and conflict; other nodes keep saving', async () => {
-    const ctx = makeCtx('nA', 'A saved');
-    const save = await loadModules(ctx);
+  it('switching nodes preserves the outgoing draft and restores it on switch-back', async () => {
+    const h = await mountNode({ id: NODE_A, content: 'A saved' });
 
-    // The user edits node A (queued for autosave), then switches to B.
-    ctx.draft.value = 'A pending unsaved';
+    // The user types on node A (the draft watcher mirrors it into the record).
+    h.ctx.draft.value = 'A pending unsaved';
     await nextTick();
-    ctx.activeNode.value = { id: 'nB', content: 'B saved' };
-    await nextTick();
-    // Node A's draft is preserved in its record; B's saved content shows.
-    expect(ctx.draft.value).toBe('B saved');
 
-    // Back to A: the preserved draft comes back, still queued.
-    ctx.activeNode.value = { id: 'nA', content: 'A saved' };
+    h.ctx.activeNode.value = { id: NODE_B, content: 'B saved', parentId: null, sortOrder: 0, revision: 1 };
     await nextTick();
-    expect(ctx.draft.value).toBe('A pending unsaved');
+    expect(h.ctx.draft.value).toBe('B saved');
 
-    await vi.runAllTimersAsync();
-    const callsForA = ctx.store.saveNodeContent.mock.calls.filter((call) => call[0] === 'nA');
-    expect(callsForA.length).toBeGreaterThanOrEqual(1);
+    // Node A's queued autosave still goes out while the user is on B.
+    await vi.advanceTimersByTimeAsync(1500);
+    const callsForA = mockAdapter.updateNodeContent.mock.calls.filter((call) => call[0] === NODE_A);
+    expect(callsForA).toHaveLength(1);
+    expect(callsForA[0][1]).toBe('A pending unsaved');
+
+    // Back to A: the preserved draft comes back, already confirmed by the
+    // background save.
+    h.ctx.activeNode.value = { id: NODE_A, content: 'A saved', parentId: null, sortOrder: 0, revision: 2 };
+    await nextTick();
+    expect(h.ctx.draft.value).toBe('A pending unsaved');
+    expect(h.ctx.lastSavedContent.value).toBe('A pending unsaved');
+  });
+
+  it('a conflict for the active node raises the banner, hides it on switch-away, restores it on switch-back', async () => {
+    const h = await mountNode({ id: NODE_A, content: 'A saved' });
+
+    // The autosave hits a moved server: 412, live capture reads revision 2.
+    mockAdapter.updateNodeContent.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
+    mockAdapter.getNodeContext.mockResolvedValueOnce(contextOf(NODE_A, 'A server truth', 2));
+
+    h.ctx.draft.value = 'A conflicting draft';
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    // The banner is up for the node on screen; autosave is paused for A.
+    expect(h.ctx.saveConflict.value?.nodeId).toBe(NODE_A);
+    expect(h.ctx.saveConflict.value?.serverRevision).toBe(2);
+    const callsForA = mockAdapter.updateNodeContent.mock.calls.filter((call) => call[0] === NODE_A);
+    expect(callsForA).toHaveLength(1);
+
+    h.ctx.activeNode.value = { id: NODE_B, content: 'B saved', parentId: null, sortOrder: 0, revision: 1 };
+    await nextTick();
+    // No banner for node B — and B saves normally.
+    expect(h.ctx.saveConflict.value).toBeNull();
+    h.ctx.draft.value = 'B edited';
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(mockAdapter.updateNodeContent.mock.calls.filter((call) => call[0] === NODE_B)).toHaveLength(1);
+
+    // Back to A: the conflict comes back with the preserved draft.
+    h.ctx.activeNode.value = { id: NODE_A, content: 'A saved', parentId: null, sortOrder: 0, revision: 2 };
+    await nextTick();
+    expect(h.ctx.draft.value).toBe('A conflicting draft');
+    expect(h.ctx.saveConflict.value?.nodeId).toBe(NODE_A);
+    expect(getNodeConflict(NODE_A)?.serverContent).toBe('A server truth');
+  });
+
+  it('unmounting flushes queued saves and the save session outlives the component', async () => {
+    const h = await mountNode({ id: NODE_A, content: 'A saved' });
+
+    h.ctx.draft.value = 'A edited before teardown';
+    await nextTick();
+    // No debounce wait: unmounting flushes immediately.
+    h.wrapper.unmount();
+    harness = null;
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockAdapter.updateNodeContent).toHaveBeenCalledWith(
+      NODE_A,
+      'A edited before teardown',
+      expect.anything(),
+    );
+  });
+
+  it('a failed save keeps its retry armed across a node switch', async () => {
+    const h = await mountNode({ id: NODE_A, content: 'A saved' });
+
+    // The first write fails with a network error: outcome unknown, retry armed.
+    mockAdapter.updateNodeContent.mockRejectedValueOnce(new Error('network down'));
+    h.ctx.draft.value = 'A edited';
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(mockAdapter.updateNodeContent).toHaveBeenCalledTimes(1);
+
+    // The user switches to B; A's retry must still fire.
+    h.ctx.activeNode.value = { id: NODE_B, content: 'B saved', parentId: null, sortOrder: 0, revision: 1 };
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(2500);
+
+    const callsForA = mockAdapter.updateNodeContent.mock.calls.filter((call) => call[0] === NODE_A);
+    expect(callsForA.length).toBeGreaterThanOrEqual(2);
   });
 });
