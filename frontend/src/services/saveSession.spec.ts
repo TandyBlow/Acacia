@@ -439,6 +439,36 @@ describe('saveSession registry', () => {
     void saving;
   });
 
+  it('logout during the revision resolution ends the wait and frees the sender for the next session', async () => {
+    let releaseRead: (() => void) | null = null;
+    const { write, resolve } = setup();
+    resolve.mockImplementationOnce(
+      () => new Promise<{ revision: number | null; content?: string }>((r) => { releaseRead = () => r({ revision: 1, content: 'x' }); }),
+    );
+
+    // The task is past the queue and stuck resolving its write base.
+    const { done } = enqueueNodeSave('n1', 'draft', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).not.toHaveBeenCalled();
+
+    // Logout ends the wait immediately — the task is registered as
+    // processing even before its request exists.
+    endSaveSession();
+    await expect(done).resolves.toEqual({ status: 'session-ended' });
+
+    // The stale revision read finally returns: the dead dispatch must not
+    // write, and the slot it held is already free for the new session.
+    releaseRead!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).not.toHaveBeenCalled();
+
+    const fresh = enqueueNodeSave('n2', 'new session draft', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0].sessionId).toBe(2);
+    await expect(fresh.done).resolves.toEqual({ status: 'saved', revision: null });
+  });
+
   it('whenNodeIdle answers after the write lands, or session-ended on logout', async () => {
     let release: ((result: SaveWriteResult) => void) | null = null;
     const { write } = setup();

@@ -153,6 +153,9 @@ let requestCounter = 0
 let conflictSeq = 0
 let deps: SaveSessionDeps | null = null
 let sending = false
+/** Which session the current send slot belongs to: a logout releases it so
+ * the next session's saves do not queue behind a dead request's finally. */
+let sendingSession = 0
 
 export function currentSessionId(): number {
   return sessionId
@@ -178,6 +181,8 @@ export function endSaveSession(): void {
   records.clear()
   resolutionChains.clear()
   adoptionHolds.clear()
+  sending = false
+  sendingSession = 0
   for (const waiters of idleWaiters.values()) {
     for (const waiter of waiters) waiter('session-ended')
   }
@@ -433,9 +438,14 @@ function dispatchNext(): void {
 }
 
 async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<void> {
+  const sessionAtDispatch = sessionId
   sending = true
+  sendingSession = sessionAtDispatch
   try {
     queuedTasks.delete(record.nodeId)
+    // Registered as processing BEFORE any await: logout during the
+    // revision resolution must still end this task's wait immediately.
+    inFlightTasks.set(record.nodeId, task)
 
     // The conflict may have opened (or been replaced) between queueing and
     // dispatching: re-check the license against the live record.
@@ -448,7 +458,6 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
       task.resolve({ status: 'saved', revision: record.confirmedRevision })
       return
     }
-    const sessionAtDispatch = sessionId
     if (task.expectedRevision == null) {
       // The draft never knew a base version. Resolving one now must not
       // sneak a stale draft past a moved server: if the live read holds
@@ -493,7 +502,6 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
       keepalive: task.keepalive,
     }
     inFlightRequests.set(record.nodeId, request)
-    inFlightTasks.set(record.nodeId, task)
     let result: SaveWriteResult
     try {
       result = await deps!.performWrite(request)
@@ -501,7 +509,6 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
       result = { ok: false, kind: 'error' }
     } finally {
       if (inFlightRequests.get(record.nodeId) === request) inFlightRequests.delete(record.nodeId)
-      if (inFlightTasks.get(record.nodeId) === task) inFlightTasks.delete(record.nodeId)
       // Wake idlers after the bookkeeping delete but BEFORE settle runs:
       // this continuation is synchronous, so waiters resume against final
       // state.
@@ -518,7 +525,13 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
     record.outcomeUncertain = true
     task.resolve({ status: 'unknown' })
   } finally {
-    sending = false
+    // Identity check: logout may have released the slot for the next
+    // session already — a dead request's finally must not steal it back.
+    if (inFlightTasks.get(record.nodeId) === task) inFlightTasks.delete(record.nodeId)
+    if (sendingSession === sessionAtDispatch) {
+      sending = false
+      sendingSession = 0
+    }
     dispatchNext()
   }
 }
@@ -650,6 +663,7 @@ export function resetSaveSessionForTests(): void {
   conflictSeq = 0
   deps = null
   sending = false
+  sendingSession = 0
   records.clear()
   queuedTasks.clear()
   inFlightRequests.clear()
