@@ -1,0 +1,382 @@
+[
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:27.349Z",
+    "method": "GET",
+    "resourceType": "image",
+    "url": "https://acacia.tandyblow.top/assets/TreeLeaves03-leAIhk21.png",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996206922.1072,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.734,
+      "responseStart": 392.729,
+      "responseEnd": 422.582
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:27.441Z",
+    "method": "GET",
+    "resourceType": "image",
+    "url": "https://acacia.tandyblow.top/assets/TreeLeaves02-CYcVkUHT.png",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996206921.627,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 1.108,
+      "responseStart": 421.567,
+      "responseEnd": 517.554
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:28.410Z",
+    "method": "GET",
+    "resourceType": "image",
+    "url": "https://acacia.tandyblow.top/assets/TreeLeaves01-D05xhd3T.png",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996206920.4668,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.499,
+      "responseStart": 1474.667,
+      "responseEnd": 1477.278
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:28.982Z",
+    "method": "GET",
+    "resourceType": "image",
+    "url": "https://acacia.tandyblow.top/api/backgrounds/ai/:id.png",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996206922.492,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.438,
+      "responseStart": 424.347,
+      "responseEnd": 2051.345
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:28.986Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996207197.695,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.627,
+      "responseStart": 1777.792,
+      "responseEnd": 1781.729
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:30.254Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/tree",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996209544.77,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.472,
+      "responseStart": 417.17,
+      "responseEnd": 420.371
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:30.389Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/tree",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996209860.964,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 102.807,
+      "responseStart": 520.972,
+      "responseEnd": 525.611
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:30.393Z",
+    "method": "GET",
+    "resourceType": "font",
+    "url": "https://acacia.tandyblow.top/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996209894.1191,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.245,
+      "responseStart": 491.597,
+      "responseEnd": 493.133
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:30.397Z",
+    "method": "GET",
+    "resourceType": "font",
+    "url": "https://acacia.tandyblow.top/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996209894.584,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.957,
+      "responseStart": 492.315,
+      "responseEnd": 493.395
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:30.397Z",
+    "method": "GET",
+    "resourceType": "font",
+    "url": "https://acacia.tandyblow.top/assets/KaTeX_Size1-Regular-mCD8mA8B.woff2",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996209901.538,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.364,
+      "responseStart": 485.649,
+      "responseEnd": 486.841
+    },
+    "scenario": "打开1.1万字测试文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:33.045Z",
+    "method": "PATCH",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/nodes/:id/content",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996212563.4739,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.366,
+      "responseStart": 468.33,
+      "responseEnd": 471.964
+    },
+    "scenario": "一次插入280字并观察自动保存"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:33.441Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996213048.504,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 1.176,
+      "responseStart": 387.061,
+      "responseEnd": 390.118
+    },
+    "scenario": "一次插入280字并观察自动保存"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:36.159Z",
+    "method": "PATCH",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/nodes/:id/content",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996215741.168,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.371,
+      "responseStart": 411.51,
+      "responseEnd": 415.806
+    },
+    "scenario": "粘贴2204字符混合内容并观察自动保存"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:36.562Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996216162.135,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.497,
+      "responseStart": 391.782,
+      "responseEnd": 394.129
+    },
+    "scenario": "粘贴2204字符混合内容并观察自动保存"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:38.076Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/nodes/context/:id",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996217641.8982,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.472,
+      "responseStart": 428.617,
+      "responseEnd": 436.304
+    },
+    "scenario": "切换到轻量文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:38.854Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/tree",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996218392.8472,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.521,
+      "responseStart": 447.705,
+      "responseEnd": 451.559
+    },
+    "scenario": "切换到轻量文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:39.344Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/tree",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996218415.8079,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 425.751,
+      "responseStart": 922.308,
+      "responseEnd": 924.753
+    },
+    "scenario": "切换到轻量文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:40.426Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/tree",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996220023.4731,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 0.721,
+      "responseStart": 397.224,
+      "responseEnd": 400.121
+    },
+    "scenario": "切回1.1万字文档"
+  },
+  {
+    "kind": "request",
+    "at": "2026-10-14T16:43:40.824Z",
+    "method": "GET",
+    "resourceType": "fetch",
+    "url": "https://acacia.tandyblow.top/api/tree",
+    "status": 200,
+    "timing": {
+      "startTime": 1791996220105.007,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": -1,
+      "connectEnd": -1,
+      "requestStart": 317.145,
+      "responseStart": 713.064,
+      "responseEnd": 715.321
+    },
+    "scenario": "切回1.1万字文档"
+  }
+]
