@@ -144,13 +144,23 @@ const resolutionChains = new Map<string, Promise<unknown>>()
 // While a node is adopting its server copy, ALL sends for it are paused —
 // across the cancel, the wait, the re-read, and the adoption itself — so a
 // failing request cannot re-arm a retry into the middle of the operation.
-const adoptionHolds = new Set<string>()
-const idleWaiters = new Map<string, Array<(outcome: 'idle' | 'session-ended') => void>>()
+// A hold carries the session and a unique credential: only the operation
+// that took the hold may lift it, and a stale finally from an old session
+// can never release a new one.
+const adoptionHolds = new Map<string, { sessionId: number; token: number }>()
+// Idlers wait for a specific dispatch (token) of the current session: a
+// late finally of an OLD session's request must not wake them.
+const idleWaiters = new Map<string, Array<{ token: number; sessionId: number; resolve: (outcome: 'idle' | 'session-ended') => void }>>()
+// Which dispatch currently occupies a node — from the moment a task leaves
+// the queue (revision resolution included) until its state updates settle.
+const processingTokens = new Map<string, number>()
 
 let sessionId = 1
 let taskCounter = 0
 let requestCounter = 0
 let conflictSeq = 0
+let adoptionSeq = 0
+let dispatchSeq = 0
 let deps: SaveSessionDeps | null = null
 let sending = false
 /** Which session the current send slot belongs to: a logout releases it so
@@ -181,10 +191,11 @@ export function endSaveSession(): void {
   records.clear()
   resolutionChains.clear()
   adoptionHolds.clear()
+  processingTokens.clear()
   sending = false
   sendingSession = 0
   for (const waiters of idleWaiters.values()) {
-    for (const waiter of waiters) waiter('session-ended')
+    for (const waiter of waiters) waiter.resolve('session-ended')
   }
   idleWaiters.clear()
 }
@@ -392,27 +403,37 @@ export function isNodeSaving(nodeId: string): boolean {
   return inFlightRequests.has(nodeId)
 }
 
-/** Pauses ALL sends for the node until endNodeAdoption. */
-export function beginNodeAdoption(nodeId: string): void {
-  adoptionHolds.add(nodeId)
+/** Pauses ALL sends for the node; returns the session-bound credential
+ * that endNodeAdoption requires to lift it. */
+export function beginNodeAdoption(nodeId: string): number {
+  const token = ++adoptionSeq
+  adoptionHolds.set(nodeId, { sessionId: currentSessionId(), token })
+  return token
 }
 
-export function endNodeAdoption(nodeId: string): void {
+/** Lifts the hold only when the credential is the one the current hold was
+ * taken with — a late finally of an old operation (or an old session) can
+ * never release a newer hold. */
+export function endNodeAdoption(nodeId: string, token: number): void {
+  const hold = adoptionHolds.get(nodeId)
+  if (!hold || hold.token !== token) return
   adoptionHolds.delete(nodeId)
   dispatchNext()
 }
 
 /**
- * Resolves when the node has no write on the wire: 'idle' — or
- * 'session-ended' when logout ends the wait first (an old session ending
- * must never be mistaken for the document going idle and let a resolution
- * continue against the new session's data).
+ * Resolves when the node's current processing finishes — a write on the
+ * wire OR a task still resolving its write base — with 'idle'; logout ends
+ * the wait with 'session-ended' first. Waiters bind to the dispatch token
+ * and the session they were registered in: a late finally of an old
+ * session's request can never wake a new session's waiter.
  */
 export function whenNodeIdle(nodeId: string): Promise<'idle' | 'session-ended'> {
-  if (!inFlightRequests.has(nodeId)) return Promise.resolve('idle')
+  const token = processingTokens.get(nodeId)
+  if (token === undefined) return Promise.resolve('idle')
   return new Promise((resolve) => {
     const waiters = idleWaiters.get(nodeId) ?? []
-    waiters.push(resolve)
+    waiters.push({ token, sessionId: currentSessionId(), resolve })
     idleWaiters.set(nodeId, waiters)
   })
 }
@@ -439,12 +460,15 @@ function dispatchNext(): void {
 
 async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<void> {
   const sessionAtDispatch = sessionId
+  const dispatchToken = ++dispatchSeq
   sending = true
   sendingSession = sessionAtDispatch
   try {
     queuedTasks.delete(record.nodeId)
-    // Registered as processing BEFORE any await: logout during the
-    // revision resolution must still end this task's wait immediately.
+    // Occupies the node and registered as processing BEFORE any await:
+    // logout during the revision resolution must still end this task's
+    // wait immediately, and idlers must wait out the whole processing.
+    processingTokens.set(record.nodeId, dispatchToken)
     inFlightTasks.set(record.nodeId, task)
 
     // The conflict may have opened (or been replaced) between queueing and
@@ -509,14 +533,6 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
       result = { ok: false, kind: 'error' }
     } finally {
       if (inFlightRequests.get(record.nodeId) === request) inFlightRequests.delete(record.nodeId)
-      // Wake idlers after the bookkeeping delete but BEFORE settle runs:
-      // this continuation is synchronous, so waiters resume against final
-      // state.
-      const waiters = idleWaiters.get(record.nodeId)
-      if (waiters) {
-        idleWaiters.delete(record.nodeId)
-        for (const waiter of waiters) waiter('idle')
-      }
     }
     settle(record, task, request, result)
   } catch {
@@ -528,6 +544,19 @@ async function dispatchTask(record: NodeSaveRecord, task: SaveTask): Promise<voi
     // Identity check: logout may have released the slot for the next
     // session already — a dead request's finally must not steal it back.
     if (inFlightTasks.get(record.nodeId) === task) inFlightTasks.delete(record.nodeId)
+    // Waiters wake only after settle (state updates are final), and only
+    // those bound to THIS dispatch of the CURRENT session — a late finally
+    // of an old session's request must not answer the new session's idlers.
+    const waiters = idleWaiters.get(record.nodeId)
+    if (waiters) {
+      const waiting = waiters.filter((w) => w.token !== dispatchToken || w.sessionId !== sessionId)
+      for (const w of waiters) {
+        if (w.token === dispatchToken && w.sessionId === sessionId) w.resolve('idle')
+      }
+      if (waiting.length > 0) idleWaiters.set(record.nodeId, waiting)
+      else idleWaiters.delete(record.nodeId)
+    }
+    if (processingTokens.get(record.nodeId) === dispatchToken) processingTokens.delete(record.nodeId)
     if (sendingSession === sessionAtDispatch) {
       sending = false
       sendingSession = 0
@@ -664,6 +693,8 @@ export function resetSaveSessionForTests(): void {
   deps = null
   sending = false
   sendingSession = 0
+  adoptionSeq = 0
+  dispatchSeq = 0
   records.clear()
   queuedTasks.clear()
   inFlightRequests.clear()
@@ -671,7 +702,7 @@ export function resetSaveSessionForTests(): void {
   resolutionChains.clear()
   adoptionHolds.clear()
   for (const waiters of idleWaiters.values()) {
-    for (const waiter of waiters) waiter('session-ended')
+    for (const waiter of waiters) waiter.resolve('session-ended')
   }
   idleWaiters.clear()
 }

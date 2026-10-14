@@ -205,8 +205,10 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
       if (current == null) return true
       if (current.conflictId !== conflict.conflictId) return false
       // The whole operation pauses sends for this node: a failing request
-      // must not re-arm a retry into the middle of the adoption.
-      beginNodeAdoption(nodeId)
+      // must not re-arm a retry into the middle of the adoption. The hold
+      // is taken with a session-bound credential — a stale finally from an
+      // old operation can never release a newer hold.
+      const hold = beginNodeAdoption(nodeId)
       try {
         // Cancel queued work first, then wait out anything already on the
         // wire — logout ends the wait instead of answering "idle".
@@ -259,7 +261,7 @@ export function useMarkdownEditorSave(ctx: MarkdownEditorContext) {
         }
         return true
       } finally {
-        endNodeAdoption(nodeId)
+        endNodeAdoption(nodeId, hold)
       }
     })
   }

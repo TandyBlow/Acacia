@@ -498,9 +498,9 @@ describe('saveSession registry', () => {
     await expect(second.done).resolves.toEqual({ status: 'session-ended' });
   });
 
-  it("an adoption hold pauses the node's sends until it is lifted", async () => {
+  it("an adoption hold pauses the node's sends until its own credential lifts it", async () => {
     const { write } = setup();
-    beginNodeAdoption('n1');
+    const hold = beginNodeAdoption('n1');
 
     const held = enqueueNodeSave('n1', 'held draft', { validated: true });
     await vi.advanceTimersByTimeAsync(10_000);
@@ -518,11 +518,79 @@ describe('saveSession registry', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(write).not.toHaveBeenCalled();
 
-    endNodeAdoption('n1');
+    // A stale credential (an old operation's finally) cannot lift the
+    // current hold — only the exact token taken by the live operation.
+    endNodeAdoption('n1', hold + 1000);
+    await vi.advanceTimersByTimeAsync(SAVE_RETRY_BASE_MS);
+    expect(write).not.toHaveBeenCalled();
+
+    endNodeAdoption('n1', hold);
     await vi.advanceTimersByTimeAsync(SAVE_RETRY_BASE_MS);
     expect(write).toHaveBeenCalledTimes(1);
     expect(write.mock.calls[0][0].content).toBe('held draft');
     await expect(reconciled!.done).resolves.toEqual({ status: 'saved', revision: null });
+  });
+
+  it('whenNodeIdle waits out the revision resolution phase too', async () => {
+    let releaseRead: (() => void) | null = null;
+    const { write, resolve } = setup();
+    resolve.mockImplementationOnce(
+      () => new Promise<{ revision: number | null; content?: string }>((r) => { releaseRead = () => r({ revision: 1, content: 'x' }); }),
+    );
+
+    const { done } = enqueueNodeSave('n1', 'draft', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).not.toHaveBeenCalled(); // still resolving the write base
+
+    // The task occupies the node: the idler must not get an immediate idle.
+    let idleOutcome: string | null = null;
+    const idle = whenNodeIdle('n1').then((outcome) => { idleOutcome = outcome; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(idleOutcome).toBeNull();
+
+    releaseRead!();
+    await expect(done).resolves.toEqual({ status: 'saved', revision: null });
+    await idle;
+    expect(idleOutcome).toBe('idle');
+  });
+
+  it('an old session finishing its request does not wake the new session idle waiter', async () => {
+    const releases: Array<() => void> = [];
+    const { write } = setup();
+    write.mockImplementation(() => new Promise<SaveWriteResult>((resolve) => {
+      releases.push(() => resolve({ ok: true, revision: null }));
+    }));
+
+    // Old session: a request hangs on the wire.
+    const oldTask = enqueueNodeSave('n1', 'old draft', { validated: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    // Logout ends the old task's wait; the request itself is still out.
+    endSaveSession();
+    await expect(oldTask.done).resolves.toEqual({ status: 'session-ended' });
+
+    // The same node is re-entered in the NEW session; its own request hangs
+    // on the wire and an adoption waits for the node to idle.
+    const newTask = enqueueNodeSave('n1', 'new draft', { validated: true, force: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledTimes(2);
+    let idleOutcome: string | null = null;
+    const idle = whenNodeIdle('n1').then((outcome) => { idleOutcome = outcome; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(idleOutcome).toBeNull();
+
+    // The OLD request finally fires: bound to its own dispatch and session,
+    // it must not answer the new session's waiter.
+    releases[0]!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(idleOutcome).toBeNull();
+
+    // The NEW session's own request landing is what wakes the waiter.
+    releases[1]!();
+    await idle;
+    expect(idleOutcome).toBe('idle');
+    await expect(newTask.done).resolves.toEqual({ status: 'saved', revision: null });
   });
 
   it('adopting the server content cancels pending work and confirms the copy', async () => {
