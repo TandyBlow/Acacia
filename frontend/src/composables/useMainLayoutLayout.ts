@@ -1,9 +1,10 @@
-import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useKnobDispatch } from './useKnobDispatch'
 import { usePageTransition } from './usePageTransition'
 import { useDevStore } from '../stores/devStore'
 import { COMPACT_BREAKPOINT, MIN_SPACE_HEIGHT } from '../constants/app'
 import { CONTENT_DIRECT_STATES } from './useMainLayoutState'
+import { calculateLayoutScale } from '../utils/layoutScale'
 import type { LayoutType } from '../types/transition'
 import type { MainLayoutState } from './useMainLayoutState'
 
@@ -46,10 +47,14 @@ function computeLayout(w: number, h: number): LayoutType {
  * Side-effect composable: registers its own onMounted/onBeforeUnmount/watch.
  * Must be called once during setup.
  */
-export function useMainLayoutLayout(state: MainLayoutState): void {
+export function useMainLayoutLayout(state: MainLayoutState) {
   const { layoutType, compactMode } = useKnobDispatch()
   const { registerRegion, unregisterRegion, startTransition, syncRegionVisibility } = usePageTransition()
   const devStore = useDevStore()
+  const initialHeight = getLayoutHeight()
+  const layoutScale = ref(calculateLayoutScale(
+    window.innerWidth, initialHeight, computeLayout(window.innerWidth, initialHeight),
+  ))
 
   function updateLayoutState(): void {
     const w = window.innerWidth
@@ -58,6 +63,7 @@ export function useMainLayoutLayout(state: MainLayoutState): void {
     state.isTooSmall.value = h < MIN_SPACE_HEIGHT
 
     const newLayout = computeLayout(w, h)
+    layoutScale.value = calculateLayoutScale(w, h, newLayout)
 
     const wasLayout = layoutType.value
     layoutType.value = newLayout
@@ -81,6 +87,7 @@ export function useMainLayoutLayout(state: MainLayoutState): void {
     const h = getLayoutHeight()
 
     const newLayout = computeLayout(w, h)
+    layoutScale.value = calculateLayoutScale(w, h, newLayout)
 
     if (newLayout !== layoutType.value) {
       layoutType.value = newLayout
@@ -176,4 +183,6 @@ export function useMainLayoutLayout(state: MainLayoutState): void {
     },
     { immediate: true },
   )
+
+  return { layoutScale }
 }

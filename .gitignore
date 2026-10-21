@@ -102,6 +102,7 @@ backend/demo_pdf_extract.py
 frontend/demos/
 **/*_demo.html
 **/*-demo.html
+!frontend/public/spacing-demo.html
 
 # Debug scripts
 frontend/_*.mjs

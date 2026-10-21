@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { SceneState } from './sceneState'
+import { getLayoutPixelRatio } from '../../../utils/layoutScale'
 
 export class CameraRig {
   private state: SceneState
@@ -72,7 +73,7 @@ export class CameraRig {
 
     this.state.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
     this.state.renderer.setSize(containerW, containerH)
-    this.state.renderer.setPixelRatio(window.devicePixelRatio)
+    this.state.renderer.setPixelRatio(getLayoutPixelRatio(this.state.container))
 
     this.state.container.appendChild(this.state.renderer.domElement)
   }

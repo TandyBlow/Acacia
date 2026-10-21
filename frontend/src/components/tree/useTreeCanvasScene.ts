@@ -30,6 +30,16 @@ export function useTreeCanvasScene(containerRef: Ref<HTMLDivElement | undefined>
 
   const isResizing = ref(false)
   let resizeObserver: ResizeObserver | null = null
+  let resizeFrame: number | null = null
+
+  function handleViewportResize() {
+    if (resizeFrame !== null) return
+    // Wait until Vue has applied the new layout scale before measuring the canvas.
+    resizeFrame = window.requestAnimationFrame(() => {
+      resizeFrame = null
+      manager?.handleResize()
+    })
+  }
 
   provide('isTreeResizing', isResizing)
 
@@ -102,6 +112,7 @@ export function useTreeCanvasScene(containerRef: Ref<HTMLDivElement | undefined>
         if (manager) manager.handleResize()
       })
       resizeObserver.observe(containerRef.value)
+      window.addEventListener('resize', handleViewportResize)
 
       // Overrides were preloaded before buildScene (always, if userId was
       // available). No need for applyUserData() fallback — the tree was
@@ -126,6 +137,11 @@ export function useTreeCanvasScene(containerRef: Ref<HTMLDivElement | undefined>
   }
 
   function cleanup() {
+    window.removeEventListener('resize', handleViewportResize)
+    if (resizeFrame !== null) {
+      window.cancelAnimationFrame(resizeFrame)
+      resizeFrame = null
+    }
     if (resizeObserver) {
       resizeObserver.disconnect()
       resizeObserver = null

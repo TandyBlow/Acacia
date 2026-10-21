@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { SceneState } from './sceneState'
 import type { CameraRig } from './sceneCamera'
 import type { BackgroundManager } from './sceneBackground'
+import { getLayoutPixelRatio } from '../../../utils/layoutScale'
 
 export class ResizeHandler {
   private state: SceneState
@@ -19,6 +20,11 @@ export class ResizeHandler {
     const w = this.state.container.clientWidth
     const h = this.state.container.clientHeight
     if (w === 0 || h === 0) return
+    // A viewport resize can change only the UI scale, leaving logical sizes unchanged.
+    const pixelRatio = getLayoutPixelRatio(this.state.container)
+    if (pixelRatio !== this.state.renderer.getPixelRatio()) {
+      this.state.renderer.setPixelRatio(pixelRatio)
+    }
     if (w === this.state.lastContainerW && h === this.state.lastContainerH) return
     this.state.lastContainerW = w
     this.state.lastContainerH = h

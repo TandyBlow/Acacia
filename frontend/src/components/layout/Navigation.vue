@@ -72,6 +72,7 @@ import { useNavigationAnim } from './NavigationAnim'
 import { useNavigationScroll } from './NavigationScroll'
 import { useNavigationInteract } from './NavigationInteract'
 import { useNavigationWatch } from './NavigationWatch'
+import { getLayoutScale } from '../../utils/layoutScale'
 
 const state = useNavigationState()
 
@@ -116,9 +117,10 @@ function onBeforeLeave(el: Element): void {
   const rect = htmlEl.getBoundingClientRect()
   const parentRect = htmlEl.parentElement?.getBoundingClientRect()
   if (parentRect) {
-    htmlEl.style.top = `${rect.top - parentRect.top}px`
-    htmlEl.style.left = `${rect.left - parentRect.left}px`
-    htmlEl.style.width = `${rect.width}px`
+    const scale = getLayoutScale(htmlEl)
+    htmlEl.style.top = `${(rect.top - parentRect.top) / scale}px`
+    htmlEl.style.left = `${(rect.left - parentRect.left) / scale}px`
+    htmlEl.style.width = `${rect.width / scale}px`
   }
 }
 </script>

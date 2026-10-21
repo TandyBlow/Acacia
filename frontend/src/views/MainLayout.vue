@@ -2,7 +2,8 @@
   <div v-if="isTooSmall" class="insufficient-space">
     <p>{{ $t('app.insufficientSpace') }}</p>
   </div>
-  <main v-else class="layout" :class="[layoutClasses, {
+  <main v-else class="layout" :style="{ '--layout-scale': layoutScale }" :class="[layoutClasses, {
+    'scaled-layout': layoutScale > 1,
     'cinema-mode': isCinemaMode,
     'compact-toggle-sinking': compactAnimPhase === 'sinking',
     'compact-nav-slide-out': compactAnimPhase === 'nav-slide-out',
@@ -159,7 +160,7 @@ const {
 
 const { phase: otPhase } = useOfficialTransition()
 
-useMainLayoutLayout(state)
+const { layoutScale } = useMainLayoutLayout(state)
 
 const display = useMainLayoutDisplay(state)
 const { layoutClasses, showEmptyBackground } = display

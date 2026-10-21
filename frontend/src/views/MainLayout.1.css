@@ -22,12 +22,27 @@
   gap: 12px;
 }
 
+/* Scale the entire desktop UI while keeping its grid in logical CSS pixels. */
+.layout.large.scaled-layout {
+  width: calc(100% / var(--layout-scale));
+  height: calc(100% / var(--layout-scale));
+  transform: scale(var(--layout-scale));
+  transform-origin: top left;
+}
+
 /* Cinema demo mode: lock layout to viewport since keyboard height locking is skipped */
 .layout.cinema-mode {
   min-height: 100vh;
   min-height: 100dvh;
   max-height: 100vh;
   max-height: 100dvh;
+}
+
+.layout.large.scaled-layout.cinema-mode {
+  min-height: calc(100vh / var(--layout-scale));
+  min-height: calc(100dvh / var(--layout-scale));
+  max-height: calc(100vh / var(--layout-scale));
+  max-height: calc(100dvh / var(--layout-scale));
 }
 
 /* Global click shield: block all interaction while any animation is playing */

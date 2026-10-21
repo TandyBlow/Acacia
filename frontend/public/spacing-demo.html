@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Acacia · 大布局整体缩放对比</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: #263b46;
+      background: #f4f7f8;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, summary:focus-visible {
+      outline: 3px solid #3a8d83;
+      outline-offset: 4px;
+    }
+    .page { max-width: 1920px; margin: auto; padding: 32px 36px; }
+    .heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+    .brand { font-size: 12px; letter-spacing: 3px; color: #55746f; font-weight: 700; }
+    h1 { margin: 10px 0; font-size: clamp(24px, 2.4vw, 34px); letter-spacing: -1px; }
+    .description { margin: 0; color: #6a7c85; font-size: 14px; line-height: 1.8; }
+    .badge { flex-shrink: 0; border: 1px solid #d3e3df; background: #eaf3f0; padding: 8px 12px; border-radius: 20px; color: #42776c; font-size: 12px; }
+    .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; margin: 26px 0 16px; align-items: center; }
+    .segmented { display: inline-flex; gap: 3px; padding: 4px; border: 1px solid #dbe3e6; border-radius: 12px; background: #eaf0f2; }
+    .segmented button { background: transparent; color: #687d86; border: 0; border-radius: 8px; padding: 9px 16px; font-size: 13px; }
+    .segmented button[aria-pressed="true"] { background: white; color: #265e55; box-shadow: 0 2px 5px #243f4810; font-weight: 600; }
+    .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+    .presets button { padding: 8px 12px; border: 1px solid #dbe3e6; background: transparent; border-radius: 8px; color: #647882; font-size: 12px; }
+    .presets button[aria-pressed="true"] { color: #276c60; background: #e7f1ed; border-color: #a8cdc1; }
+    .settings { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 18px 20px; border: 1px solid #dfe7ea; background: #fff; border-radius: 12px; }
+    .size-control { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 260px; }
+    .size-control label, .check { font-size: 12px; color: #677d85; white-space: nowrap; }
+    input[type="range"] { flex: 1; min-width: 60px; accent-color: #387f6e; }
+    .dimensions { min-width: 112px; font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+    .check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+    input[type="checkbox"] { accent-color: #387f6e; width: 15px; height: 15px; }
+    .metrics { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 18px 2px; color: #74858d; font-size: 12px; }
+    .metrics strong { color: #365c55; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .previews { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+    .previews.compare { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .preview { min-width: 0; border: 1px solid #dbe5e8; border-radius: 14px; overflow: hidden; background: white; box-shadow: 0 12px 32px #2b4b5410; }
+    /* Keep the inactive iframe's viewport alive so its CSS metrics stay current. */
+    .preview[hidden] { display: block; position: absolute; top: 0; left: 0; width: 1px; height: 1px; visibility: hidden; overflow: hidden; }
+    .preview-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #e4ebed; }
+    .preview-header h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 0; }
+    .dot { width: 7px; height: 7px; background: #9aa9b1; border-radius: 50%; }
+    .scaled .dot { background: #4d9b81; }
+    .preview-header output { font-size: 12px; color: #6c818b; font-variant-numeric: tabular-nums; }
+    .viewport { position: relative; overflow: hidden; background: #eefaff; }
+    iframe { display: block; border: 0; transform-origin: top left; }
+    .preview-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 11px 18px; color: #7c8d94; font-size: 11px; }
+    .note { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 20px; margin: 18px 2px; color: #73858d; font-size: 12px; line-height: 1.8; }
+    .legend { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .swatch { display: inline-block; width: 12px; height: 8px; border: 1px solid #d7b079; background: #eabe7c50; border-radius: 2px; }
+    .swatch.gap { border-color: #5eafa3; background: #5eafa333; }
+    details { border-top: 1px solid #dce5e7; margin-top: 22px; padding-top: 16px; font-size: 12px; color: #6a7c85; }
+    summary { cursor: pointer; width: fit-content; }
+    pre { overflow: auto; padding: 16px; border-radius: 10px; background: #eaf0f2; line-height: 1.8; color: #426257; }
+    @media (max-width: 760px) {
+      .page { padding: 22px 16px; }
+      .heading { align-items: flex-start; }
+      .badge { display: none; }
+      .previews.compare { grid-template-columns: minmax(0, 1fr); }
+      .settings { gap: 10px; padding: 14px; }
+      .segmented button { padding: 9px 12px; }
+      .preview-header { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="heading">
+      <div>
+        <div class="brand">ACACIA / LAYOUT STUDY</div>
+        <h1>让整个界面随大屏舒展</h1>
+        <p class="description">以 1920 × 1080 为基准，让区域、字体、留白和间距一起等比放大。</p>
+      </div>
+      <span class="badge">大布局 · 独立预览</span>
+    </header>
+
+    <div class="toolbar">
+      <div class="segmented" role="group" aria-label="对比模式">
+        <button type="button" data-mode="scaled" aria-pressed="true">整体缩放</button>
+        <button type="button" data-mode="fixed" aria-pressed="false">固定尺寸</button>
+        <button type="button" data-mode="compare" aria-pressed="false">并排对比</button>
+      </div>
+      <div class="presets" role="group" aria-label="模拟屏幕尺寸">
+        <button type="button" data-width="1366" data-height="768" aria-pressed="false">笔记本 · 1366</button>
+        <button type="button" data-width="1920" data-height="1080" aria-pressed="false">FHD · 1920</button>
+        <button type="button" data-width="2560" data-height="1440" aria-pressed="true">QHD · 2560</button>
+        <button type="button" data-width="3440" data-height="1440" aria-pressed="false">超宽屏 · 3440</button>
+        <button type="button" data-width="3840" data-height="2160" aria-pressed="false">4K · 3840</button>
+      </div>
+    </div>
+
+    <div class="settings">
+      <div class="size-control">
+        <label for="screen-width">模拟屏幕宽度</label>
+        <input id="screen-width" type="range" min="1024" max="5120" step="1" value="2560" aria-describedby="size-note">
+        <output class="dimensions" id="dimensions" for="screen-width">2560 × 1440</output>
+      </div>
+      <label class="check"><input id="measurements" type="checkbox">显示间距色带</label>
+    </div>
+
+    <div class="metrics" aria-live="polite">
+      <span>整体缩放 <strong id="layout-scale-value">—</strong></span>
+      <span>外边距 <strong id="padding-value">—</strong></span>
+      <span>区域间距 <strong id="gap-value">—</strong></span>
+      <span>侧栏 <strong id="sidebar-value">—</strong></span>
+      <span>顶栏 <strong id="header-value">—</strong></span>
+      <span>旋钮列 <strong id="knob-value">—</strong></span>
+      <span>正文字号 <strong id="font-value">—</strong></span>
+      <span>正文留白 <strong id="article-padding-value">—</strong></span>
+    </div>
+
+    <div class="previews" id="previews">
+      <section class="preview fixed" id="fixed-preview" hidden aria-label="固定尺寸预览">
+        <div class="preview-header">
+          <h2><span class="dot"></span>固定尺寸</h2>
+          <output id="fixed-values">1× / 侧栏 241px / 正文 15px</output>
+        </div>
+        <div class="viewport"><iframe title="固定尺寸大布局" sandbox="allow-same-origin"></iframe></div>
+        <div class="preview-footer"><span>区域、字体和间距保持原始尺寸</span><span class="scale-value"></span></div>
+      </section>
+      <section class="preview scaled" id="scaled-preview" aria-label="整体缩放预览">
+        <div class="preview-header">
+          <h2><span class="dot"></span>整体缩放</h2>
+          <output id="scaled-values">—</output>
+        </div>
+        <div class="viewport"><iframe title="整体缩放大布局" sandbox="allow-same-origin"></iframe></div>
+        <div class="preview-footer"><span>区域、字体、留白和间距同比例增长</span><span class="scale-value"></span></div>
+      </section>
+    </div>
+
+    <div class="note" id="size-note">
+      <span>预览按所选分辨率渲染后等比缩小；切换模式可在相同位置比较。</span>
+      <span>上方数值为整体缩放后在模拟屏幕中的实际尺寸。</span>
+      <span class="legend"><i class="swatch"></i>页面外边距</span>
+      <span class="legend"><i class="swatch gap"></i>区域间距</span>
+      <span>仅布局示意，页面内的导航与编辑操作不交互。</span>
+    </div>
+    <details>
+      <summary>查看整体缩放规则</summary>
+      <p>同时参考宽、高，取较小的比例，并且不低于 1×。1920 × 1080 为 1×，2560 × 1440 约为 1.33×，3840 × 2160 为 2×。超宽屏 3440 × 1440 仍为约 1.33×，多出的宽度留给内容区。</p>
+      <p>字体、侧栏、顶栏、旋钮、正文宽度、留白、圆角和阴影一起缩放。这里只演示大布局，现有页面及中小布局不变。</p>
+      <pre>scale = Math.max(1, Math.min(width / 1920, height / 1080))
+
+侧栏宽度 = 241px × scale
+正文字号 = 15px × scale
+页面外边距 = 38px × scale
+区域间距 = 12px × scale</pre>
+    </details>
+  </main>
+
+  <template id="scene">
+    <!doctype html>
+    <html lang="zh-CN">
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        :root {
+          font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+          color: #6680ff;
+          --padding: 38px;
+          --gap: 12px;
+          --layout-scale: 1;
+          --border: rgba(109, 138, 255, 0.28);
+          --inset: inset 9px 9px 18px rgba(38, 85, 108, 0.56), inset -9px -9px 18px rgba(148, 241, 255, 0.52);
+          --raised: 4px 4px 8px rgba(49, 78, 151, 0.14), -4px -4px 8px rgba(255, 255, 255, 0.28);
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+        .layout {
+          position: relative;
+          display: grid;
+          width: 100%;
+          height: 100%;
+          grid-template-columns: 241px minmax(0, 1fr) 82px;
+          grid-template-rows: 54px minmax(0, 1fr);
+          padding: var(--padding);
+          gap: var(--gap);
+          background: linear-gradient(180deg, #fff 0%, #eefaff 20%, #bfefff 55%, #66ccff 100%);
+        }
+        .layout.scaled {
+          width: calc(100% / var(--layout-scale));
+          height: calc(100% / var(--layout-scale));
+          transform: scale(var(--layout-scale));
+          transform-origin: top left;
+        }
+        .shell { min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--inset); background: #ffffff0f; overflow: hidden; }
+        .logo { display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 800; letter-spacing: .8px; }
+        .logo small { margin-left: 6px; font-size: 12px; color: #6680ff88; align-self: flex-start; padding-top: 10px; }
+        .breadcrumbs { display: flex; align-items: center; padding: 0 24px; gap: 18px; font-size: 14px; }
+        .breadcrumbs span { opacity: .55; }
+        .navigation { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; padding: 1px; }
+        .nav-row { display: flex; align-items: center; gap: 12px; height: 54px; flex-shrink: 0; margin-bottom: 1px; padding: 0 14px; border-radius: 22px; font-size: 14px; font-weight: 600; box-shadow: var(--raised); }
+        .nav-row.official { color: #b88710; }
+        .nav-row.selected { background: #ffffff2b; box-shadow: inset 2px 2px 5px #31569b26, inset -2px -2px 5px #ffffff55; }
+        .nav-row .index { font-size: 12px; font-weight: 400; opacity: .6; }
+        .nav-add { margin-top: auto; justify-content: center; background: #66ffe51f; }
+        .content { grid-column: 2; grid-row: 2; padding: 1px; }
+        .article { height: 100%; overflow: auto; max-width: 680px; margin: 0 auto; padding: 32px; scrollbar-width: none; }
+        .eyebrow { color: #8193ba; font-size: 12px; letter-spacing: 2px; }
+        h1 { font-size: 26px; margin: 12px 0 28px; color: #9e7608; }
+        h2 { font-size: 18px; margin: 24px 0 10px; }
+        p, li { font-size: 15px; line-height: 1.8; opacity: .85; }
+        p { margin: 0 0 8px; }
+        ul { padding-left: 20px; margin: 0; }
+        .divider { height: 1px; background: #6680ff26; margin: 28px 0; }
+        .quote { padding: 14px 20px; margin: 24px 0; border-left: 3px solid #6680ff55; background: #ffffff26; border-radius: 0 12px 12px 0; font-size: 15px; line-height: 1.8; }
+        .tags { display: flex; gap: 8px; margin-top: 24px; }
+        .tag { padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 12px; }
+        .knob-area { grid-column: 3; grid-row: 1 / span 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+        .knob-well { width: 76px; height: 76px; border: 1px solid var(--border); border-radius: 50%; box-shadow: var(--inset); display: grid; place-items: center; }
+        .knob { width: 54px; height: 54px; border: 1px solid #ffffff55; border-radius: 50%; background: linear-gradient(135deg, #f3fcff, #a1dbf7); box-shadow: var(--raised); display: grid; place-items: center; }
+        .knob::after { content: ''; width: 4px; height: 15px; border-radius: 4px; background: #6680ff88; transform: translateY(-10px); }
+        .knob-label { font-size: 11px; letter-spacing: 2px; opacity: .65; }
+        .measure { display: none; position: absolute; z-index: 5; pointer-events: none; }
+        .measuring .measure { display: block; }
+        .outer { inset: 0; border: var(--padding) solid #eabe7c40; }
+        .gap-x { left: calc(var(--padding) + 241px); top: var(--padding); bottom: var(--padding); width: var(--gap); background: #2e9a8830; }
+        .gap-right { left: auto; right: calc(var(--padding) + 82px); }
+        .gap-y { left: var(--padding); right: calc(var(--padding) + 82px + var(--gap)); top: calc(var(--padding) + 54px); height: var(--gap); background: #2e9a8830; }
+      </style>
+    </head>
+    <body>
+      <main class="layout">
+        <header class="logo shell">Acacia <small>DEMO</small></header>
+        <nav class="breadcrumbs shell" aria-label="当前位置">我的知识树 <span>／</span> 前端开发 <span>／</span> 布局与空间</nav>
+        <aside class="navigation shell" aria-label="知识点示意">
+          <div class="nav-row official">✧ 今日成长 <span class="index">beta</span></div>
+          <div class="nav-row"><span class="index">01</span>前端开发</div>
+          <div class="nav-row selected"><span class="index">02</span>布局与空间</div>
+          <div class="nav-row"><span class="index">03</span>Vue 与组件设计</div>
+          <div class="nav-row"><span class="index">04</span>交互设计笔记</div>
+          <div class="nav-row"><span class="index">05</span>阅读与思考</div>
+          <div class="nav-row nav-add">＋ 新的知识点</div>
+        </aside>
+        <section class="content shell">
+          <article class="article">
+            <div class="eyebrow">MY KNOWLEDGE / 02</div>
+            <h1>布局与空间</h1>
+            <p>让知识有序生长，也让界面留出呼吸的空间。</p>
+            <div class="divider"></div>
+            <h2>空间也是界面的一部分</h2>
+            <p>当屏幕变大，文字、区域和间距一起舒展，可以让导航、正文与操作区保持清晰的比例。</p>
+            <h2>保持熟悉的阅读节奏</h2>
+            <p>以熟悉的布局为起点，整体放大侧栏、文字和正文留白。保持每行文字的阅读节奏，让内容在大屏上依然清晰舒适。</p>
+            <ul>
+              <li>导航区：快速找到你的知识点</li>
+              <li>正文区：专注阅读，梳理想法</li>
+              <li>旋钮区：让操作触手可及</li>
+            </ul>
+            <blockquote class="quote">每个人心里都有一棵树。<br>记录一点，思考一点，让它慢慢生长。</blockquote>
+            <h2>从一个想法开始</h2>
+            <p>把零散的发现整理成节点，在知识之间建立连接。好的布局让内容成为主角，也让每个区域各得其所。</p>
+            <div class="tags"><span class="tag">界面设计</span><span class="tag">知识管理</span><span class="tag">学习笔记</span></div>
+          </article>
+        </section>
+        <aside class="knob-area" aria-label="旋钮示意"><div class="knob-well"><div class="knob"></div></div><span class="knob-label">ACACIA</span></aside>
+        <div class="measure outer" aria-hidden="true"></div>
+        <div class="measure gap-x" aria-hidden="true"></div>
+        <div class="measure gap-x gap-right" aria-hidden="true"></div>
+        <div class="measure gap-y" aria-hidden="true"></div>
+      </main>
+    </body>
+    </html>
+  </template>
+
+  <script>
+    const previews = document.querySelector('#previews');
+    const widthInput = document.querySelector('#screen-width');
+    const measurements = document.querySelector('#measurements');
+    const scene = document.querySelector('#scene');
+    const panels = [...document.querySelectorAll('.preview')];
+    const modeButtons = [...document.querySelectorAll('[data-mode]')];
+    const presetButtons = [...document.querySelectorAll('[data-width]')];
+    const frames = panels.map(panel => panel.querySelector('iframe'));
+    let screenWidth = 2560;
+    let screenHeight = 1440;
+    let mode = 'scaled';
+
+    const format = value => `${Number(value.toFixed(1))}px`;
+
+    function updateMetrics() {
+      // The layout transform scales every visual detail, including pixel-based fonts.
+      const layout = frames[1].contentDocument?.querySelector('.layout');
+      if (!layout) return;
+      const style = getComputedStyle(layout);
+      const scale = new DOMMatrixReadOnly(style.transform).a;
+      const padding = format(parseFloat(style.paddingTop) * scale);
+      const gap = format(parseFloat(style.columnGap) * scale);
+      const sidebar = format(layout.querySelector('.navigation').getBoundingClientRect().width);
+      const font = format(parseFloat(getComputedStyle(layout.querySelector('.article p')).fontSize) * scale);
+      const scaleLabel = `${Number(scale.toFixed(2))}×`;
+      document.querySelector('#layout-scale-value').textContent = scaleLabel;
+      document.querySelector('#padding-value').textContent = padding;
+      document.querySelector('#gap-value').textContent = gap;
+      document.querySelector('#sidebar-value').textContent = sidebar;
+      document.querySelector('#header-value').textContent = format(layout.querySelector('.logo').getBoundingClientRect().height);
+      document.querySelector('#knob-value').textContent = format(layout.querySelector('.knob-area').getBoundingClientRect().width);
+      document.querySelector('#font-value').textContent = font;
+      document.querySelector('#article-padding-value').textContent = format(parseFloat(getComputedStyle(layout.querySelector('.article')).paddingTop) * scale);
+      document.querySelector('#scaled-values').textContent = `${scaleLabel} / 侧栏 ${sidebar} / 正文 ${font}`;
+    }
+
+    function fitPreviews() {
+      panels.forEach(panel => {
+        const viewport = panel.querySelector('.viewport');
+        const frame = panel.querySelector('iframe');
+        // A hidden frame retains its render dimensions for accurate metrics.
+        frame.style.width = `${screenWidth}px`;
+        frame.style.height = `${screenHeight}px`;
+        if (panel.hidden) return;
+        const previewScale = viewport.clientWidth / screenWidth;
+        frame.style.transform = `scale(${previewScale})`;
+        viewport.style.height = `${screenHeight * previewScale}px`;
+        panel.querySelector('.scale-value').textContent = `预览缩放 ${Math.round(previewScale * 100)}%`;
+      });
+      updateMetrics();
+    }
+
+    function render() {
+      previews.classList.toggle('compare', mode === 'compare');
+      panels[0].hidden = mode === 'scaled';
+      panels[1].hidden = mode === 'fixed';
+      modeButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
+      presetButtons.forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.width) === screenWidth && Number(button.dataset.height) === screenHeight)));
+      widthInput.value = screenWidth;
+      document.querySelector('#dimensions').textContent = `${screenWidth} × ${screenHeight}`;
+      const layoutScale = Math.max(1, Math.min(screenWidth / 1920, screenHeight / 1080));
+      frames.forEach((frame, index) => {
+        const layout = frame.contentDocument?.querySelector('.layout');
+        if (!layout) return;
+        layout.classList.toggle('scaled', index === 1);
+        layout.classList.toggle('measuring', measurements.checked);
+        layout.style.setProperty('--layout-scale', String(layoutScale));
+      });
+      fitPreviews();
+    }
+
+    frames.forEach(frame => {
+      frame.addEventListener('load', () => {
+        frame.contentWindow.addEventListener('resize', updateMetrics);
+        render();
+      });
+      // The simulated screen size and the outer preview reduction are independent.
+      frame.srcdoc = scene.innerHTML;
+    });
+
+    modeButtons.forEach(button => button.addEventListener('click', () => {
+      mode = button.dataset.mode;
+      render();
+    }));
+    presetButtons.forEach(button => button.addEventListener('click', () => {
+      screenWidth = Number(button.dataset.width);
+      screenHeight = Number(button.dataset.height);
+      render();
+    }));
+    widthInput.addEventListener('input', () => {
+      screenWidth = Number(widthInput.value);
+      screenHeight = Math.round(screenWidth * 9 / 16);
+      render();
+    });
+    measurements.addEventListener('change', render);
+    new ResizeObserver(fitPreviews).observe(previews);
+    render();
+  </script>
+</body>
+</html>

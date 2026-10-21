@@ -3,6 +3,7 @@
 // ================================================================
 import { ref } from 'vue';
 import type { Ref } from 'vue';
+import { getLayoutScale } from '../../utils/layoutScale';
 
 // Scroll animation constants
 const BREADCRUMB_ANIM_MS = 180;
@@ -45,13 +46,14 @@ export function useBreadcrumbScroll(crumbTrackRef: Ref<HTMLElement | null>) {
 
     const currentScrollLeft = container.scrollLeft;
     const containerLeft = container.getBoundingClientRect().left;
+    const scale = getLayoutScale(container);
 
     const items = Array.from(container.querySelectorAll('.crumb-wrap')) as HTMLElement[];
 
     if (direction === 'right') {
       for (const item of items) {
         const itemRect = item.getBoundingClientRect();
-        const itemLeft = itemRect.left - containerLeft + currentScrollLeft;
+        const itemLeft = (itemRect.left - containerLeft) / scale + currentScrollLeft;
         if (itemLeft > currentScrollLeft + 10) return itemLeft;
       }
       return container.scrollWidth - container.clientWidth;
@@ -59,7 +61,7 @@ export function useBreadcrumbScroll(crumbTrackRef: Ref<HTMLElement | null>) {
       for (let i = items.length - 1; i >= 0; i--) {
         const item = items[i]!;
         const itemRect = item.getBoundingClientRect();
-        const itemLeft = itemRect.left - containerLeft + currentScrollLeft;
+        const itemLeft = (itemRect.left - containerLeft) / scale + currentScrollLeft;
         if (itemLeft < currentScrollLeft - 10) return itemLeft;
       }
       return 0;
@@ -145,7 +147,7 @@ export function useBreadcrumbScroll(crumbTrackRef: Ref<HTMLElement | null>) {
     if (!container || e.touches.length === 0) return;
 
     const touchX = e.touches[0]!.clientX;
-    const deltaX = touchStartX.value - touchX;
+    const deltaX = (touchStartX.value - touchX) / getLayoutScale(container);
     container.scrollLeft = touchStartScrollLeft.value + deltaX;
   }
 
@@ -158,7 +160,7 @@ export function useBreadcrumbScroll(crumbTrackRef: Ref<HTMLElement | null>) {
 
     if (dt > 0 && dt < 300 && e.changedTouches.length > 0) {
       const touchEndX = e.changedTouches[0]!.clientX;
-      const deltaX = touchStartX.value - touchEndX;
+      const deltaX = (touchStartX.value - touchEndX) / getLayoutScale(container);
       const velocity = Math.abs(deltaX) / dt;
 
       if (velocity > 0.5) {

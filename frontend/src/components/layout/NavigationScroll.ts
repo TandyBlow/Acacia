@@ -11,6 +11,7 @@ import {
 import { ROW_STEP } from './NavigationTypes'
 import { animateSingleScroll } from './NavigationScrollStep'
 import type { NavigationState } from './NavigationState'
+import { getLayoutScale } from '../../utils/layoutScale'
 
 export function useNavigationScroll(state: NavigationState) {
   // Calculate animation duration based on current speed
@@ -60,7 +61,9 @@ export function useNavigationScroll(state: NavigationState) {
   }
   function onTouchEnd(e: TouchEvent): void {
     if (!e.changedTouches[0]) return
-    const dy = touchY - e.changedTouches[0].clientY
+    const target = e.currentTarget
+    const scale = target instanceof Element ? getLayoutScale(target) : 1
+    const dy = (touchY - e.changedTouches[0].clientY) / scale
     if (Math.abs(dy) < 30) return
 
     const direction: 'up' | 'down' = dy > 0 ? 'down' : 'up'
