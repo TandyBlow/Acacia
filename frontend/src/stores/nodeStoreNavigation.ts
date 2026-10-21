@@ -25,6 +25,7 @@ export interface NodeStoreNavigation {
   startTreeOverview(): void;
   startOfficialContent(nodeId: string): void;
   clearOfficialContent(): void;
+  prepareRootNavigation(): Promise<boolean>;
   onKnobClick(): Promise<void>;
   initialize(): Promise<void>;
 }
@@ -153,6 +154,15 @@ export function createNodeStoreNavigation(
     state.officialNodeContent.value = null;
   }
 
+  async function prepareRootNavigation(): Promise<boolean> {
+    // Stage root data without starting a competing content transition. The
+    // caller commits it together with the compact mode change.
+    state.pendingNodeContext.value = null;
+    state.errorMessage.value = null;
+    await deps.loadNode(null, { skipTransition: true });
+    return state.pendingNodeContext.value !== null;
+  }
+
   async function onKnobClick(): Promise<void> {
     if (
       state.viewState.value === ViewStates.DAILY_QUIZ ||
@@ -184,6 +194,7 @@ export function createNodeStoreNavigation(
     startTreeOverview,
     startOfficialContent,
     clearOfficialContent,
+    prepareRootNavigation,
     onKnobClick,
     initialize,
   };

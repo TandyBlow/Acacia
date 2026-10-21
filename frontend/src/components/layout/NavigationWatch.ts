@@ -1,4 +1,4 @@
-import { watch, nextTick } from 'vue'
+import { watch, nextTick, inject, ref, type Ref } from 'vue'
 import type { NavigationState } from './NavigationState'
 
 // Must be called LAST in the entry so the immediate childNodes watcher fires
@@ -8,6 +8,8 @@ export function useNavigationWatch(
   anim: { animateNavPageTransition: () => Promise<void> },
   scroll: { resetScroll: () => void },
 ) {
+  const contentAnimating = inject<Ref<boolean>>('contentAnimating', ref(false))
+
   // Keep showOfficialNodes and displayItems in sync when not mid-animation.
   // Covers: dailyQuizVisible async update, viewState transitions in non-compact layout.
   // When activeNode changes, childNodes always changes in the same tick, so the
@@ -42,6 +44,17 @@ export function useNavigationWatch(
     } else if (state.pendingFirstData) {
       // Initial data load
       state.pendingFirstData = false
+      state.showOfficialNodes.value = state.visibleOfficialNodes.value.length > 0 && !state.activeNode.value
+      state.pressedNodeId.value = null
+      state.displayItems.value = state.scrollSource.value.slice(0, state.maxVisible.value)
+      state.transitionName.value = 'none'
+      nextTick(() => { state.transitionName.value = 'cell' })
+    } else if (state.layoutType.value === 'small' && state.compactMode.value === 'nav' && contentAnimating.value) {
+      // The compact toggle animates the whole navigation area. Populate its
+      // list before it enters, without also playing a list page transition.
+      state.navAnimToken++
+      state.navPhase.value = 'idle'
+      state.navAnimating.value = false
       state.showOfficialNodes.value = state.visibleOfficialNodes.value.length > 0 && !state.activeNode.value
       state.pressedNodeId.value = null
       state.displayItems.value = state.scrollSource.value.slice(0, state.maxVisible.value)

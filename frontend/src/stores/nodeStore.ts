@@ -122,6 +122,7 @@ export const useNodeStore = defineStore('node', () => {
     startTreeOverview,
     startOfficialContent,
     clearOfficialContent,
+    prepareRootNavigation,
     onKnobClick,
     initialize,
   } = createNodeStoreNavigation(state, {
@@ -182,6 +183,7 @@ export const useNodeStore = defineStore('node', () => {
     refreshTree,
     refreshCurrentNode,
     resetAfterLogout,
+    prepareRootNavigation,
     onKnobClick,
     confirmOperation,
   };

@@ -3,6 +3,8 @@ import { storeToRefs } from 'pinia';
 import { useNodeStore } from '../stores/nodeStore';
 import { useAuthStore } from '../stores/authStore';
 import type { LayoutType } from '../types/transition';
+import { usePageTransition } from './usePageTransition';
+import { useOfficialTransition } from './useOfficialTransition';
 
 export type CompactMode = 'content' | 'nav';
 const compactMode = ref<CompactMode>('content');
@@ -46,9 +48,19 @@ export function useKnobDispatch() {
       authStore.toggleMode();
       return;
     }
-    // In small layout, single-click always returns to the tree (content mode)
     if (isCompactLayout.value) {
-      compactMode.value = 'content';
+      if (isBusy.value) return;
+      const wasNav = compactMode.value === 'nav';
+      if (wasNav && !nodeStore.activeNode && nodeStore.viewState === 'display') return;
+      if (!await nodeStore.prepareRootNavigation()) return;
+
+      // Change mode before applying data so the compact animation keeps the
+      // outgoing content intact and reveals the root list in one transition.
+      compactMode.value = 'nav';
+      nodeStore.applyPendingData();
+      useOfficialTransition().reset();
+      if (wasNav) usePageTransition().syncRegionVisibility();
+      return;
     }
     await nodeStore.onKnobClick();
   }
